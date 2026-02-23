@@ -68,6 +68,8 @@ interface KanbanBoardProps {
   showArchiveForStage?: (stageName: string) => boolean
   /** Receptie: la scoaterea tag-ului Nu răspunde de pe card (fișă) – mută fișa în De facturat și refresh */
   onNuRaspundeClearedForReceptie?: (serviceFileId: string) => void | Promise<void>
+  /** Owner only: mută toate lead-urile din stage-ul „Curier Ajuns Azi” în „Avem Comandă” */
+  onBulkMoveCurierAjunsAziToAvemComanda?: (leadIds: string[]) => Promise<void>
 }
 
 export function KanbanBoard({ 
@@ -90,6 +92,7 @@ export function KanbanBoard({
   onArchiveCard,
   showArchiveForStage,
   onNuRaspundeClearedForReceptie,
+  onBulkMoveCurierAjunsAziToAvemComanda,
 }: KanbanBoardProps) {
   const { role } = useRole()
   const canMovePipeline = role === 'owner' || role === 'admin'
@@ -127,6 +130,7 @@ export function KanbanBoard({
   const [layout, setLayout] = useState<'vertical' | 'horizontal' | 'compact' | 'focus'>('vertical')
   const [focusedStage, setFocusedStage] = useState<string | null>(null)
   const [bulkRidicatLoading, setBulkRidicatLoading] = useState<Record<string, boolean>>({})
+  const [curierAjunsAziMoveLoading, setCurierAjunsAziMoveLoading] = useState(false)
   const [coletNeridicatLoading, setColetNeridicatLoading] = useState(false)
   const [bulkCallbackDialogOpen, setBulkCallbackDialogOpen] = useState(false)
   const [bulkNuRaspundeDialogOpen, setBulkNuRaspundeDialogOpen] = useState(false)
@@ -1138,6 +1142,43 @@ export function KanbanBoard({
                         )}
                       </Button>
                     )}
+
+                    {/* Owner only: Curier Ajuns Azi -> Avem Comandă (mută toate lead-urile din stage) */}
+                    {(() => {
+                      const isCurierAjunsAzi = stageLower.includes('curier') && stageLower.includes('ajuns') && stageLower.includes('azi')
+                      const showBtn = isCurierAjunsAzi && isVanzariPipeline && isOwner && onBulkMoveCurierAjunsAziToAvemComanda && stageLeads.length > 0
+                      if (!showBtn) return null
+                      const leadIds = stageLeads.map((l: KanbanLead) => (l as any).leadId ?? l.id).filter(Boolean) as string[]
+                      return (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="h-7 px-2 text-xs shrink-0"
+                          disabled={curierAjunsAziMoveLoading}
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            if (leadIds.length === 0) return
+                            setCurierAjunsAziMoveLoading(true)
+                            try {
+                              await onBulkMoveCurierAjunsAziToAvemComanda(leadIds)
+                              onRefresh?.()
+                            } finally {
+                              setCurierAjunsAziMoveLoading(false)
+                            }
+                          }}
+                          title="Mută toate lead-urile în Avem Comandă"
+                        >
+                          {curierAjunsAziMoveLoading ? (
+                            <span className="flex items-center gap-1">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Mutare...
+                            </span>
+                          ) : (
+                            'În Avem Comandă'
+                          )}
+                        </Button>
+                      )
+                    })()}
 
                     {/* Container pentru suma totală și butonul Colet neridicat */}
                     {(() => {

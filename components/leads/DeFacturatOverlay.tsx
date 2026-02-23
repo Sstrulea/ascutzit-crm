@@ -769,28 +769,26 @@ export function DeFacturatOverlay({
                 </div>
               </section>
 
-              {/* 2. Comentarii comunicate de tehnician – text roșu, bold, italic */}
-              {serviceFile && (
-                <section className="min-w-0">
-                  <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
-                    <MessageSquare className="h-5 w-5 shrink-0" />
-                    Comentarii comunicate de tehnician
-                  </h3>
-                  <div className="space-y-2 p-3 rounded-lg bg-muted/30 border text-sm">
-                    {serviceFile.technician_details && Array.isArray(serviceFile.technician_details) && serviceFile.technician_details.length > 0 ? (
-                      serviceFile.technician_details.map((entry: any, i: number) => (
-                        <div key={i} className="flex flex-col gap-0.5">
-                          {entry.stageLabel && <span className="font-medium text-muted-foreground">{entry.stageLabel}</span>}
-                          <p className="break-words text-red-600 dark:text-red-400 font-bold italic">{entry.text ?? ''}</p>
-                          {entry.at && <span className="text-xs text-muted-foreground">{new Date(entry.at).toLocaleString('ro-RO')}</span>}
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-muted-foreground italic">Nu există detalii comunicate de tehnician.</p>
-                    )}
-                  </div>
-                </section>
-              )}
+              {/* 2. Detalii Tehnician – mereu afișat; titlu roșu, bold; conținut roșu, bold, italic */}
+              <section className="min-w-0">
+                <h3 className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 mb-2 flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 shrink-0" />
+                  Detalii Tehnician
+                </h3>
+                <div className="space-y-2 p-3 rounded-lg bg-muted/30 border text-sm">
+                  {serviceFile?.technician_details && Array.isArray(serviceFile.technician_details) && serviceFile.technician_details.length > 0 ? (
+                    serviceFile.technician_details.map((entry: any, i: number) => (
+                      <div key={i} className="flex flex-col gap-0.5">
+                        {entry.stageLabel && <span className="font-medium text-muted-foreground">{entry.stageLabel}</span>}
+                        <p className="break-words text-red-600 dark:text-red-400 font-bold italic">{entry.text ?? ''}</p>
+                        {entry.at && <span className="text-xs text-muted-foreground">{new Date(entry.at).toLocaleString('ro-RO')}</span>}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-red-600 dark:text-red-400 font-bold italic">Nu există detalii comunicate de tehnician.</p>
+                  )}
+                </div>
+              </section>
 
               {/* 3. Detalii comunicate de client */}
               {leadId && (
@@ -812,10 +810,10 @@ export function DeFacturatOverlay({
                 </section>
               )}
 
-              {/* 4. Mesaje trimise în conversație de utilizatori */}
+              {/* 4. Mesaje trimise în conversație de utilizatori – titlu și conținut roșu, bold */}
               {leadId && (
                 <section className="min-w-0">
-                  <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 mb-2 flex items-center gap-2">
                     <MessageSquare className="h-5 w-5 shrink-0" />
                     Mesaje trimise în conversație de utilizatori
                   </h3>
@@ -827,7 +825,7 @@ export function DeFacturatOverlay({
                         const label = type === 'file' ? '[Fișier]' : type === 'image' ? '[Imagine]' : content || '[Mesaj gol]'
                         return (
                           <div key={msg.id} className="flex flex-col gap-0.5 py-2 border-b border-border/50 last:border-0">
-                            <p className="break-words text-foreground">{label}</p>
+                            <p className="break-words text-red-600 dark:text-red-400 font-bold">{label}</p>
                             <span className="text-xs text-muted-foreground">{new Date(msg.created_at).toLocaleString('ro-RO')}</span>
                           </div>
                         )

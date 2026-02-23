@@ -8,7 +8,7 @@ import {
   Plus, LayoutDashboard, Trash2, ShoppingCart, Scissors, Wrench, Building, 
   Target, Briefcase, Phone, Package, Sparkles, Shield, Settings, UserCircle, 
   LogOut, Check, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight,
-  Home, BarChart3
+  Home, BarChart3, Handshake
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -48,6 +48,8 @@ const getPipelineIcon = (pipelineName: string) => {
     return <Building className="h-4 w-4" />
   } else if (name.includes('marketing') || name.includes('campanii')) {
     return <Target className="h-4 w-4" />
+  } else if (name.includes('parteneri')) {
+    return <Handshake className="h-4 w-4" />
   } else {
     return <Briefcase className="h-4 w-4" />
   }
@@ -132,7 +134,7 @@ export function Sidebar({ canManagePipelines }: SidebarProps) {
       let allPipelines = data.map((p: any) => ({ id: p.id, name: p.name }))
       
       // Owner / admin: toate. Receptie: toate. Member / tehnician: doar cu permisiune. Vanzator: doar pipeline-ul Vanzari (cu permisiune).
-      if (isOwner() || isAdmin() || isReceptie()) {
+      if (isOwner || isAdmin || isReceptie()) {
         // toate
       } else if (isVanzator()) {
         allPipelines = allPipelines.filter(p => hasAccess(p.id) && (p.name || '').toLowerCase().includes('vanzari'))

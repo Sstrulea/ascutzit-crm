@@ -8,7 +8,7 @@ import {
   Plus, LayoutDashboard, Trash2, ShoppingCart, Scissors, Wrench, Building, 
   Target, Briefcase, Phone, Package, Sparkles, Shield, Settings, UserCircle, 
   LogOut, Check, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight,
-  Home, BarChart3
+  Home, BarChart3, Handshake
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -48,6 +48,8 @@ const getPipelineIcon = (pipelineName: string) => {
     return <Building className="h-4 w-4" />
   } else if (name.includes('marketing') || name.includes('campanii')) {
     return <Target className="h-4 w-4" />
+  } else if (name.includes('parteneri')) {
+    return <Handshake className="h-4 w-4" />
   } else {
     return <Briefcase className="h-4 w-4" />
   }
@@ -229,10 +231,10 @@ export function SidebarRedesigned({ canManagePipelines }: SidebarProps) {
       )}
     >
       <div className={cn("flex flex-col h-full min-h-0 scrollbar-sidebar-hide", sidebarCollapsed ? "p-2" : "p-4")}>
-        {/* Header */}
+        {/* Header: logo și buton extindere – vertical când sidebar colapsat, orizontal când extins */}
         <div className={cn(
-          "flex items-center gap-3 mb-6 pb-4 border-b border-sidebar-border",
-          sidebarCollapsed && "justify-center"
+          "flex mb-6 pb-4 border-b border-sidebar-border",
+          sidebarCollapsed ? "flex-col items-center gap-2" : "flex-row items-center gap-3"
         )}>
           {!sidebarCollapsed && (
             <>
@@ -246,7 +248,6 @@ export function SidebarRedesigned({ canManagePipelines }: SidebarProps) {
           {sidebarCollapsed && (
             <Image src="/logo.png" alt="CRM" width={32} height={32} className="shrink-0 rounded-sm" aria-hidden />
           )}
-          
           <Button
             type="button"
             variant="ghost"
@@ -266,54 +267,53 @@ export function SidebarRedesigned({ canManagePipelines }: SidebarProps) {
 
         {/* Main Navigation */}
         <nav className="flex-1 overflow-y-auto">
-          {/* Sectiunea Principala */}
-          {!sidebarCollapsed && (
-            <SidebarSection title="Principal" icon={<Home className="h-3 w-3" />}>
+          {sidebarCollapsed ? (
+            /* Sidebar collapsed - icons only */
+            <div className="flex flex-col items-center gap-1 h-full">
+              {/* Dashboard */}
               {(isOwner || isAdmin || isReceptie()) && (
                 <Link
                   href="/dashboard"
                   prefetch={false}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                    "p-2 rounded-lg hover:bg-sidebar-accent transition-colors",
                     pathname === "/dashboard" && "bg-blue-800 dark:bg-blue-900 text-white"
                   )}
+                  title="Dashboard"
                 >
-                  <LayoutDashboard className="h-4 w-4" />
-                  <span>Dashboard</span>
+                  <LayoutDashboard className="h-5 w-5" />
                 </Link>
               )}
               
+              {/* Profile */}
               <Link
                 href="/profile"
                 prefetch={false}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
-                    pathname === "/profile" && "bg-blue-800 dark:bg-blue-900 text-white"
+                  "p-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                  pathname === "/profile" && "bg-blue-800 dark:bg-blue-900 text-white"
                 )}
+                title="Profil"
               >
-                <UserCircle className="h-4 w-4" />
-                <span>Profil</span>
+                <UserCircle className="h-5 w-5" />
               </Link>
-            </SidebarSection>
-          )}
 
-          {/* Sectiunea Dashboard-uri */}
-          {!sidebarCollapsed && (
-            <SidebarSection title="Dashboard-uri" icon={<BarChart3 className="h-3 w-3" />} defaultCollapsed={true}>
+              {/* Statistici Apeluri */}
               {(isVanzator() || pipeNames.some((n) => n.toLowerCase().includes('vanzari'))) && (
                 <Link
                   href="/dashboard/statistici-apeluri"
                   prefetch={false}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                    "p-2 rounded-lg hover:bg-sidebar-accent transition-colors",
                     pathname === "/dashboard/statistici-apeluri" && "bg-blue-800 dark:bg-blue-900 text-white"
                   )}
+                  title="Statistici Apeluri"
                 >
-                  <BarChart3 className="h-4 w-4" />
-                  <span>Statistici Apeluri</span>
+                  <BarChart3 className="h-5 w-5" />
                 </Link>
               )}
-              
+
+              {/* Dashboard Tehnician */}
               {(isTehnician() || pipeNames.some((n) => {
                 const low = n.toLowerCase()
                 return low.includes('saloane') || low.includes('frizerii') || low.includes('horeca') || low.includes('reparatii')
@@ -322,117 +322,246 @@ export function SidebarRedesigned({ canManagePipelines }: SidebarProps) {
                   href="/dashboard/tehnician"
                   prefetch={false}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                    "p-2 rounded-lg hover:bg-sidebar-accent transition-colors",
                     pathname === "/dashboard/tehnician" && "bg-blue-800 dark:bg-blue-900 text-white"
                   )}
+                  title="Dashboard Tehnician"
                 >
-                  <Package className="h-4 w-4" />
-                  <span>Tehnician</span>
+                  <Wrench className="h-5 w-5" />
                 </Link>
               )}
-            </SidebarSection>
-          )}
 
-          {/* Sectiunea Pipelines */}
-          {!sidebarCollapsed && (
-            <SidebarSection title="Pipelines" icon={<Briefcase className="h-3 w-3" />}>
-              <div className="space-y-1">
-                {pipeNames.map((p) => {
-                  const slug = toSlug(p)
-                  const href = `/leads/${slug}`
-                  const active = pathname === href
-                  return (
-                    <div key={slug} className="group">
-                      <Link
-                        href={href}
-                        className={cn(
-                          "flex items-center justify-between px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
-                          active && "bg-blue-800 dark:bg-blue-900 text-white"
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          {active ? (
-                            <div className="text-white">
-                              {getPipelineIcon(p)}
-                            </div>
-                          ) : (
-                            getPipelineIcon(p)
-                          )}
-                          <span className="truncate">{p}</span>
-                        </div>
-                        
-                        {canManage && (
-                          <button
-                            type="button"
-                            onClick={(e) => openDelete(p, e)}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background/20 transition-opacity"
-                            aria-label={`Delete ${p}`}
-                            title="Delete pipeline"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        )}
-                      </Link>
-                    </div>
-                  )
-                })}
-                
-                {canManage && (
-                  <button
-                    onClick={() => setCreateOpen(true)}
-                    className="flex items-center gap-3 px-3 py-2 w-full text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg transition-colors"
+              {/* Divider */}
+              <div className="w-8 h-px bg-sidebar-border my-1" />
+
+              {/* Pipelines (fără duplicate după slug) */}
+              {Array.from(new Map(pipeNames.map((p) => [toSlug(p), p])).values()).map((p) => {
+                const slug = toSlug(p)
+                const href = `/leads/${slug}`
+                const active = pathname === href
+                return (
+                  <Link
+                    key={slug}
+                    href={href}
+                    className={cn(
+                      "p-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                      active && "bg-blue-800 dark:bg-blue-900 text-white"
+                    )}
+                    title={p}
                   >
-                    <Plus className="h-4 w-4" />
-                    <span>Adaugă pipeline</span>
-                  </button>
-                )}
-              </div>
-            </SidebarSection>
-          )}
+                    {getPipelineIcon(p)}
+                  </Link>
+                )
+              })}
 
-          {/* Sectiunea Administrare */}
-          {!sidebarCollapsed && (isOwner || isAdmin) && (
-            <SidebarSection title="Administrare" icon={<Shield className="h-3 w-3" />} defaultCollapsed={true}>
+              {/* Divider */}
+              <div className="w-8 h-px bg-sidebar-border my-1" />
+
+              {/* Admins (for owner) */}
               {isOwner && (
                 <Link
                   href="/admins"
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                    "p-2 rounded-lg hover:bg-sidebar-accent transition-colors",
                     pathname === "/admins" && "bg-blue-800 dark:bg-blue-900 text-white"
                   )}
+                  title="Admins"
                 >
-                  <Shield className="h-4 w-4" />
-                  <span>Admins</span>
+                  <Shield className="h-5 w-5" />
                 </Link>
               )}
-              
+
+              {/* Catalog (for owner/admin) */}
               {(isOwner || isAdmin) && (
                 <Link
                   href="/configurari/catalog"
                   prefetch={false}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                    "p-2 rounded-lg hover:bg-sidebar-accent transition-colors",
                     pathname === "/configurari/catalog" && "bg-blue-800 dark:bg-blue-900 text-white"
                   )}
+                  title="Catalog"
                 >
-                  <Package className="h-4 w-4" />
-                  <span>Catalog</span>
+                  <Package className="h-5 w-5" />
                 </Link>
               )}
-            </SidebarSection>
-          )}
 
-          {/* Sign Out */}
-          {!sidebarCollapsed && (
-            <div className="mt-auto pt-4 border-t border-sidebar-border">
+              {/* Delogare – ultimul în listă (fără spacer și fără buton expand duplicat) */}
               <button
                 onClick={handleSignOut}
-                className="flex items-center gap-3 px-3 py-2 w-full text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg transition-colors"
+                className={cn(
+                  "p-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                  "text-muted-foreground hover:text-foreground"
+                )}
+                title="Deconectare"
               >
-                <LogOut className="h-4 w-4" />
-                <span>Deconectare</span>
+                <LogOut className="h-5 w-5" />
               </button>
             </div>
+          ) : (
+            /* Sidebar expanded - full menu */
+            <>
+              {/* Sectiunea Principala */}
+              <SidebarSection title="Principal" icon={<Home className="h-3 w-3" />}>
+                {(isOwner || isAdmin || isReceptie()) && (
+                  <Link
+                    href="/dashboard"
+                    prefetch={false}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                      pathname === "/dashboard" && "bg-blue-800 dark:bg-blue-900 text-white"
+                    )}
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    <span>Dashboard</span>
+                  </Link>
+                )}
+                
+                <Link
+                  href="/profile"
+                  prefetch={false}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                      pathname === "/profile" && "bg-blue-800 dark:bg-blue-900 text-white"
+                  )}
+                >
+                  <UserCircle className="h-4 w-4" />
+                  <span>Profil</span>
+                </Link>
+              </SidebarSection>
+
+              {/* Sectiunea Dashboard-uri */}
+              <SidebarSection title="Dashboard-uri" icon={<BarChart3 className="h-3 w-3" />} defaultCollapsed={true}>
+                {(isVanzator() || pipeNames.some((n) => n.toLowerCase().includes('vanzari'))) && (
+                  <Link
+                    href="/dashboard/statistici-apeluri"
+                    prefetch={false}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                      pathname === "/dashboard/statistici-apeluri" && "bg-blue-800 dark:bg-blue-900 text-white"
+                    )}
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    <span>Statistici Apeluri</span>
+                  </Link>
+                )}
+                
+                {(isTehnician() || pipeNames.some((n) => {
+                  const low = n.toLowerCase()
+                  return low.includes('saloane') || low.includes('frizerii') || low.includes('horeca') || low.includes('reparatii')
+                })) && (
+                  <Link
+                    href="/dashboard/tehnician"
+                    prefetch={false}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                      pathname === "/dashboard/tehnician" && "bg-blue-800 dark:bg-blue-900 text-white"
+                    )}
+                  >
+                    <Wrench className="h-4 w-4" />
+                    <span>Tehnician</span>
+                  </Link>
+                )}
+              </SidebarSection>
+
+              {/* Sectiunea Pipelines */}
+              <SidebarSection title="Pipelines" icon={<Briefcase className="h-3 w-3" />}>
+                <div className="space-y-1">
+                  {pipeNames.map((p) => {
+                    const slug = toSlug(p)
+                    const href = `/leads/${slug}`
+                    const active = pathname === href
+                    return (
+                      <div key={slug} className="group">
+                        <Link
+                          href={href}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                            active && "bg-blue-800 dark:bg-blue-900 text-white"
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            {active ? (
+                              <div className="text-white">
+                                {getPipelineIcon(p)}
+                              </div>
+                            ) : (
+                              getPipelineIcon(p)
+                            )}
+                            <span className="truncate">{p}</span>
+                          </div>
+                          
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={(e) => openDelete(p, e)}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background/20 transition-opacity"
+                              aria-label={`Delete ${p}`}
+                              title="Delete pipeline"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </Link>
+                      </div>
+                    )
+                  })}
+                  
+                  {canManage && (
+                    <button
+                      onClick={() => setCreateOpen(true)}
+                      className="flex items-center gap-3 px-3 py-2 w-full text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg transition-colors"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Adaugă pipeline</span>
+                    </button>
+                  )}
+                </div>
+              </SidebarSection>
+
+              {/* Sectiunea Administrare */}
+              {(isOwner || isAdmin) && (
+                <SidebarSection title="Administrare" icon={<Shield className="h-3 w-3" />} defaultCollapsed={true}>
+                  {isOwner && (
+                    <Link
+                      href="/admins"
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                        pathname === "/admins" && "bg-blue-800 dark:bg-blue-900 text-white"
+                      )}
+                    >
+                      <Shield className="h-4 w-4" />
+                      <span>Admins</span>
+                    </Link>
+                  )}
+                  
+                  {(isOwner || isAdmin) && (
+                    <Link
+                      href="/configurari/catalog"
+                      prefetch={false}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                        pathname === "/configurari/catalog" && "bg-blue-800 dark:bg-blue-900 text-white"
+                      )}
+                    >
+                      <Package className="h-4 w-4" />
+                      <span>Catalog</span>
+                    </Link>
+                  )}
+                </SidebarSection>
+              )}
+
+              {/* Sign Out */}
+              <div className="mt-auto pt-4 border-t border-sidebar-border">
+                <button
+                  onClick={handleSignOut}
+                  className="flex items-center gap-3 px-3 py-2 w-full text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent rounded-lg transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>Deconectare</span>
+                </button>
+              </div>
+            </>
           )}
         </nav>
       </div>

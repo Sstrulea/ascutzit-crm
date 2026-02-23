@@ -29,8 +29,8 @@ export interface UnifiedSearchResult {
   stageName?: string
 }
 
-const LIMIT = 20
-const LIMIT_PER_TYPE = 8
+const LIMIT = 25
+const LIMIT_PER_TYPE = 15
 
 const toSlug = (name: string) =>
   String(name || '')
@@ -184,11 +184,12 @@ async function searchViaDirectQueries(
     }> = []
     const seenKeys = new Set<string>()
 
-    // 1. LEADS: text match
+    // 1. LEADS: text match (toate lead-urile care conțin termenul, indiferent de pipeline)
     const { data: leads } = await supabase
       .from('leads')
       .select('id, full_name, company_name, phone_number, email')
       .or(`${nameOrFilters},company_name.ilike.${termLike},phone_number.ilike.${termLike},email.ilike.${termLike}`)
+      .order('full_name', { ascending: true, nullsFirst: false })
       .limit(LIMIT_PER_TYPE)
 
     // 1b. LEADS: telefon normalizat
@@ -212,6 +213,7 @@ async function searchViaDirectQueries(
         .from('leads')
         .select('id, full_name, company_name, phone_number, email')
         .or(orFilters)
+        .order('full_name', { ascending: true, nullsFirst: false })
         .limit(LIMIT_PER_TYPE)
       phoneLeads = phoneLds || []
     }
@@ -312,20 +314,22 @@ async function searchViaDirectQueries(
       rawResults.map((r) => ({ type: r.type, id: r.id }))
     )
 
-    // 5. CONSTRUCȚIE REZULTATE FINALE
-    const results: UnifiedSearchResult[] = rawResults.map((r) => {
-      const pi = pipelineInfo.get(r.id)
-      return {
-        type: r.type,
-        id: r.id,
-        title: r.title,
-        subtitle: r.subtitle,
-        pipelineSlug: pi?.slug || r.fallbackSlug,
-        openId: r.openId,
-        pipelineName: pi?.name || r.fallbackName,
-        stageName: pi?.stageName,
-      }
-    })
+    // 5. CONSTRUCȚIE REZULTATE FINALE (limităm la LIMIT pentru UI)
+    const results: UnifiedSearchResult[] = rawResults
+      .map((r) => {
+        const pi = pipelineInfo.get(r.id)
+        return {
+          type: r.type,
+          id: r.id,
+          title: r.title,
+          subtitle: r.subtitle,
+          pipelineSlug: pi?.slug || r.fallbackSlug,
+          openId: r.openId,
+          pipelineName: pi?.name || r.fallbackName,
+          stageName: pi?.stageName,
+        }
+      })
+      .slice(0, LIMIT)
 
     return { data: results, error: null }
   } catch (err: any) {
@@ -346,15 +350,17 @@ export async function searchUnifiedWithClient(
     return { data: [], error: null }
   }
 
-  // Încearcă RPC-ul rapid (1 round-trip)
-  const rpcResult = await searchViaRPC(supabase, query)
-
-  if (rpcResult.rpcAvailable) {
-    // RPC-ul există - folosim rezultatele (chiar dacă sunt goale)
-    return { data: rpcResult.data, error: rpcResult.error }
+  // Folosim mereu query-urile directe pe leads/service_files/trays, ca să găsim toate
+  // lead-urile (inclusiv cele doar în Recepție, ex. „Emilia Marcu” în COLET AJUNS).
+  // RPC search_unified poate filtra după pipeline și exclude unele rezultate.
+  const direct = await searchViaDirectQueries(supabase, query)
+  if (direct.error) {
+    // Dacă direct query dă eroare, încercăm RPC ca fallback
+    const rpcResult = await searchViaRPC(supabase, query)
+    if (rpcResult.rpcAvailable && !rpcResult.error) {
+      return { data: rpcResult.data, error: null }
+    }
+    return direct
   }
-
-  // Fallback: RPC-ul nu există încă - folosim query-urile directe
-  console.warn('[searchUnifiedWithClient] RPC search_unified not available, falling back to direct queries')
-  return searchViaDirectQueries(supabase, query)
+  return direct
 }

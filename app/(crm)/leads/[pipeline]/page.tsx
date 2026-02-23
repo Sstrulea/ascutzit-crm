@@ -1487,6 +1487,21 @@ export default function CRMPage() {
     }
   }
 
+  // Owner: mută toate lead-urile din „Curier Ajuns Azi” în „Avem Comandă”
+  const handleBulkMoveCurierAjunsAziToAvemComanda = async (leadIds: string[]) => {
+    const pipelinesData = getCachedPipelinesWithStages()
+    const vanzari = pipelinesData?.find((p: any) => (p?.name || '').toLowerCase().includes('vanzari'))
+    const avemStage = vanzari?.stages?.find((s: any) => {
+      const n = String(s?.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      return n.includes('avem') && n.includes('comanda')
+    })
+    if (!avemStage?.name) {
+      toast({ title: 'Eroare', description: 'Stage-ul Avem Comandă nu a fost găsit.', variant: 'destructive' })
+      return
+    }
+    await handleBulkMoveToStage(leadIds, avemStage.name)
+  }
+
   // functie pentru mutarea in batch in pipeline
   const handleBulkMoveToPipeline = async (leadIds: string[], pipelineName: string) => {
     try {
@@ -2251,6 +2266,7 @@ export default function CRMPage() {
                     return s.includes('de trimis') || s.includes('ridic')
                   } : undefined}
                   onNuRaspundeClearedForReceptie={pipelineSlug?.toLowerCase() === 'receptie' ? moveServiceFileToDeFacturat : undefined}
+                  onBulkMoveCurierAjunsAziToAvemComanda={activePipelineName?.toLowerCase().includes('vanzari') ? handleBulkMoveCurierAjunsAziToAvemComanda : undefined}
                 />
                 
                 {/* Panel de detalii: rămâne deschis până la Close/Escape (nu se închide la click în afară) */}
