@@ -852,6 +852,10 @@ export function DeFacturatOverlay({
                   <div className="p-2 border-t bg-muted/30 text-right font-semibold text-sm">
                     Total: {allSheetsTotal.toFixed(2)} RON
                   </div>
+                  <div className="p-2 border-t bg-muted/40 text-right text-sm space-y-1">
+                    <div className="text-red-600 dark:text-red-400 font-bold">Curier Toată România 49 + Total: {(allSheetsTotal + 49).toFixed(2)} RON</div>
+                    <div className="text-red-600 dark:text-red-400 font-bold">Curier București 39 + Total: {(allSheetsTotal + 39).toFixed(2)} RON</div>
+                  </div>
                 </div>
               </section>
 
