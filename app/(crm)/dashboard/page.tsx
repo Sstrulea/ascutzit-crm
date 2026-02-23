@@ -144,7 +144,7 @@ function DashboardPageContent() {
               }
 
               const options = trays.map((t: any) => {
-                const trayLabel = `#${t?.number || '—'}${t?.size ? ` (${t.size})` : ''}`
+                const trayLabel = `#${t?.number || '—'}`
                 const sf = t?.service_file_id ? serviceFilesMap.get(t.service_file_id) : null
                 const sfLabel = sf?.number ? `Fișa ${sf.number}` : (sf?.id ? `Fișa ${String(sf.id).slice(0, 6)}…` : 'Fișă —')
                 const lead = sf?.lead_id ? leadsMap.get(sf.lead_id) : null

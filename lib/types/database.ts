@@ -415,7 +415,7 @@ export interface ArhivaFisaServiciu {
     created_at: string
     updated_at: string
     archived_at: string
-    /** Istoric arhivat: stage_history, items_events, trays (number, size, items cu date), conversatie (mesaje lead). */
+    /** Istoric arhivat: stage_history, items_events, trays (number, items cu date), conversatie (mesaje lead). */
     istoric?: Record<string, unknown> | null
 }
 

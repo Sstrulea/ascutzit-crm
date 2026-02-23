@@ -88,7 +88,6 @@ export async function notifyTechniciansAboutNewTrays(params: {
   trays: Array<{
     id: string
     number: string
-    size: string
     pipelineId?: string  // Pipeline-ul în care a fost mutată tăvița
     pipelineName?: string
   }>

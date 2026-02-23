@@ -3,7 +3,6 @@ import { supabaseBrowser } from './supabaseClient'
 export interface TraySearchResult {
   trayId: string
   trayNumber: string
-  traySize: string
   leadId: string
   leadName: string
   leadPhone?: string
@@ -47,7 +46,6 @@ export async function searchTraysGlobally(query: string): Promise<{ data: TraySe
       .select(`
         id,
         number,
-        size,
         service_file_id,
         service_file:service_files!inner(
           id,
@@ -70,7 +68,6 @@ export async function searchTraysGlobally(query: string): Promise<{ data: TraySe
           tray:trays!inner(
             id,
             number,
-            size,
             service_file_id,
             service_file:service_files!inner(
               id,
@@ -97,7 +94,6 @@ export async function searchTraysGlobally(query: string): Promise<{ data: TraySe
             tray:trays!inner(
               id,
               number,
-              size,
               service_file_id,
               service_file:service_files!inner(
                 id,
@@ -121,7 +117,6 @@ export async function searchTraysGlobally(query: string): Promise<{ data: TraySe
         resultsMap[key] = {
           trayId: tray.id,
           trayNumber: tray.number,
-          traySize: tray.size,
           leadId: tray.service_file.lead.id,
           leadName: tray.service_file.lead.full_name || 'Unknown',
           leadPhone: tray.service_file.lead.phone_number,
@@ -143,7 +138,6 @@ export async function searchTraysGlobally(query: string): Promise<{ data: TraySe
           resultsMap[key] = {
             trayId: tray.id,
             trayNumber: tray.number,
-            traySize: tray.size,
             leadId: tray.service_file.lead.id,
             leadName: tray.service_file.lead.full_name || 'Unknown',
             leadPhone: tray.service_file.lead.phone_number,
@@ -173,7 +167,6 @@ export async function searchTraysGlobally(query: string): Promise<{ data: TraySe
           resultsMap[key] = {
             trayId: tray.id,
             trayNumber: tray.number,
-            traySize: tray.size,
             leadId: tray.service_file.lead.id,
             leadName: tray.service_file.lead.full_name || 'Unknown',
             leadPhone: tray.service_file.lead.phone_number,

@@ -6,7 +6,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -51,9 +51,16 @@ export function VanzariLeadDetailsModal({
   const [officeDirectOverlayOpen, setOfficeDirectOverlayOpen] = useState(false)
   const { toast } = useToast()
 
-  // Salvare în istoric la fiecare acces la detaliile lead-ului (modal deschis)
+  // Salvare în istoric o singură dată per deschidere a modalului pentru acel lead
+  const lastLoggedOpenLeadIdRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!isOpen || !lead?.id) return
+    if (!isOpen) {
+      lastLoggedOpenLeadIdRef.current = null
+      return
+    }
+    if (!lead?.id) return
+    if (lastLoggedOpenLeadIdRef.current === lead.id) return
+    lastLoggedOpenLeadIdRef.current = lead.id
     logLeadEvent(lead.id, 'Detalii lead deschise', 'lead_details_opened', { source: 'vanzari_modal' }).catch(() => {})
   }, [isOpen, lead?.id])
 

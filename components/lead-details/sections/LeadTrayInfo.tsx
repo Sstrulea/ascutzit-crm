@@ -13,7 +13,7 @@ interface LeadTrayInfoProps {
   isDepartmentPipeline: boolean
   isTechnician: boolean
   isVanzator: boolean
-  allTrays: Array<{ id: string; number: string; size: string; service_file_id: string }>
+  allTrays: Array<{ id: string; number: string; service_file_id: string }>
   selectedTrayId: string | null
   getTrayId: () => string | null
   trayDetails: string

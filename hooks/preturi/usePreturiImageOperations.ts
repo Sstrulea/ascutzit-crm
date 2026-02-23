@@ -5,6 +5,7 @@
 import { useCallback } from 'react'
 import { toast } from 'sonner'
 import { uploadTrayImage, deleteTrayImage, saveTrayImageReference, deleteTrayImageReference, type TrayImage } from '@/lib/supabase/imageOperations'
+import { logTrayImageAdded, logTrayImageDeleted } from '@/lib/supabase/leadOperations'
 
 interface UsePreturiImageOperationsProps {
   selectedQuoteId: string | null
@@ -13,6 +14,8 @@ interface UsePreturiImageOperationsProps {
   setUploadingImage: React.Dispatch<React.SetStateAction<boolean>>
   /** Pentru receptie: permitem orice dimensiune; altfel max 5MB. */
   allowUnlimitedImageSize?: boolean
+  /** Opțional: ID fișă serviciu pentru log în istoric. */
+  serviceFileId?: string | null
 }
 
 export function usePreturiImageOperations({
@@ -21,6 +24,7 @@ export function usePreturiImageOperations({
   setTrayImages,
   setUploadingImage,
   allowUnlimitedImageSize = false,
+  serviceFileId = null,
 }: UsePreturiImageOperationsProps) {
 
   // Funcție pentru încărcarea unei imagini
@@ -65,6 +69,12 @@ export function usePreturiImageOperations({
       const { url, path } = await uploadTrayImage(selectedQuoteId, file)
       const savedImage = await saveTrayImageReference(selectedQuoteId, url, path, file.name)
       setTrayImages(prev => [savedImage, ...prev])
+      logTrayImageAdded({
+        trayId: selectedQuoteId,
+        filename: file.name,
+        imageId: savedImage.id,
+        serviceFileId: serviceFileId ?? undefined,
+      }).catch(() => {})
       toast.success('Imagine încărcată cu succes', { id: toastId })
     } catch (error: any) {
       console.error('Error uploading tray image:', error)
@@ -128,12 +138,23 @@ export function usePreturiImageOperations({
   const handleTrayImageDelete = useCallback(async (imageId: string, filePath: string) => {
     if (!confirm('Ești sigur că vrei să ștergi această imagine?')) return
 
+    const imageToDelete = trayImages.find(img => img.id === imageId)
+    const filename = imageToDelete?.filename ?? filePath.split('/').pop() ?? 'imagine'
+
     try {
       // Șterge referința din baza de date
       await deleteTrayImageReference(imageId)
       
       // Șterge fișierul din storage
       await deleteTrayImage(filePath)
+      
+      if (selectedQuoteId) {
+        logTrayImageDeleted({
+          trayId: selectedQuoteId,
+          filename,
+          serviceFileId: serviceFileId ?? undefined,
+        }).catch(() => {})
+      }
       
       // Actualizează lista de imagini
       setTrayImages(prev => prev.filter(img => img.id !== imageId))
@@ -145,7 +166,7 @@ export function usePreturiImageOperations({
         description: error?.message || 'Te rog încearcă din nou'
       })
     }
-  }, [setTrayImages])
+  }, [setTrayImages, selectedQuoteId, serviceFileId, trayImages])
 
   return {
     handleTrayImageUpload,

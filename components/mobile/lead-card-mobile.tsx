@@ -167,10 +167,10 @@ export function LeadCardMobile({
           {/* Pentru departament + tăviță: tray #, tehnician, timp estimat, În lucru/În așteptare (ca pe desktop) */}
           {isDepartmentPipeline && isTray && (
             <div className="space-y-1 mb-2">
-              {(leadAny.trayNumber || leadAny.traySize || leadAny.isSplitChild) && (
+              {(leadAny.trayNumber || leadAny.isSplitChild) && (
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
                   <Package className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span>#{leadAny.trayNumber || 'N/A'}{leadAny.traySize ? ` • ${leadAny.traySize}` : ''}</span>
+                  <span>#{leadAny.trayNumber || 'N/A'}</span>
                   {leadAny.isSplitChild && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold border border-orange-300">
                       🔀 SPLIT
@@ -231,7 +231,6 @@ export function LeadCardMobile({
                 <div key={idx} className="text-xs flex items-center gap-1.5 flex-wrap">
                   <span className="text-muted-foreground">
                     {trayInfo.trayNumber || 'Fără nr'}
-                    {trayInfo.traySize ? ` ${trayInfo.traySize}` : ''}
                   </span>
                   {trayInfo.technician && (
                     <span className={cn(
@@ -333,11 +332,10 @@ export function LeadCardMobile({
                         {leadAny.type === 'tray' && (
                           <span className="font-medium">
                             Tăviță #{leadAny.trayNumber || 'N/A'}
-                            {leadAny.traySize && ` • ${leadAny.traySize}`}
                           </span>
                         )}
-                        {lead.isQuote && !leadAny.type && (lead.trayNumber || (lead as any).traySize) && (
-                          <span>#{lead.trayNumber}{(lead as any).traySize && ` • ${(lead as any).traySize}`}</span>
+                        {lead.isQuote && !leadAny.type && lead.trayNumber && (
+                          <span>#{lead.trayNumber}</span>
                         )}
                         {lead.isFisa && lead.fisaId && <span>Fișă #{lead.fisaId}</span>}
                       </div>

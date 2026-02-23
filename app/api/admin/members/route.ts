@@ -1,6 +1,22 @@
 import { NextResponse } from 'next/server'
 import { requireOwner } from '@/lib/supabase/api-helpers'
 
+/** Mapare rol (lowercase, folosit în app) la valoarea din enum-ul PostgreSQL (case-sensitive). */
+const ROLE_TO_DB: Record<string, string> = {
+  owner: 'owner',
+  admin: 'admin',
+  member: 'member',
+  vanzator: 'Vanzator',
+  receptie: 'Receptie',
+  tehnician: 'Tehnician',
+}
+
+function roleFromDb(dbRole: string | null | undefined): string {
+  if (!dbRole) return 'member'
+  const lower = String(dbRole).toLowerCase()
+  return ['owner', 'admin', 'member', 'vanzator', 'receptie', 'tehnician'].includes(lower) ? lower : (dbRole as string)
+}
+
 export async function GET() {
   try {
     console.log('[GET /api/admin/members] Request received')
@@ -26,6 +42,7 @@ export async function GET() {
 
     const result = (members || []).map(m => ({
       ...m,
+      role: roleFromDb((m as any).role),
       email: emails.get(m.user_id) || `User ${m.user_id.slice(0, 8)}...`,
       name: (m as any).name || names.get(m.user_id) || null,
       status: (m as any).is_active === false ? 'inactive' as const : 'active' as const
@@ -53,7 +70,7 @@ export async function DELETE(req: Request) {
       .eq('user_id', memberId)
       .single()
 
-    if (target?.role === 'owner') {
+    if (roleFromDb(target?.role) === 'owner') {
       return NextResponse.json({ ok: false, error: 'Cannot delete owner' }, { status: 403 })
     }
 
@@ -82,7 +99,7 @@ export async function PATCH(req: Request) {
 
     const updates: any = {}
     if (role && ['owner', 'admin', 'member', 'vanzator', 'receptie', 'tehnician'].includes(role)) {
-      updates.role = role
+      updates.role = ROLE_TO_DB[role] ?? role
     }
     if (name !== undefined) {
       updates.name = name

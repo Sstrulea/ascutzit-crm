@@ -253,6 +253,7 @@ export function usePreturiBusiness({
     setTrayImages,
     setUploadingImage,
     allowUnlimitedImageSize: isReceptiePipeline,
+    serviceFileId: fisaId ?? null,
   })
   
   const formOperations = usePreturiFormOperations({

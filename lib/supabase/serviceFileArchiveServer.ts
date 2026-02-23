@@ -102,7 +102,7 @@ export async function archiveServiceFileToDbServer(
       if (!itemsErr && items?.length) allTrayItems.push(...items)
     }
 
-    // Snapshot tăvițe: number, size și itemi cu datele introduse (brand/serial/garanție în info)
+    // Snapshot tăvițe: number și itemi cu datele introduse (brand/serial/garanție în info)
     const traysSnapshot = (trays || []).map((t: any) => {
       const itemsInTray = allTrayItems
         .filter((ti: any) => ti.tray_id === t.id)
@@ -130,7 +130,7 @@ export async function archiveServiceFileToDbServer(
             info: info || null,
           }
         })
-      return { id: t.id, number: t.number, size: t.size, items: itemsInTray }
+      return { id: t.id, number: t.number, items: itemsInTray }
     })
 
     const istoric = {

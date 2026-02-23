@@ -478,7 +478,7 @@ export default function PipelineItemsManager() {
                               />
                             ) : (
                               <div className="text-xs text-muted-foreground">
-                                {item.tray?.size} • {item.tray?.status}
+                                {item.tray?.status}
                               </div>
                             )}
                           </div>

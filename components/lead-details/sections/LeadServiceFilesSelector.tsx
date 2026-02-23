@@ -191,7 +191,7 @@ export function LeadServiceFilesSelector({
                     </SelectTrigger>
                     <SelectContent>
                       {allTrays.map((tray) => {
-                        const displayText = `Tăviță #${tray.number} - ${tray.size}`
+                        const displayText = `Tăviță #${tray.number}`
                         return (
                           <SelectItem key={tray.id} value={tray.id}>
                             {displayText}

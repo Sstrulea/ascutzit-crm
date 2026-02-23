@@ -43,7 +43,6 @@ export interface V4LoadedPart {
 export interface V4LoadedTray {
   id: string
   number: string
-  size?: string
 }
 
 export interface V4InitialData {
@@ -76,13 +75,13 @@ export async function loadVanzariViewV4FromDb(
   fisaId: string,
   instrumentsCatalog: Array<{ id: string; name: string }>,
   options?: {
-    traysPreloaded?: Array<{ id: string; number?: string; size?: string }>
+    traysPreloaded?: Array<{ id: string; number?: string }>
     /** Când e setat (ex. view departament), se afișează doar tray_items cu department_id = filterDepartmentId. */
     filterDepartmentId?: string | null
   }
 ): Promise<{ data: V4InitialData | null; error: Error | null }> {
   try {
-    let trays: Array<{ id: string; number?: string; size?: string }>
+    let trays: Array<{ id: string; number?: string }>
     if (options?.traysPreloaded?.length) {
       trays = options.traysPreloaded
     } else {
@@ -115,10 +114,9 @@ export async function loadVanzariViewV4FromDb(
         ? trays.filter((t) => trayIdsWithItems.has(t.id))
         : trays
 
-    const traysOut: V4LoadedTray[] = traysToUse.map((t: { id: string; number?: string; size?: string }) => ({
+    const traysOut: V4LoadedTray[] = traysToUse.map((t: { id: string; number?: string }) => ({
       id: t.id,
       number: String(t.number ?? '').trim(),
-      size: t.size?.trim() || undefined,
     }))
 
     const instrumentIdToLocalId = new Map<string, string>()

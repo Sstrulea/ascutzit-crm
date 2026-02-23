@@ -154,7 +154,7 @@ export function PrintTraysView({
       {sheets.map((sheet, idx) => {
         const q = sheet.quote as { id: string; number?: string; size?: string }
         const nr = q?.number ?? `Tăviță ${idx + 1}`
-        const size = q?.size ? ` (${q.size})` : ''
+        const size = ''
         const groups = groupItemsByInstrument(sheet.items, instrumentsMap)
 
         if (groups.length === 0 && sheet.items.length === 0) {

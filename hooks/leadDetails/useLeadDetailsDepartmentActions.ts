@@ -63,10 +63,8 @@ export function useLeadDetailsDepartmentActions({
         ])
 
         const trayLabel = trayDetails
-          ? `${trayDetails.number}${trayDetails.size ? ` (${trayDetails.size})` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
-          : leadAny?.trayNumber
-            ? `${leadAny.trayNumber}${leadAny.traySize ? ` (${leadAny.traySize})` : ''}`
-            : 'nesemnată'
+          ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+          : leadAny?.trayNumber ?? 'nesemnată'
 
         let pipelineNameForLog = leadAny.pipelineName
         if (!pipelineNameForLog && leadAny.pipelineId) {
@@ -95,7 +93,6 @@ export function useLeadDetailsDepartmentActions({
               ? {
                   id: trayDetails.id,
                   number: trayDetails.number,
-                  size: trayDetails.size,
                   status: trayDetails.status,
                   service_file_id: trayDetails.service_file_id,
                 }
@@ -484,7 +481,7 @@ export function useLeadDetailsDepartmentActions({
           ])
           
           const trayLabel = trayDetails 
-            ? `${trayDetails.number}${trayDetails.size ? ` (${trayDetails.size})` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+            ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
             : 'nesemnată'
           
           // Rezolvă numele pipeline-ului din pipelineId dacă lipsește pe card (evită „Pipeline necunoscut” în istoric)
@@ -515,7 +512,6 @@ export function useLeadDetailsDepartmentActions({
               tray: trayDetails ? {
                 id: trayDetails.id,
                 number: trayDetails.number,
-                size: trayDetails.size,
                 status: trayDetails.status,
                 service_file_id: trayDetails.service_file_id,
               } : undefined,
@@ -548,7 +544,6 @@ export function useLeadDetailsDepartmentActions({
                 tray: trayDetails ? {
                   id: trayDetails.id,
                   number: trayDetails.number,
-                  size: trayDetails.size,
                   status: trayDetails.status,
                   service_file_id: trayDetails.service_file_id,
                 } : undefined,

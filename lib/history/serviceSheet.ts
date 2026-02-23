@@ -350,7 +350,6 @@ async function composeMessage(
       tray: trayDetailsResult ? {
         id: trayDetailsResult.id,
         number: trayDetailsResult.number,
-        size: trayDetailsResult.size,
       } : null,
       // Include informații despre versiunea anterioară pentru items actualizate
       previous: prevItem ? {
@@ -408,7 +407,6 @@ async function composeMessage(
     tray: trayDetailsResult ? {
       id: trayDetailsResult.id,
       number: trayDetailsResult.number,
-      size: trayDetailsResult.size,
       status: trayDetailsResult.status,
       service_file_id: trayDetailsResult.service_file_id,
     } : null,
@@ -621,7 +619,7 @@ export async function persistAndLogServiceSheet(params: {
             const currentUser = currentUserDetails
             
             const trayLabel = trayDetails 
-              ? `${trayDetails.number}${trayDetails.size ? ` (${trayDetails.size})` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+              ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
               : 'nesemnată'
             
             // Tehnicianul este userul curent - folosește currentUser dacă technicianDetails nu este disponibil
@@ -646,7 +644,6 @@ export async function persistAndLogServiceSheet(params: {
                 tray: trayDetails ? {
                   id: trayDetails.id,
                   number: trayDetails.number,
-                  size: trayDetails.size,
                   status: trayDetails.status,
                   service_file_id: trayDetails.service_file_id,
                 } : undefined,
@@ -839,7 +836,7 @@ export async function persistAndLogServiceSheet(params: {
           const currentUser = currentUserDetails
           
           const trayLabel = trayDetails 
-            ? `${trayDetails.number}${trayDetails.size ? ` (${trayDetails.size})` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+            ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
             : 'nesemnată'
           
           // Tehnicianul este userul curent - folosește currentUser dacă technicianDetails nu este disponibil
@@ -864,7 +861,6 @@ export async function persistAndLogServiceSheet(params: {
               tray: trayDetails ? {
                 id: trayDetails.id,
                 number: trayDetails.number,
-                size: trayDetails.size,
                 status: trayDetails.status,
                 service_file_id: trayDetails.service_file_id,
               } : undefined,
@@ -945,7 +941,7 @@ export async function persistAndLogServiceSheet(params: {
             const currentUser = currentUserDetails
             
             const trayLabel = trayDetails 
-              ? `${trayDetails.number}${trayDetails.size ? ` (${trayDetails.size})` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+              ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
               : 'nesemnată'
             
             // Tehnicianul este userul curent - folosește currentUser dacă technicianDetails nu este disponibil
@@ -973,7 +969,6 @@ export async function persistAndLogServiceSheet(params: {
                 tray: trayDetails ? {
                   id: trayDetails.id,
                   number: trayDetails.number,
-                  size: trayDetails.size,
                   status: trayDetails.status,
                   service_file_id: trayDetails.service_file_id,
                 } : undefined,
@@ -1151,7 +1146,7 @@ export async function persistAndLogServiceSheet(params: {
           const currentUser = currentUserDetails
           
           const trayLabel = trayDetails 
-            ? `${trayDetails.number}${trayDetails.size ? ` (${trayDetails.size})` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+            ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
             : 'nesemnată'
           
           // Tehnicianul este userul curent - folosește currentUser dacă technicianDetails nu este disponibil
@@ -1176,7 +1171,6 @@ export async function persistAndLogServiceSheet(params: {
               tray: trayDetails ? {
                 id: trayDetails.id,
                 number: trayDetails.number,
-                size: trayDetails.size,
                 status: trayDetails.status,
                 service_file_id: trayDetails.service_file_id,
               } : undefined,

@@ -28,7 +28,6 @@ import { ro } from 'date-fns/locale'
 import { useRouter } from 'next/navigation'
 import { TRAY_SEARCH_OPEN_KEY, type TraySearchOpenPayload } from '@/components/search/SmartTraySearch'
 import { cn } from '@/lib/utils'
-import { formatTraySizeDisplay } from '@/lib/utils/trayDisplay'
 import { finishWorkSession, getTrayWorkSessions, updateWorkSession, type WorkSession } from '@/lib/supabase/workSessionOperations'
 import {
   Dialog,
@@ -615,7 +614,6 @@ export default function DashboardTehnicianPage() {
                                           <PipelineIcon pipelineName={t.pipelineName} />
                                           <span className="font-medium text-sm">
                                             {t.trayNumber ? `#${t.trayNumber}` : 'Tăviță'}
-                                            {t.traySize && <span className="text-muted-foreground ml-1">{formatTraySizeDisplay(t.traySize)}</span>}
                                           </span>
                                           {t.isInLucru && (
                                             <Badge variant="destructive" className="text-[10px] py-0">În lucru</Badge>
@@ -682,7 +680,7 @@ export default function DashboardTehnicianPage() {
                                                 trayId: t.trayId,
                                                 technicianId: row.technicianId,
                                                 technicianName: row.technicianName,
-                                                trayNumber: t.trayNumber ? `#${t.trayNumber}${t.traySize ? ` ${t.traySize}` : ''}` : 'Tăviță',
+                                                trayNumber: t.trayNumber ? `#${t.trayNumber}` : 'Tăviță',
                                                 sessions: [],
                                                 loading: true,
                                                 saving: false,
@@ -1248,9 +1246,7 @@ export default function DashboardTehnicianPage() {
                                                           <PipelineIcon pipelineName={t.pipelineName} />
                                                           <span className="font-medium">
                                                             {t.trayNumber && String(t.trayNumber).trim()
-                                                              ? `#${t.trayNumber}${t.traySize ? ` ${formatTraySizeDisplay(t.traySize)}` : ''}`
-                                                              : t.traySize
-                                                                ? `mărime ${formatTraySizeDisplay(t.traySize)}`
+                                                              ? `#${t.trayNumber}`
                                                                 : 'Tăviță'}
                                                           </span>
                                                           {t.isInLucru && (
@@ -1340,7 +1336,7 @@ export default function DashboardTehnicianPage() {
                                                                   trayId: t.trayId,
                                                                   technicianId: row.technicianId,
                                                                   technicianName: row.technicianName,
-                                                                  trayNumber: t.trayNumber ? `#${t.trayNumber}${t.traySize ? ` ${t.traySize}` : ''}` : 'Tăviță',
+                                                                  trayNumber: t.trayNumber ? `#${t.trayNumber}` : 'Tăviță',
                                                                   sessions: [],
                                                                   loading: true,
                                                                   saving: false,

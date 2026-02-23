@@ -71,7 +71,7 @@ export interface DeFacturatOverlayProps {
 }
 
 type SheetData = {
-  quote: { id: string; number: string; size: string; service_file_id: string }
+  quote: { id: string; number: string; service_file_id: string }
   items: LeadQuoteItem[]
   subtotal: number
   totalDiscount: number
@@ -311,7 +311,7 @@ export function DeFacturatOverlay({
         }, 0)
         const total = subtotal - totalDiscount + urgentAmount
         return {
-          quote: { id: quote.id, number: quote.number, size: quote.size, service_file_id: quote.service_file_id || finalFisaId },
+          quote: { id: quote.id, number: quote.number, service_file_id: quote.service_file_id || finalFisaId },
           items,
           subtotal,
           totalDiscount,

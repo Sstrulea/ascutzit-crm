@@ -18,7 +18,6 @@ import LeadMessenger from '@/components/leads/lead-messenger'
 import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
 import { useEffect, useState } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { formatTraySizeDisplay } from '@/lib/utils/trayDisplay'
 import type { LeadQuoteItem, LeadQuote } from '@/lib/types/preturi'
 import type { Service } from '@/lib/supabase/serviceOperations'
 import type { Part } from '@/lib/supabase/partOperations'
@@ -417,7 +416,6 @@ export function DepartmentView({
                   </div>
                   <span className="font-semibold text-sm truncate">
                     {selectedQuote.number ? `Tăviță #${selectedQuote.number}` : 'Tăviță nesetată'} 
-                    {selectedQuote.size ? ` — ${formatTraySizeDisplay(selectedQuote.size)}` : ''}
                   </span>
                 </div>
               </div>

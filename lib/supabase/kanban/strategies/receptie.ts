@@ -36,14 +36,12 @@ import {
   findStageByPattern,
   matchesStagePattern 
 } from '../constants'
-import { formatTraySizeDisplay } from '@/lib/utils/trayDisplay'
 
 /** Tip pentru valoarea Map-ului returnat de getAllTraysInfoForServiceFiles (evită ambiguitatea parsării în tipul de return). */
 type ReceptieTrayInfo = {
   trays: Array<{
     trayId: string
     trayNumber: string | null
-    traySize: string | null
     technician: string | null
     status: 'in_lucru' | 'in_asteptare' | 'finalizare' | 'noua' | null
     department: string | null
@@ -446,16 +444,16 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
     const deptPipelineIdsForTray = context.allPipelines
       .filter(p => p?.name && DEPARTMENT_PIPELINES.some(d => p.name!.toLowerCase() === d.toLowerCase()))
       .map(p => p.id)
-    let preloadedTrays: Array<{ id: string; number: string | null; size?: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }> = []
+    let preloadedTrays: Array<{ id: string; number: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }> = []
     let preloadedTrayPipelineItems: Array<{ item_id: string; stage_id: string; pipeline_id: string }> = []
     if (serviceFileIdsForDept.length > 0 && deptPipelineIdsForTray.length > 0) {
       logReceptieDb("supabase.from('trays').select(...) preload pentru departamente", false)
       const { data: traysForDept } = await supabase
         .from('trays')
-        .select('id, number, size, service_file_id, technician_id, technician2_id, technician3_id')
+        .select('id, number, service_file_id, technician_id, technician2_id, technician3_id')
         .in('service_file_id', serviceFileIdsForDept)
       if (traysForDept?.length) {
-        preloadedTrays = traysForDept as Array<{ id: string; number: string | null; size?: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }>
+        preloadedTrays = traysForDept as Array<{ id: string; number: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }>
         const allTrayIdsForDept = preloadedTrays.map(t => t.id)
         logReceptieDb("supabase.from('pipeline_items').select(...) preload tray în dept", false)
         const { data: piDept } = await supabase
@@ -1632,7 +1630,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
     context: KanbanContext,
     serviceFileIds: string[],
     preloaded?: {
-      trays: Array<{ id: string; number: string | null; size?: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }>
+      trays: Array<{ id: string; number: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }>
       trayPipelineItemsInDept: Array<{ item_id: string; stage_id: string; pipeline_id: string }>
       preloadedQc?: { trayQcValidatedMap: Map<string, boolean | null>; trayQcValidatedAtMap: Map<string, string | null> }
     }
@@ -1641,7 +1639,6 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       trays: Array<{
         trayId: string
         trayNumber: string | null
-        traySize: string | null
         technician: string | null
         status: 'in_lucru' | 'in_asteptare' | 'finalizare' | 'noua' | null
         department: string | null
@@ -1694,7 +1691,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       return `${minutes}min`
     }
 
-    type TrayRow = { id: string; number: string | null; size?: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }
+    type TrayRow = { id: string; number: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }
     let allTrays: TrayRow[]
     if (preloaded?.trays?.length) {
       allTrays = preloaded.trays
@@ -1702,7 +1699,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       logReceptieDb("getAllTraysInfoForServiceFiles: supabase.from('trays').select(...)", false)
       const { data: traysData } = await supabase
         .from('trays')
-        .select('id, number, size, service_file_id, technician_id, technician2_id, technician3_id')
+        .select('id, number, service_file_id, technician_id, technician2_id, technician3_id')
         .in('service_file_id', serviceFileIds)
       if (!traysData?.length) return { result, trayQcValidatedAtMap: new Map<string, string | null>() }
       allTrays = traysData as TrayRow[]
@@ -1970,7 +1967,6 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       info.trays.push({
         trayId: tray.id,
         trayNumber: tray.number,
-        traySize: formatTraySizeDisplay(tray.size) || null,
         technician,
         status: effectiveStatus,
         department,

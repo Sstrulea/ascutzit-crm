@@ -40,6 +40,7 @@ import { listTrayItemsForTray, updateTray, updateTrayItem } from "@/lib/supabase
 import { moveItemToStage, getSingleKanbanItem } from "@/lib/supabase/pipelineOperations"
 import { matchesStagePattern } from "@/lib/supabase/kanban/constants"
 import { DeFacturatOverlay } from "@/components/leads/DeFacturatOverlay"
+import { NuRaspundeOverlay } from "@/components/leads/NuRaspundeOverlay"
 import { searchTraysGlobally } from "@/lib/supabase/traySearchOperations"
 import { TRAY_SEARCH_OPEN_KEY, PENDING_SEARCH_OPEN_KEY, PENDING_SEARCH_OPEN_TTL_MS, type TraySearchOpenPayload } from "@/components/search/SmartTraySearch"
 import { NetworkStatusBanner } from "@/components/ui/network-status-banner"
@@ -53,6 +54,14 @@ type Technician = {
 const supabase = supabaseBrowser()
 
 const toSlug = (s: string) => String(s).toLowerCase().replace(/\s+/g, "-")
+
+/** Slug fără diacritice – pentru potrivire URL (ex. vanzari) cu nume pipeline (ex. Vânzări). */
+const toSlugNormalized = (s: string) =>
+  String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, "-")
 
 /** Stage-uri Vânzări ascunse implicit; doar admin le poate afișa cu butonul dedicat. */
 function isHiddenVanzariStage(stageName: string): boolean {
@@ -147,6 +156,9 @@ export default function CRMPage() {
   /** Overlay special pentru carduri din stage-ul DE FACTURAT */
   const [deFacturatOverlayOpen, setDeFacturatOverlayOpen] = useState(false)
   const [deFacturatOverlayLead, setDeFacturatOverlayLead] = useState<KanbanLead | null>(null)
+  /** Overlay special pentru carduri din stage-ul NU RASPUNDE (Receptie) */
+  const [nuRaspundeOverlayOpen, setNuRaspundeOverlayOpen] = useState(false)
+  const [nuRaspundeOverlayLead, setNuRaspundeOverlayLead] = useState<KanbanLead | null>(null)
   const [pipelineOptions, setPipelineOptions] = useState<{ name: string; activeStages: number }[]>([])
   /** Secțiune (tab) restaurată din cache – transmisă panelului ca defaultSection. */
   const [restoredOpenCardSection, setRestoredOpenCardSection] = useState<'fisa' | 'de-confirmat' | 'istoric' | null>(null)
@@ -161,6 +173,7 @@ export default function CRMPage() {
     openedAt: number
     /** true dacă s-a deschis doar overlay-ul De facturat (fără panoul de detalii) */
     deFacturatOverlay?: boolean
+    nuRaspundeOverlay?: boolean
     /** Tab activ în panel: fisa | de-confirmat | istoric – pentru restaurare la revenire */
     section?: 'fisa' | 'de-confirmat' | 'istoric'
   }
@@ -1079,7 +1092,6 @@ export default function CRMPage() {
         
         // Pentru trays/quotes
         if (leadAny.trayNumber?.toLowerCase().includes(query)) return true
-        if (leadAny.traySize?.toLowerCase().includes(query)) return true
         if (leadAny.trayStatus?.toLowerCase().includes(query)) return true
         if (leadAny.leadName?.toLowerCase().includes(query)) return true
         if (leadAny.department?.toLowerCase().includes(query)) return true
@@ -1436,7 +1448,11 @@ export default function CRMPage() {
     }
     try {
       const pipelinesData = getCachedPipelinesWithStages()
-      const currentPipeline = pipelinesData?.find((p: any) => toSlug(p.name) === pipelineSlug) || pipelinesData?.[0]
+      const slugNorm = toSlugNormalized(pipelineSlug || "")
+      const currentPipeline =
+        pipelinesData?.find((p: any) => toSlugNormalized(p?.name || "") === slugNorm) ||
+        pipelinesData?.find((p: any) => toSlug(p?.name || "") === pipelineSlug) ||
+        pipelinesData?.[0]
 
       if (!currentPipeline) {
         toast({ title: "Eroare", description: "Pipeline-ul curent nu a fost gasit", variant: "destructive" })
@@ -1449,34 +1465,48 @@ export default function CRMPage() {
         return
       }
 
-      // muta fiecare lead
-      const movePromises = leadIds.map(async (leadId) => {
-        const lead = leads.find(l => l.id === leadId)
-        if (!lead) return
+      // muta fiecare lead (caută după id sau leadId ca să acoperim toate tipurile de carduri)
+      const movePromises = leadIds.map(async (leadId): Promise<boolean> => {
+        const lead = leads.find((l: any) => l.id === leadId || l.leadId === leadId)
+        if (!lead) return false
 
         const prevStage = lead.stage ?? "—"
-        
-        // foloseste handleLeadMove pentru a muta lead-ul
-        await handleLeadMove(leadId, newStage)
-        
-        // log event
-        logLeadEvent(
-          leadId,
-          `Stadiu schimbat: ${prevStage} → ${newStage}`,
-          "stage_change",
-          { from: prevStage, to: newStage }
-        )
+        const itemId = lead.id
+
+        try {
+          // foloseste handleLeadMove pentru a muta lead-ul (trebuie id-ul cardului din board)
+          await handleLeadMove(itemId, newStage)
+
+          const leadIdForLog = (lead as any).leadId ?? lead.id
+          logLeadEvent(
+            leadIdForLog,
+            `Stadiu schimbat: ${prevStage} → ${newStage}`,
+            "stage_change",
+            { from: prevStage, to: newStage }
+          )
+          return true
+        } catch {
+          return false
+        }
       })
 
-      await Promise.all(movePromises)
-      
-      toast({ 
-        title: "Lead-uri mutate", 
-        description: `${leadIds.length} lead${leadIds.length === 1 ? '' : '-uri'} mutat${leadIds.length === 1 ? '' : 'e'} în ${newStage}`,
-        duration: 3000
+      const results = await Promise.all(movePromises)
+      const movedCount = results.filter(Boolean).length
+
+      if (movedCount === 0) {
+        toast({
+          title: "Nicio mutare",
+          description: "Nu s-au găsit lead-uri de mutat sau mutarea a eșuat.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      toast({
+        title: "Lead-uri mutate",
+        description: `${movedCount} lead${movedCount === 1 ? '' : '-uri'} mutat${movedCount === 1 ? '' : 'e'} în ${newStage}`,
+        duration: 3000,
       })
-      
-      // Nu mai face refresh - optimistic updates și real-time subscriptions vor actualiza automat
     } catch (error) {
       console.error('Eroare la mutarea lead-urilor:', error)
       toast({ 
@@ -1487,11 +1517,14 @@ export default function CRMPage() {
     }
   }
 
-  // Owner: mută toate lead-urile din „Curier Ajuns Azi” în „Avem Comandă”
+  // Owner: mută toate lead-urile din „Curier Ajuns Azi” în „Avem Comandă” (în pipeline-ul curent)
   const handleBulkMoveCurierAjunsAziToAvemComanda = async (leadIds: string[]) => {
     const pipelinesData = getCachedPipelinesWithStages()
-    const vanzari = pipelinesData?.find((p: any) => (p?.name || '').toLowerCase().includes('vanzari'))
-    const avemStage = vanzari?.stages?.find((s: any) => {
+    const slugNorm = toSlugNormalized(pipelineSlug || "")
+    const currentPipeline =
+      pipelinesData?.find((p: any) => toSlugNormalized(p?.name || "") === slugNorm) ||
+      pipelinesData?.find((p: any) => (p?.name || '').toLowerCase().includes('vanzari'))
+    const avemStage = currentPipeline?.stages?.find((s: any) => {
       const n = String(s?.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       return n.includes('avem') && n.includes('comanda')
     })
@@ -1549,7 +1582,7 @@ export default function CRMPage() {
   const [qcLoading, setQcLoading] = useState(false)
   const [qcAction, setQcAction] = useState<'validate' | 'dont_validate' | null>(null)
   const [qcTrayItems, setQcTrayItems] = useState<any[]>([])
-  const [qcTrayInfo, setQcTrayInfo] = useState<{ number?: string; size?: string; status?: string; technicians?: string[] } | null>(null)
+  const [qcTrayInfo, setQcTrayInfo] = useState<{ number?: string; status?: string; technicians?: string[] } | null>(null)
   const [qcInstrumentsMap, setQcInstrumentsMap] = useState<Record<string, string>>({})
   const [qcPartsMap, setQcPartsMap] = useState<Record<string, string>>({})
   const [qcNotes, setQcNotes] = useState('')
@@ -1580,7 +1613,7 @@ export default function CRMPage() {
       try {
         const [res, trayRes] = await Promise.all([
           listTrayItemsForTray(trayId),
-          supabase.from('trays').select('number, size, status, qc_notes, technician_id, technician2_id, technician3_id').eq('id', trayId).single(),
+          supabase.from('trays').select('number, status, qc_notes, technician_id, technician2_id, technician3_id').eq('id', trayId).single(),
         ])
         if (cancelled) return
         if (res?.error) console.warn('[QC] Warning: nu pot încărca tray_items:', trayId, res.error)
@@ -1611,7 +1644,7 @@ export default function CRMPage() {
               techNames = techIds.map(id => id.slice(0, 8))
             }
           }
-          setQcTrayInfo({ number: t?.number, size: t?.size, status: t?.status, technicians: techNames })
+          setQcTrayInfo({ number: t?.number, status: t?.status, technicians: techNames })
           setQcNotes(String(t?.qc_notes ?? ''))
         } else {
           setQcTrayInfo(null)
@@ -1793,6 +1826,7 @@ export default function CRMPage() {
     setOverridePipelineSlugForPanel(null)
     const stageName = (lead as any)?.stage ?? ''
     const isDeFacturat = matchesStagePattern(stageName, 'DE_FACTURAT')
+    const isNuRaspunde = matchesStagePattern(stageName, 'NU_RASPUNDE')
 
     if (isDeFacturat) {
       // Doar pentru stage DE FACTURAT: deschide doar overlay-ul, fără panoul de detalii
@@ -1800,11 +1834,23 @@ export default function CRMPage() {
       setLeadPosition(null)
       setDeFacturatOverlayLead(lead as any)
       setDeFacturatOverlayOpen(true)
+      setNuRaspundeOverlayLead(null)
+      setNuRaspundeOverlayOpen(false)
+    } else if (isNuRaspunde) {
+      // Stage NU RASPUNDE (Receptie): deschide overlay-ul Nu răspunde
+      setSelectedLead(null)
+      setLeadPosition(null)
+      setNuRaspundeOverlayLead(lead as any)
+      setNuRaspundeOverlayOpen(true)
+      setDeFacturatOverlayLead(null)
+      setDeFacturatOverlayOpen(false)
     } else {
       setRestoredOpenCardSection(null)
       setSelectedLead(lead as any)
       setDeFacturatOverlayLead(null)
       setDeFacturatOverlayOpen(false)
+      setNuRaspundeOverlayLead(null)
+      setNuRaspundeOverlayOpen(false)
     }
 
     // Persist cardul deschis (pentru restore după tab switch) – și pentru Colet neridicat, Curier trimis, Office direct
@@ -1822,7 +1868,7 @@ export default function CRMPage() {
         pipelineId = cached?.find((p: any) => toSlug(p?.name) === toSlug(pl))?.id ?? undefined
       }
       if (pl && pipelineId && itemId) {
-        writeOpenCard({ pipelineSlug: pl, pipelineId, itemType, itemId, openedAt: Date.now(), deFacturatOverlay: isDeFacturat, section: 'fisa' })
+        writeOpenCard({ pipelineSlug: pl, pipelineId, itemType, itemId, openedAt: Date.now(), deFacturatOverlay: isDeFacturat, nuRaspundeOverlay: isNuRaspunde, section: 'fisa' })
       }
     } catch {
       // ignore
@@ -1861,6 +1907,15 @@ export default function CRMPage() {
       if (saved.deFacturatOverlay) {
         setDeFacturatOverlayLead(item as any)
         setDeFacturatOverlayOpen(true)
+        setNuRaspundeOverlayLead(null)
+        setNuRaspundeOverlayOpen(false)
+        setSelectedLead(null)
+        setLeadPosition(null)
+      } else if ((saved as any).nuRaspundeOverlay) {
+        setNuRaspundeOverlayLead(item as any)
+        setNuRaspundeOverlayOpen(true)
+        setDeFacturatOverlayLead(null)
+        setDeFacturatOverlayOpen(false)
         setSelectedLead(null)
         setLeadPosition(null)
       } else {
@@ -2340,6 +2395,35 @@ export default function CRMPage() {
         }}
       />
 
+      {/* Overlay special pentru carduri din stage NU RASPUNDE (Receptie) */}
+      <NuRaspundeOverlay
+        open={nuRaspundeOverlayOpen}
+        onOpenChange={(open) => {
+          setNuRaspundeOverlayOpen(open)
+          if (!open) {
+            setNuRaspundeOverlayLead(null)
+            clearOpenCard()
+          }
+        }}
+        lead={nuRaspundeOverlayLead}
+        pipelinesWithStages={getCachedPipelinesWithStages() ?? undefined}
+        onRefresh={refresh}
+        onOpenFullDetails={() => {
+          if (!nuRaspundeOverlayLead) return
+          const leadAny = nuRaspundeOverlayLead as any
+          setNuRaspundeOverlayOpen(false)
+          setSelectedLead(nuRaspundeOverlayLead)
+          setNuRaspundeOverlayLead(null)
+          const pl = String(pipelineSlug || '')
+          const itemType: 'lead' | 'service_file' | 'tray' = leadAny?.type === 'tray' ? 'tray' : leadAny?.type === 'service_file' ? 'service_file' : 'lead'
+          const itemId = itemType === 'lead' ? (leadAny?.leadId || leadAny?.id) : leadAny?.id
+          const pipelineId = leadAny?.pipelineId
+          if (pl && pipelineId && itemId) {
+            writeOpenCard({ pipelineSlug: pl, pipelineId, itemType, itemId, openedAt: Date.now(), nuRaspundeOverlay: false })
+          }
+        }}
+      />
+
       {/* Quality Check – Validation (mobil + desktop). UI ca pipeline-urile departamentelor. */}
       <Dialog open={qcOpen} onOpenChange={(open) => { if (!open) closeQc(); else setQcOpen(true) }}>
         <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto p-4 sm:p-6">
@@ -2364,7 +2448,6 @@ export default function CRMPage() {
                     </h3>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                    <div><span className="font-medium">Dimensiune:</span> {qcTrayInfo?.size ?? 'N/A'}</div>
                     <div>
                       <span className="font-medium">Status:</span>{' '}
                       {(() => {

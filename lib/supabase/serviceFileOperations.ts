@@ -98,6 +98,14 @@ export async function appendTechnicianDetail(
       .single()
 
     if (error) return { data: null, error }
+    // Înregistrare în istoric: mesaj QC / notă tehnician (cine a scris, când, ce text)
+    logItemEvent(
+      'service_file',
+      serviceFileId,
+      `Mesaj QC (${entry.stageLabel}): ${entry.text}`,
+      'qc_message',
+      { stage: entry.stage, stageLabel: entry.stageLabel, text: entry.text }
+    ).catch((err) => console.warn('[appendTechnicianDetail] logItemEvent:', err))
     return { data: (data?.technician_details as TechnicianDetailEntry[]) ?? updated, error: null }
   } catch (e: any) {
     return { data: null, error: e }
@@ -107,7 +115,6 @@ export async function appendTechnicianDetail(
 export type Tray = {
   id: string
   number: string
-  size: string
   service_file_id: string
   status: 'in_receptie' | 'in_lucru' | 'gata' | 'Splited' | '2' | '3'
   created_at: string
@@ -502,12 +509,11 @@ export async function deleteServiceFile(serviceFileId: string): Promise<{ succes
 /**
  * Creează o nouă tăviță (tray) asociată cu o fișă de serviciu.
  * O tăviță reprezintă un container fizic sau logic care conține item-uri de lucru.
- * Funcția verifică dacă există deja o tăviță cu același număr, mărime și fișă de serviciu,
+ * Funcția verifică dacă există deja o tăviță cu același număr și fișă de serviciu,
  * și dacă da, returnează tăvița existentă în loc să creeze una duplicată.
  * 
  * @param data - Datele tăviței:
  *   - number: Numărul tăviței (ex: "Tăbliță 1")
- *   - size: Mărimea tăviței (ex: "M", "L", "XL")
  *   - service_file_id: ID-ul fișei de serviciu căreia îi aparține tăvița
  *   - status: Statusul tăviței ('in_receptie', 'in_lucru', 'gata') - implicit 'in_receptie'
  * @returns Obiect cu data tăviței create sau existente, sau null și eroarea dacă există
@@ -584,7 +590,7 @@ export async function checkTrayAvailability(
       throw error
     }
     
-    // Dacă nu găsim vreo tăviță cu acest număr și mărime, e disponibilă
+    // Dacă nu găsim vreo tăviță cu acest număr, e disponibilă
     if (!data) {
       return { available: true, error: null }
     }
@@ -602,7 +608,7 @@ export async function checkTrayAvailability(
 
 /**
  * Obține o tăviță după ID-ul său.
- * Returnează toate detaliile unei tăvițe, inclusiv număr, mărime, status și flag-ul urgent.
+ * Returnează toate detaliile unei tăvițe, inclusiv număr, status și flag-ul urgent.
  * 
  * @param trayId - ID-ul unic al tăviței
  * @returns Obiect cu data tăviței sau null dacă nu există, și eroarea dacă există
@@ -925,7 +931,7 @@ export async function archiveServiceFileToDb(
       if (!itemsErr && items?.length) allTrayItems.push(...items)
     }
 
-    // Snapshot tăvițe: number, size și itemi cu datele introduse (brand/serial/garanție în info)
+    // Snapshot tăvițe: number și itemi cu datele introduse (brand/serial/garanție în info)
     const traysSnapshot = (trays || []).map((t: any) => {
       const itemsInTray = allTrayItems
         .filter((ti: any) => ti.tray_id === t.id)
@@ -952,7 +958,7 @@ export async function archiveServiceFileToDb(
             info: info || null,
           }
         })
-      return { id: t.id, number: t.number, size: t.size, items: itemsInTray }
+      return { id: t.id, number: t.number, items: itemsInTray }
     })
 
     const istoric = {

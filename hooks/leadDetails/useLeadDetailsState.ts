@@ -18,7 +18,6 @@ type ServiceSheet = {
 type LeadQuote = {
   id: string
   number: string
-  size: string
   service_file_id: string
 }
 
@@ -67,7 +66,7 @@ export function useLeadDetailsState(initialStage?: string, initialSection?: "fis
   const [loadingSheets, setLoadingSheets] = useState(false)
   
   // State pentru tăvițe în pipeline-urile departament
-  const [allTrays, setAllTrays] = useState<Array<{ id: string; number: string; size: string; service_file_id: string }>>([])
+  const [allTrays, setAllTrays] = useState<Array<{ id: string; number: string; service_file_id: string }>>([])
   const [selectedTrayId, setSelectedTrayId] = useState<string | null>(null)
   const [loadingTrays, setLoadingTrays] = useState(false)
   

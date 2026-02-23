@@ -1,5 +1,6 @@
 /**
- * Componentă pentru secțiunea de mesagerie unificată (mesaje + evenimente)
+ * Componentă pentru tab-ul Mesagerie: doar mesaje (conversații).
+ * Istoricul (evenimente) se afișează doar în tab-ul Istoric.
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
@@ -131,7 +132,7 @@ function renderServiceSheetDetails(payload: any) {
                     <div>Tehnician: <span className="font-medium">{x.technician.name || x.technician.id || "—"}</span></div>
                   )}
                   {x.tray && (
-                    <div>Tăvița: <span className="font-medium">{x.tray.number}{x.tray.size ? ` ${x.tray.size}` : ""}</span></div>
+                    <div>Tăvița: <span className="font-medium">{x.tray.number}</span></div>
                   )}
                   {/* Detalii suplimentare pentru items adăugate */}
                   {x.qty !== undefined && (
@@ -271,7 +272,7 @@ function renderServiceSheetDetails(payload: any) {
         <div className="flex items-center gap-2 p-2 rounded-md bg-muted/30 border border-border/50">
           <Package className="w-4 h-4 text-muted-foreground" />
           <div className="text-xs">
-            <span className="font-medium">Tăvița:</span> {payload.tray.number}{payload.tray.size ? ` (${payload.tray.size})` : ""}{payload.tray.status ? ` - ${payload.tray.status}` : ""}
+            <span className="font-medium">Tăvița:</span> {payload.tray.number}{payload.tray.status ? ` - ${payload.tray.status}` : ""}
           </div>
         </div>
       )}
@@ -307,13 +308,13 @@ function renderInstrumentMovedDetails(payload: any) {
           <div className="flex items-center gap-2 px-2 py-1 rounded bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900">
             <Package className="w-3 h-3 text-red-600" />
             <span className="font-medium text-red-900 dark:text-red-100">Din:</span>
-            <span>{payload.source_tray.number || payload.source_tray_id}{payload.source_tray.size ? ` (${payload.source_tray.size})` : ""}</span>
+            <span>{payload.source_tray.number || payload.source_tray_id}</span>
           </div>
           <ArrowRight className="w-4 h-4 text-muted-foreground" />
           <div className="flex items-center gap-2 px-2 py-1 rounded bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900">
             <Package className="w-3 h-3 text-green-600" />
             <span className="font-medium text-green-900 dark:text-green-100">În:</span>
-            <span>{payload.target_tray.number || payload.target_tray_id}{payload.target_tray.size ? ` (${payload.target_tray.size})` : ""}</span>
+            <span>{payload.target_tray.number || payload.target_tray_id}</span>
           </div>
         </div>
       )}
@@ -396,7 +397,7 @@ function renderTechnicianAssignedDetails(payload: any) {
         <div className="flex items-center gap-2 text-xs">
           <Package className="w-3 h-3 text-muted-foreground" />
           <span className="font-medium">Tăviță:</span>
-          <span>{payload.tray.number}{payload.tray.size ? ` (${payload.tray.size})` : ""}{payload.tray.status ? ` - ${payload.tray.status}` : ""}</span>
+          <span>{payload.tray.number}{payload.tray.status ? ` - ${payload.tray.status}` : ""}</span>
         </div>
       )}
       {(payload.previous_technician || payload.technician) && (
@@ -441,7 +442,7 @@ function renderTrayPassedDetails(payload: any) {
         <div className="flex items-center gap-2 text-xs">
           <Package className="w-3 h-3 text-muted-foreground" />
           <span className="font-medium">Tăviță:</span>
-          <span>{payload.tray.number}{payload.tray.size ? ` (${payload.tray.size})` : ""}{payload.tray.status ? ` - ${payload.tray.status}` : ""}</span>
+          <span>{payload.tray.number}{payload.tray.status ? ` - ${payload.tray.status}` : ""}</span>
         </div>
       )}
       {(payload.pipeline || payload.stage) && (
@@ -504,7 +505,7 @@ function renderTrayCreatedDetails(payload: any) {
         <div className="flex items-center gap-2 text-xs">
           <Package className="w-3 h-3 text-indigo-600" />
           <span className="font-medium">Tăviță:</span>
-          <span>{payload.tray.number}{payload.tray.size ? ` (${payload.tray.size})` : ""}{payload.tray.status ? ` - ${payload.tray.status}` : ""}</span>
+          <span>{payload.tray.number}{payload.tray.status ? ` - ${payload.tray.status}` : ""}</span>
         </div>
       )}
       {(payload.pipeline || payload.stage) && (
@@ -544,7 +545,7 @@ function renderTrayStageChangedDetails(payload: any) {
         <div className="flex items-center gap-2 text-xs">
           <Package className="w-3 h-3 text-muted-foreground" />
           <span className="font-medium">Tăviță:</span>
-          <span>{payload.tray.number}{payload.tray.size ? ` (${payload.tray.size})` : ""}{payload.tray.status ? ` - ${payload.tray.status}` : ""}</span>
+          <span>{payload.tray.number}{payload.tray.status ? ` - ${payload.tray.status}` : ""}</span>
         </div>
       )}
       {(payload.from_stage || payload.stage) && (
@@ -645,13 +646,15 @@ export function LeadMessengerSection({
     loadConversation()
   }, [leadId])
 
-  // Încarcă mesajele
+  // Încarcă mesajele (doar mesaje; istoricul se afișează doar în tab-ul Istoric)
   useEffect(() => {
     if (!conversationId) {
       setMessages([])
+      setLoading(false)
       return
     }
 
+    setLoading(true)
     async function loadMessages() {
       try {
         const { data: messagesData, error } = await supabase
@@ -672,6 +675,8 @@ export function LeadMessengerSection({
       } catch (error) {
         console.error('Error loading messages:', error)
         setMessages([])
+      } finally {
+        setLoading(false)
       }
     }
 
@@ -713,123 +718,7 @@ export function LeadMessengerSection({
     }
   }, [conversationId])
 
-  // Încarcă evenimentele
-  useEffect(() => {
-    if (!leadId) {
-      setEvents([])
-      setLoading(false)
-      return
-    }
-
-    let cancelled = false
-    setLoading(true)
-
-    async function loadEvents() {
-      try {
-        // Prioritate: selectedQuoteId (trayId) > leadId
-        if (selectedQuoteId) {
-          const { data: eventsData, error } = await supabase
-            .from('items_events')
-            .select('*')
-            .eq('type', 'tray')
-            .eq('item_id', selectedQuoteId)
-            .order('created_at', { ascending: false })
-            .limit(200)
-
-          if (cancelled) return
-          if (error) {
-            console.error('Error loading events:', error)
-            setEvents([])
-          } else {
-            setEvents((eventsData || []).map(ev => ({
-              ...ev,
-              type: 'event' as const,
-              lead_id: ev.item_id,
-            })))
-          }
-        } else {
-          // Încarcă evenimente DOAR pentru lead (nu istoricul global)
-          // Filtrează strict după type='lead' și item_id=leadId pentru a evita evenimentele globale
-          const { data: eventsData, error } = await supabase
-            .from('items_events')
-            .select('*')
-            .eq('type', 'lead') // Doar evenimente de tip 'lead'
-            .eq('item_id', leadId) // Doar pentru lead-ul curent
-            .order('created_at', { ascending: false })
-            .limit(200)
-
-          if (cancelled) return
-          if (error) {
-            console.error('Error loading events:', error)
-            setEvents([])
-          } else {
-            // Asigură-te că toate evenimentele sunt pentru lead-ul corect
-            const filteredEvents = (eventsData || []).filter(ev => 
-              ev.type === 'lead' && ev.item_id === leadId
-            )
-            setEvents(filteredEvents.map(ev => ({
-              ...ev,
-              type: 'event' as const,
-              lead_id: ev.item_id,
-            })))
-          }
-        }
-      } catch (error) {
-        console.error('Error loading events:', error)
-        setEvents([])
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }
-
-    loadEvents()
-
-    // Subscribe la evenimente noi (doar pentru lead-ul curent, nu global)
-    const channel = supabase
-      .channel(`events_${leadId}_${selectedQuoteId || ''}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'items_events',
-          filter: selectedQuoteId 
-            ? `type=eq.tray&item_id=eq.${selectedQuoteId}` // Doar pentru tăvița selectată
-            : `type=eq.lead&item_id=eq.${leadId}`, // Doar pentru lead-ul curent
-        },
-        (payload: any) => {
-          if (!isMounted.current) return
-          // Verifică dublu că evenimentul este pentru lead-ul corect
-          if (selectedQuoteId) {
-            if (payload.new.type === 'tray' && payload.new.item_id === selectedQuoteId) {
-              const event = {
-                ...payload.new,
-                type: 'event' as const,
-                lead_id: payload.new.item_id,
-              } as Event
-              setEvents((prev) => [event, ...prev])
-            }
-          } else {
-            if (payload.new.type === 'lead' && payload.new.item_id === leadId) {
-              const event = {
-                ...payload.new,
-                type: 'event' as const,
-                lead_id: payload.new.item_id,
-              } as Event
-              setEvents((prev) => [event, ...prev])
-            }
-          }
-        }
-      )
-      .subscribe()
-
-    return () => {
-      cancelled = true
-      supabase.removeChannel(channel)
-    }
-  }, [leadId, selectedQuoteId])
+  // Istoricul (evenimente) se afișează doar în tab-ul Istoric; în Mesagerie nu se încarcă evenimente.
 
   // Încarcă numele expeditorilor
   useEffect(() => {
@@ -1015,7 +904,7 @@ export function LeadMessengerSection({
               </div>
               <div className="text-center">
                 <p className="text-sm font-medium text-foreground mb-1">
-                  Nu există mesaje sau evenimente încă
+                  Nu există mesaje încă
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Trimite primul mesaj pentru a începe conversația

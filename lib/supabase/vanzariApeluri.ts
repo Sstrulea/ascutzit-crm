@@ -984,16 +984,25 @@ export async function listVanzariSalespeople(): Promise<VanzariSalespersonOption
   if (!ids.length) return []
   const { data: members, error: membersErr } = await (supabase as any)
     .from('app_members')
-    .select('user_id, name')
+    .select('user_id, name, role')
     .in('user_id', ids)
   if (membersErr || !members?.length) {
-    return ids.map((id) => ({ id, name: id }))
+    return []
   }
+  // Afișăm doar membrii cu rolul owner sau vanzator (pentru „Detalii per vânzător”)
+  const allowedRoles = ['owner', 'vanzator']
+  const filtered = (members as { user_id: string; name: string | null; role?: string }[]).filter(
+    (m) => m.role && allowedRoles.includes(String(m.role).toLowerCase())
+  )
   const nameById = new Map<string, string>()
-  for (const m of members as { user_id: string; name: string | null }[]) {
+  for (const m of filtered) {
     nameById.set(m.user_id, m.name || m.user_id)
   }
-  return ids.map((id) => ({ id, name: nameById.get(id) || id })).sort((a, b) => a.name.localeCompare(b.name))
+  const allowedIds = new Set(filtered.map((m) => m.user_id))
+  return ids
+    .filter((id) => allowedIds.has(id))
+    .map((id) => ({ id, name: nameById.get(id) || id }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /**

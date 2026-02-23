@@ -90,7 +90,7 @@ interface UseLeadDetailsDataLoaderProps {
   setServiceSheets: React.Dispatch<React.SetStateAction<ServiceSheet[]>>
   setSelectedFisaId: React.Dispatch<React.SetStateAction<string | null>>
   setLoadingSheets: React.Dispatch<React.SetStateAction<boolean>>
-  setAllTrays: React.Dispatch<React.SetStateAction<Array<{ id: string; number: string; size: string; service_file_id: string }>>>
+  setAllTrays: React.Dispatch<React.SetStateAction<Array<{ id: string; number: string; service_file_id: string }>>>
   setSelectedTrayId: React.Dispatch<React.SetStateAction<string | null>>
   setLoadingTrays: React.Dispatch<React.SetStateAction<boolean>>
   setAllTags: React.Dispatch<React.SetStateAction<any[]>>
@@ -270,7 +270,7 @@ export function useLeadDetailsDataLoader({
     const loadTrays = async () => {
       setLoadingTrays(true)
       try {
-        let allTraysList: Array<{ id: string; number: string; size: string; service_file_id: string }> = []
+        let allTraysList: Array<{ id: string; number: string; service_file_id: string }> = []
         
         // Dacă avem leadIdMemo, încărcăm toate tăvițele din toate service_files
         if (leadIdMemo) {
@@ -284,7 +284,6 @@ export function useLeadDetailsDataLoader({
               allTraysList.push(...traysBatch.map((t: any) => ({
                 id: t.id,
                 number: t.number,
-                size: t.size,
                 service_file_id: t.service_file_id
               })))
             }
@@ -304,7 +303,6 @@ export function useLeadDetailsDataLoader({
             allTraysList.push({
               id: trayData.id,
               number: trayData.number,
-              size: (trayData as { size?: string }).size,
               service_file_id: trayData.service_file_id
             })
             

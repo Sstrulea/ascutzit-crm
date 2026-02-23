@@ -12,6 +12,7 @@ import {
   Pencil, Save, X, Loader2, Building2, Hash, Calendar
 } from "lucide-react"
 import { format } from "date-fns"
+import { ro } from "date-fns/locale/ro"
 import { updateLeadWithHistory } from "@/lib/supabase/leadOperations"
 import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
 import { useRole, useAuth } from "@/lib/contexts/AuthContext"
@@ -47,6 +48,7 @@ export interface LeadContactInfoProps {
     technician?: string | null
     notes?: string | null
     createdAt?: Date | string | null
+    created_at?: string | null
     lastActivity?: Date | string | null
     [key: string]: any
   }
@@ -343,7 +345,7 @@ export function LeadContactInfo({
         const supabase = supabaseBrowser()
         const { data, error } = await supabase
           .from('leads')
-          .select('id, full_name, email, phone_number, company_name, company_address, address, strada, city, judet, zip, contact_person, contact_phone, billing_nume_prenume, billing_nume_companie, billing_cui, billing_strada, billing_oras, billing_judet, billing_cod_postal')
+          .select('id, full_name, email, phone_number, company_name, company_address, address, strada, city, judet, zip, contact_person, contact_phone, billing_nume_prenume, billing_nume_companie, billing_cui, billing_strada, billing_oras, billing_judet, billing_cod_postal, created_at')
           .eq('id', leadId)
           .maybeSingle()
         if (error || !data) return
@@ -356,6 +358,7 @@ export function LeadContactInfo({
 
         const hydrated = {
           ...lead,
+          created_at: (lead as any).created_at ?? (data as any).created_at ?? undefined,
           name: preferDbIfEmpty((lead as any).name, (data as any).full_name),
           phone: preferDbIfEmpty((lead as any).phone, (data as any).phone_number),
           email: preferDbIfEmpty((lead as any).email, (data as any).email),
@@ -578,10 +581,18 @@ export function LeadContactInfo({
     )
   }
 
+  const createdAt = (lead as any).created_at
   const contactContent = (
     <div className={embedded ? 'space-y-4' : 'px-3 pb-4 space-y-4'}>
             {!embedded && (
               <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+            )}
+            {/* Data creării lead */}
+            {createdAt && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Calendar className="h-4 w-4 flex-shrink-0" />
+                <span>Data creării: {format(new Date(createdAt), 'd MMM yyyy, HH:mm', { locale: ro })}</span>
+              </div>
             )}
             {/* Butoane acțiune */}
             <div className="flex justify-center gap-2">

@@ -19,6 +19,9 @@ import {
   Plus,
   Trash2,
   Eye,
+  UserPlus,
+  ImagePlus,
+  CheckCircle,
 } from "lucide-react"
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns"
 import { ro } from "date-fns/locale"
@@ -46,9 +49,8 @@ const TRAY_EVENT_TYPES_SHOW_STATUS = ["tray_items_split_to_technician", "tray_it
 function formatTrayLine(tray: any, showStatus: boolean): string {
   if (!tray) return ""
   const num = tray.number ?? ""
-  const size = tray.size ? ` (${tray.size})` : ""
   const status = showStatus && tray.status ? ` - ${tray.status}` : ""
-  return `${num}${size}${status}`
+  return `${num}${status}`
 }
 
 function renderServiceSheetDetails(payload: any) {
@@ -77,7 +79,7 @@ function renderServiceSheetDetails(payload: any) {
                     <div>Tehnician: <span className="font-medium">{x.technician.name || x.technician.id || "—"}</span></div>
                   )}
                   {x.tray && (
-                    <div>Tăvița: <span className="font-medium">{x.tray.number}{x.tray.size ? ` ${x.tray.size}` : ""}</span></div>
+                    <div>Tăvița: <span className="font-medium">{x.tray.number}</span></div>
                   )}
                   {/* Detalii suplimentare pentru items adăugate */}
                   {x.qty !== undefined && (
@@ -287,13 +289,13 @@ function renderInstrumentMovedDetails(payload: any) {
           <div className="flex items-center gap-2 px-2 py-1 rounded bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900">
             <Package className="w-3 h-3 text-red-600" />
             <span className="font-medium text-red-900 dark:text-red-100">Din:</span>
-            <span>{payload.source_tray.number || payload.source_tray_id}{payload.source_tray.size ? ` (${payload.source_tray.size})` : ""}</span>
+            <span>{payload.source_tray.number || payload.source_tray_id}</span>
           </div>
           <ArrowRight className="w-4 h-4 text-muted-foreground" />
           <div className="flex items-center gap-2 px-2 py-1 rounded bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900">
             <Package className="w-3 h-3 text-green-600" />
             <span className="font-medium text-green-900 dark:text-green-100">În:</span>
-            <span>{payload.target_tray.number || payload.target_tray_id}{payload.target_tray.size ? ` (${payload.target_tray.size})` : ""}</span>
+            <span>{payload.target_tray.number || payload.target_tray_id}</span>
           </div>
         </div>
       )}
@@ -848,6 +850,7 @@ function renderTrayItemsSplitDetails(payload: any) {
 
 export function EventIcon({ eventType }: { eventType: string }) {
   const iconMap: Record<string, { icon: any; color: string }> = {
+    lead_created: { icon: UserPlus, color: "text-emerald-600" },
     service_sheet_save: { icon: Save, color: "text-blue-600" },
     service_file_created: { icon: FileText, color: "text-indigo-600" },
     instrument_moved: { icon: Move, color: "text-purple-600" },
@@ -862,6 +865,9 @@ export function EventIcon({ eventType }: { eventType: string }) {
     tray_item_updated: { icon: Pencil, color: "text-amber-600" },
     tray_item_added: { icon: Plus, color: "text-emerald-600" },
     tray_item_deleted: { icon: Trash2, color: "text-red-600" },
+    tray_image_added: { icon: ImagePlus, color: "text-sky-600" },
+    tray_image_deleted: { icon: Trash2, color: "text-red-500" },
+    qc_message: { icon: CheckCircle, color: "text-violet-600" },
     lead_field_updated: { icon: Pencil, color: "text-amber-600" },
     service_file_field_updated: { icon: Pencil, color: "text-indigo-600" },
     lead_details_updated: { icon: MessageSquare, color: "text-amber-600" },

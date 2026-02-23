@@ -386,7 +386,6 @@ export class TechnicianStatisticsService {
       .select(`
         id,
         number,
-        size,
         service_file_id,
         technician_id,
         technician2_id,
@@ -508,7 +507,6 @@ export class TechnicianStatisticsService {
       const processedTray: TrayProcessed = {
         trayId: tray.id,
         trayNumber: tray.number,
-        traySize: tray.size,
         serviceFileId: tray.service_file_id,
         leadId: serviceFile?.lead_id || null,
         clientName,

@@ -158,9 +158,9 @@ export interface ReceptieViewProps {
   onSendTrays?: () => void
   onPrintTrays?: () => void
   /** Creare tăviță inline (număr + mărime) fără modal – în TrayTabs Recepție */
-  onCreateTrayInline?: (number: string, size: string) => Promise<void>
+  onCreateTrayInline?: (number: string) => Promise<void>
   /** Editare tăviță inline – disponibil pentru toți utilizatorii */
-  onEditTrayInline?: (trayId: string, newNumber: string, newSize: string) => Promise<void>
+  onEditTrayInline?: (trayId: string, newNumber: string) => Promise<void>
   currentServiceFileStage?: string | null
   onFacturare?: (mode: FacturareMode) => Promise<void>
 
@@ -170,7 +170,7 @@ export interface ReceptieViewProps {
   /** Mutare directă (group, trayId) – folosit de bandă + popover, fără dialog */
   onMoveInstrumentToTray?: (group: { instrument: { id: string; name: string }; items: LeadQuoteItem[] }, trayId: string) => void
   /** Mută instrumentul într-o tăviță nouă (număr + mărime) – folosit din popover „Creează tăviță nouă”. */
-  onMoveInstrumentToNewTray?: (group: { instrument: { id: string; name: string }; items: LeadQuoteItem[] }, number: string, size: string) => Promise<void>
+  onMoveInstrumentToNewTray?: (group: { instrument: { id: string; name: string }; items: LeadQuoteItem[] }, number: string) => Promise<void>
   
   // ========== TRAY IMAGES ==========
   trayImages?: Array<{ id: string; tray_id: string; url: string; filename: string; file_path: string; created_at: string }>

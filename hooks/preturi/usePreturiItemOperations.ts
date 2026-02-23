@@ -146,7 +146,6 @@ export function usePreturiItemOperations({
           const newQuote: LeadQuote = {
             id: newTray.id,
             number: newTray.number,
-            size: newTray.size,
             created_at: newTray.created_at
           }
           setQuotes(prev => [...prev, newQuote])
@@ -437,7 +436,18 @@ export function usePreturiItemOperations({
                   pipeline_id: autoPipelineId,
                   brandSerialGroups: brandSerialGroupsToSend
                 })
-                
+                logTrayItemChange({
+                  trayId: targetQuote.id,
+                  message: `Instrument adăugat: ${instrument.name} (cantitate ${qty})`,
+                  eventType: 'tray_item_added',
+                  payload: {
+                    instrument_id: instrument.id,
+                    item_name: instrument.name,
+                    item_type: 'instrument',
+                    qty,
+                  },
+                  serviceFileId: fisaId ?? undefined,
+                }).catch(() => {})
                 // OPTIMIZARE: Nu mai reîncărcăm items-urile aici - vor fi reîncărcate după crearea serviciului
                 // Aceasta reduce numărul de call-uri de la 2 la 1
                 // Reîncărcarea finală se face după createTrayItem() pentru serviciu (linia ~755)

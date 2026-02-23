@@ -8,7 +8,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 export interface TraySearchResultServer {
   trayId: string
   trayNumber: string
-  traySize: string
   leadId: string
   leadName: string
   leadPhone?: string
@@ -39,7 +38,6 @@ export async function searchTraysGloballyWithClient(
       .select(`
         id,
         number,
-        size,
         service_file_id,
         service_file:service_files!inner(
           id,
@@ -49,11 +47,6 @@ export async function searchTraysGloballyWithClient(
         )
       `)
       .or(`number.ilike.%${searchTermLower}%`)
-
-    // 1b. Caută după number+size concatenat (ex. "21l" găsește tăvița 21+L) – RPC
-    const { data: traysByNumberSize } = await supabase.rpc('search_trays_by_number_size', {
-      p_search_term: searchTerm,
-    })
 
     const { data: trayItemBrands } = await supabase
       .from('tray_item_brands')
@@ -112,7 +105,6 @@ export async function searchTraysGloballyWithClient(
         resultsMap.set(key, {
           trayId: tray.id,
           trayNumber: tray.number,
-          traySize: tray.size,
           leadId: tray.service_file.lead.id,
           leadName: tray.service_file.lead.full_name || 'Unknown',
           leadPhone: tray.service_file.lead.phone_number,
@@ -125,26 +117,6 @@ export async function searchTraysGloballyWithClient(
       }
     })
 
-    // Rezultate din RPC (number+size concatenat, ex. "21l" → 21+L)
-    const rpcRows = Array.isArray(traysByNumberSize) ? traysByNumberSize : []
-    rpcRows.forEach((row: any) => {
-      const key = row?.tray_id
-      if (!key || resultsMap.has(key)) return
-      resultsMap.set(key, {
-        trayId: row.tray_id,
-        trayNumber: row.tray_number ?? '',
-        traySize: row.tray_size ?? '',
-        leadId: row.lead_id,
-        leadName: row.lead_name ?? 'Unknown',
-        leadPhone: row.lead_phone ?? undefined,
-        leadEmail: row.lead_email ?? undefined,
-        serviceFileNumber: row.service_file_number ?? '',
-        serviceFileId: row.service_file_id,
-        matchType: 'tray_number',
-        matchDetails: `Tăviță: ${row.tray_number ?? ''}${row.tray_size ? ` (${row.tray_size})` : ''}`,
-      })
-    })
-
     ;(trayItemBrands as any[])?.forEach((brand: any) => {
       const tray = brand?.tray_item?.[0]?.tray?.[0]
       if (tray?.service_file?.lead) {
@@ -153,7 +125,6 @@ export async function searchTraysGloballyWithClient(
           resultsMap.set(key, {
             trayId: tray.id,
             trayNumber: tray.number,
-            traySize: tray.size,
             leadId: tray.service_file.lead.id,
             leadName: tray.service_file.lead.full_name || 'Unknown',
             leadPhone: tray.service_file.lead.phone_number,
@@ -182,7 +153,6 @@ export async function searchTraysGloballyWithClient(
           resultsMap.set(key, {
             trayId: tray.id,
             trayNumber: tray.number,
-            traySize: tray.size,
             leadId: tray.service_file.lead.id,
             leadName: tray.service_file.lead.full_name || 'Unknown',
             leadPhone: tray.service_file.lead.phone_number,

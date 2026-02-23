@@ -288,7 +288,6 @@ export type TehnicianTrayStat = {
 export type TehnicianTrayWork = {
   trayId: string
   trayNumber: string | null
-  traySize: string | null
   serviceFileId: string | null
   serviceFileNumber?: string | null
   /** Lead-ul asociat fișei (pentru deschidere în Vânzări). */
@@ -1220,13 +1219,13 @@ export async function fetchTehnicianStatsForDate(
         }
         const foundTrayIds = new Set(trayById.keys())
         const missingTrayIds = trayIds.filter((id) => !foundTrayIds.has(id))
-        const mergedTrayInfoByChildId = new Map<string, { trayNumber: string | null; traySize: string | null; serviceFileId: string | null; parentTrayId: string | null }>()
+        const mergedTrayInfoByChildId = new Map<string, { trayNumber: string | null; serviceFileId: string | null; parentTrayId: string | null }>()
         const serviceFileIds = [...new Set((trays || []).map((t: any) => t?.service_file_id).filter(Boolean))] as string[]
         const [arhivaResult, sfsTraysResult] = await Promise.all([
           missingTrayIds.length > 0
             ? (supabase as any)
                 .from('arhiva_tavite_unite')
-                .select('parent_tray_id, service_file_id, tray_number, tray_size, child_tray_ids, child_tray_numbers')
+                .select('parent_tray_id, service_file_id, tray_number, child_tray_ids, child_tray_numbers')
                 .limit(500)
             : Promise.resolve({ data: [] }),
           serviceFileIds.length > 0
@@ -1245,7 +1244,6 @@ export async function fetchTehnicianStatsForDate(
               if (!cid || !missingSet.has(cid)) continue
               mergedTrayInfoByChildId.set(cid, {
                 trayNumber: (childNumbers[i] != null && childNumbers[i] !== '') ? String(childNumbers[i]) : null,
-                traySize: row?.tray_size ?? null,
                 serviceFileId: row?.service_file_id ?? null,
                 parentTrayId: row?.parent_tray_id ?? null,
               })
@@ -1777,7 +1775,6 @@ export async function fetchTehnicianStatsForDate(
               list.push({
                 trayId,
                 trayNumber: archived.trayNumber,
-                traySize: archived.traySize,
                 serviceFileId: archived.serviceFileId,
                 serviceFileNumber: sfArchive?.number ?? null,
                 leadId: sfArchive?.lead_id ?? null,
@@ -1817,7 +1814,6 @@ export async function fetchTehnicianStatsForDate(
             list.push({
               trayId,
               trayNumber: t?.number ?? null,
-              traySize: t?.size ?? null,
               serviceFileId: sfId,
               serviceFileNumber: sf?.number ?? null,
               leadId: sf?.lead_id ?? null,

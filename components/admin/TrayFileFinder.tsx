@@ -33,7 +33,6 @@ const supabase = supabaseBrowser()
 interface Tray {
   id: string
   number: string
-  size: string
   status: string
   service_file_id: string | null
   created_at: string
@@ -80,7 +79,6 @@ export default function TrayFileFinder() {
         .select(`
           id,
           number,
-          size,
           status,
           service_file_id,
           created_at,
@@ -122,7 +120,6 @@ export default function TrayFileFinder() {
           .select(`
             id,
             number,
-            size,
             status,
             service_file_id,
             created_at,
@@ -190,7 +187,6 @@ export default function TrayFileFinder() {
           event_details: {
             tray_id: foundTray.id,
             tray_number: foundTray.number,
-            tray_size: foundTray.size,
             service_file_id: foundTray.service_file_id,
             deleted_by: 'admin',
             deleted_at: new Date().toISOString()
@@ -317,10 +313,6 @@ export default function TrayFileFinder() {
                     <span className="text-sm text-muted-foreground">Număr:</span>
                     <span className="text-sm font-medium">{foundTray.number}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Dimensiune:</span>
-                    <Badge variant="outline">{foundTray.size}</Badge>
-                  </div>
                 </div>
                 
                 <div className="space-y-3">
@@ -422,7 +414,6 @@ export default function TrayFileFinder() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Număr</TableHead>
-                        <TableHead>Dimensiune</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Creată la</TableHead>
                       </TableRow>
@@ -435,9 +426,6 @@ export default function TrayFileFinder() {
                               <Package className="h-3 w-3 text-muted-foreground" />
                               {tray.number}
                             </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{tray.size}</Badge>
                           </TableCell>
                           <TableCell>
                             <Badge variant={tray.status === 'active' ? 'default' : 'secondary'}>

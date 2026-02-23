@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { Plus, XIcon, Send, Loader2, ShoppingBag, Printer, FileCheck, Package, Pencil, ChevronLeft, ChevronRight, Check, X } from 'lucide-react'
 import type { LeadQuote } from '@/lib/types/preturi'
 import { isVanzareTray } from '@/lib/utils/vanzare-helpers'
-import { formatTraySizeDisplay } from '@/lib/utils/trayDisplay'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -30,10 +29,10 @@ interface TrayTabsProps {
   onDeleteTray: (trayId: string) => void
   onSendTrays: () => void
   onPrintTrays?: () => void
-  /** Creare tăviță inline (număr + mărime) fără modal – folosit în Recepție. */
-  onCreateTrayInline?: (number: string, size: string) => Promise<void>
+  /** Creare tăviță inline (număr) fără modal – folosit în Recepție. */
+  onCreateTrayInline?: (number: string) => Promise<void>
   /** Editare tăviță inline – disponibil pentru toți utilizatorii */
-  onEditTrayInline?: (trayId: string, newNumber: string, newSize: string) => Promise<void>
+  onEditTrayInline?: (trayId: string, newNumber: string) => Promise<void>
   /** [OWNER-ONLY] Setează status fișă la "comanda". DE ELIMINAT mai târziu. */
   isOwner?: boolean
   onSetStatusComanda?: () => Promise<void>
@@ -70,13 +69,11 @@ export function TrayTabs({
   const isMobile = useIsMobile()
   const [statusComandaLoading, setStatusComandaLoading] = useState(false)
   const [inlineTrayNum, setInlineTrayNum] = useState('')
-  const [inlineTraySize, setInlineTraySize] = useState('m')
   const [creatingInline, setCreatingInline] = useState(false)
   
   // State pentru editare inline
   const [editingTrayId, setEditingTrayId] = useState<string | null>(null)
   const [editNumber, setEditNumber] = useState('')
-  const [editSize, setEditSize] = useState('m')
   const [savingEdit, setSavingEdit] = useState(false)
   
   const n = (currentServiceFileStage || '').toLowerCase().replace(/\s+/g, ' ').trim()
@@ -109,7 +106,6 @@ export function TrayTabs({
   const openEditPopover = (tray: LeadQuote) => {
     setEditingTrayId(tray.id)
     setEditNumber(tray.number || '')
-    setEditSize(tray.size || 'm')
   }
   
   // Funcție pentru salvarea editării
@@ -119,7 +115,7 @@ export function TrayTabs({
     
     setSavingEdit(true)
     try {
-      await onEditTrayInline(editingTrayId, editNumber.trim(), editSize)
+      await onEditTrayInline(editingTrayId, editNumber.trim())
       setEditingTrayId(null)
     } finally {
       setSavingEdit(false)
@@ -223,7 +219,7 @@ export function TrayTabs({
                 }`}>
                 {isVanzare ? <ShoppingBag className="h-3 w-3" /> : isUnassigned ? '?' : (q.number || index + 1)}
               </span>
-              <span className="truncate max-w-[120px] sm:max-w-none">{isUnassigned ? (isReceptiePipeline ? 'Vanzare' : 'Nerepartizat') : isVanzare ? q.number : `Tăviță${formatTraySizeDisplay(q.size) ? ` ${formatTraySizeDisplay(q.size)}` : ''}`}</span>
+              <span className="truncate max-w-[120px] sm:max-w-none">{isUnassigned ? (isReceptiePipeline ? 'Vanzare' : 'Nerepartizat') : isVanzare ? q.number : (q.number ? `Tăviță ${q.number}` : 'Tăviță')}</span>
             </button>
             
             {/* Buton Editare — disponibil pentru toți utilizatorii */}
@@ -269,19 +265,6 @@ export function TrayTabs({
                           className="h-9 text-sm mt-1"
                           autoFocus
                         />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-slate-500">Mărime</Label>
-                        <Select value={editSize} onValueChange={setEditSize} disabled={savingEdit}>
-                          <SelectTrigger className="h-9 text-sm mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="s">S - Small</SelectItem>
-                            <SelectItem value="m">M - Medium</SelectItem>
-                            <SelectItem value="l">L - Large</SelectItem>
-                          </SelectContent>
-                        </Select>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 pt-1">
@@ -344,16 +327,6 @@ export function TrayTabs({
               disabled={creatingInline}
               className="h-8 w-16 text-sm font-medium"
             />
-            <Select value={inlineTraySize} onValueChange={setInlineTraySize} disabled={creatingInline}>
-              <SelectTrigger className="h-8 w-[72px] text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="s">S</SelectItem>
-                <SelectItem value="m">M</SelectItem>
-                <SelectItem value="l">L</SelectItem>
-              </SelectContent>
-            </Select>
             <Button
               type="button"
               size="sm"
@@ -363,9 +336,8 @@ export function TrayTabs({
                 if (!onCreateTrayInline || !inlineTrayNum.trim()) return
                 setCreatingInline(true)
                 try {
-                  await onCreateTrayInline(inlineTrayNum.trim(), inlineTraySize || 'm')
+                  await onCreateTrayInline(inlineTrayNum.trim())
                   setInlineTrayNum('')
-                  setInlineTraySize('m')
                 } finally {
                   setCreatingInline(false)
                 }

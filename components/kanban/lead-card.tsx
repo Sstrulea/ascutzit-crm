@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import { formatTraySizeDisplay } from "@/lib/utils/trayDisplay"
 import type { Lead } from "@/app/(crm)/dashboard/page"
 import type { TagColor } from "@/lib/supabase/tagOperations"
 import { getOrCreatePinnedTag, getOrCreateNuRaspundeTag, getOrCreateSunaTag, getOrCreateCurierTrimisTag, getOrCreateOfficeDirectTag, getOrCreateReturTag, getOrCreateUrgentTag, getOrCreateNuAVenitTag, toggleLeadTag, addLeadTagIfNotPresent, listTags } from "@/lib/supabase/tagOperations"
@@ -1381,13 +1380,10 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                   {/* Header: Client (fără suma în header) */}
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium text-sm text-foreground truncate">{lead.name}</h4>
-                    {((lead as any).trayNumber || (lead as any).traySize || (lead as any).isSplitChild) && (
+                    {((lead as any).trayNumber || (lead as any).isSplitChild) && (
                       <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         {(lead as any).trayNumber && (
                           <span className="text-xs text-muted-foreground">#{((lead as any).trayNumber)}</span>
-                        )}
-                        {(lead as any).traySize && (
-                          <span className="text-xs text-muted-foreground">{(lead as any).traySize}</span>
                         )}
                         {(lead as any).isSplitChild && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold border border-orange-300">
@@ -1818,7 +1814,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                   qc === true ? "text-green-600" : qc === false ? "text-red-600" : "text-purple-600"
                 const wrongPipeline = isInColetAjunsStage && trayStatus === 'purple' && trayDetails?.find((t: any) => t.status === 'wrong_pipeline' && t.currentPipelineDisplay && (String(t.trayNumber) === String(trayInfo.trayNumber)))?.currentPipelineDisplay
                 const trayLabel = trayInfo.trayNumber
-                  ? `#${trayInfo.trayNumber}${trayInfo.traySize ? ` ${formatTraySizeDisplay(trayInfo.traySize)}` : ''}${wrongPipeline ? ` → ${wrongPipeline}` : ''}`
+                  ? `#${trayInfo.trayNumber}${wrongPipeline ? ` → ${wrongPipeline}` : ''}`
                   : '—'
                 return (
                   <div key={idx} className="text-xs flex items-center gap-2 flex-wrap">

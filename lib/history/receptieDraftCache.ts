@@ -42,7 +42,7 @@ export type ReceptieDraftData = {
     forSerialNumbers?: string[]
     instrumentQty?: number
   }>
-  trays: Array<{ id: string; number: string; size?: string }>
+  trays: Array<{ id: string; number: string }>
   instrumentTrayId: Record<string, string | undefined>
 }
 

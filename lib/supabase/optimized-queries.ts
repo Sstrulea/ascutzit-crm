@@ -108,7 +108,6 @@ export async function getLeadById(leadId: string) {
 const TRAY_SELECT_MINIMAL = `
   id,
   number,
-  size,
   status,
   service_file_id,
   created_at
@@ -117,7 +116,6 @@ const TRAY_SELECT_MINIMAL = `
 const TRAY_SELECT_WITH_ITEMS = `
   id,
   number,
-  size,
   status,
   service_file_id,
   created_at,

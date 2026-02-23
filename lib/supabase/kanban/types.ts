@@ -60,7 +60,6 @@ export interface KanbanItem {
   trayNumbers?: string[]
   // Tray specific
   trayNumber?: string
-  traySize?: string
   trayStatus?: string
   /** true dacă tăviță e rezultatul unui split (status='Splited') */
   isSplitChild?: boolean
@@ -191,8 +190,6 @@ export interface RawServiceFile {
 export interface RawTray {
   id: string
   number: string
-  /** Coloana size a fost eliminată din tabelul trays; păstrată opțional pentru compatibilitate. */
-  size?: string
   status: string
   created_at: string
   service_file_id: string

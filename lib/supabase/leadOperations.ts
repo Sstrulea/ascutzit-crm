@@ -225,6 +225,18 @@ export async function createLead(leadData: any) {
       .single()
 
     if (error) throw error
+
+    // Înregistrare în istoric: lead creat (pentru afișare data creării și în Istoric)
+    if (data?.id) {
+      await logItemEvent(
+        'lead',
+        data.id,
+        `Lead creat${data.full_name ? `: ${data.full_name}` : ''}`,
+        'lead_created',
+        { lead_id: data.id, full_name: data.full_name ?? null, created_at: data.created_at ?? new Date().toISOString() }
+      ).catch((err) => console.error('[createLead] logItemEvent:', err))
+    }
+
     return { data, error: null }
   } catch (error) {
     return { data: null, error }
@@ -261,6 +273,20 @@ export async function createLeadWithPipeline(
       .single()
 
     if (leadError) throw leadError
+
+    // Înregistrare în istoric: lead creat (pentru afișare data creării și în tab Istoric)
+    const actorOption = options?.currentUserId
+      ? { currentUserId: options.currentUserId, currentUserName: undefined, currentUserEmail: undefined }
+      : undefined
+    await logItemEvent(
+      'lead',
+      lead.id,
+      `Lead creat${lead.full_name ? `: ${lead.full_name}` : ''}`,
+      'lead_created',
+      { lead_id: lead.id, full_name: lead.full_name ?? null, created_at: lead.created_at ?? new Date().toISOString(), pipeline_id: pipelineId, stage_id: stageId },
+      undefined,
+      actorOption
+    ).catch((err) => console.error('[createLeadWithPipeline] logItemEvent:', err))
 
     // Adaugă lead-ul în pipeline
     const moveResult = await moveLeadToPipelineFn(lead.id, pipelineId, stageId)
@@ -746,7 +772,6 @@ export async function updatePipelineAndStages(
 export async function getTrayDetails(trayId: string): Promise<{
   id: string
   number: string
-  size: string
   status: string
   service_file_id: string | null
   pipeline: { id: string; name: string } | null
@@ -792,7 +817,6 @@ export async function getTrayDetails(trayId: string): Promise<{
     return {
       id: tray.id,
       number: tray.number || 'nesemnată',
-      size: tray.size || '',
       status: tray.status || '',
       service_file_id: tray.service_file_id,
       pipeline: pipelineItem?.pipeline ? {
@@ -1063,7 +1087,7 @@ export async function logItemEvent(
   eventType: string = 'message',
   payload: Record<string, any> = {},
   details?: {
-    tray?: { id: string; number: string; size?: string; status?: string; service_file_id?: string | null }
+    tray?: { id: string; number: string; status?: string; service_file_id?: string | null }
     technician?: { id: string; name: string; email?: string | null }
     previous_technician?: { id: string | null; name: string | null; email?: string | null }
     pipeline?: { id: string; name: string }
@@ -1112,7 +1136,6 @@ export async function logItemEvent(
       tray: {
         id: details.tray.id,
         number: details.tray.number,
-        size: details.tray.size,
         status: details.tray.status || null,
         service_file_id: details.tray.service_file_id || null,
       },
@@ -1260,22 +1283,17 @@ export async function logTrayItemChange(params: {
   eventType: 'tray_item_updated' | 'tray_item_added' | 'tray_item_deleted'
   payload: Record<string, any>
   serviceFileId?: string | null
-  /** Opțional: număr și mărime tăviță pentru afișare în istoric după arhivare (dacă lipsesc, se încarcă din getTrayDetails) */
+  /** Opțional: număr tăviță pentru afișare în istoric după arhivare (dacă lipsește, se încarcă din getTrayDetails) */
   trayNumber?: string | null
-  traySize?: string | null
 }) {
-  const { trayId, message, eventType, payload, serviceFileId, trayNumber, traySize } = params
+  const { trayId, message, eventType, payload, serviceFileId, trayNumber } = params
   try {
     let tray_number = trayNumber ?? null
-    let tray_size = traySize ?? null
-    if ((tray_number == null || tray_size == null) && trayId) {
+    if (tray_number == null && trayId) {
       const details = await getTrayDetails(trayId)
-      if (details) {
-        if (tray_number == null) tray_number = details.number || null
-        if (tray_size == null) tray_size = details.size || null
-      }
+      if (details) tray_number = details.number || null
     }
-    const payloadWithTray = { ...payload, tray_id: trayId, tray_number, tray_size }
+    const payloadWithTray = { ...payload, tray_id: trayId, tray_number }
     await logItemEvent('tray', trayId, message, eventType, payloadWithTray)
     if (serviceFileId) {
       await logItemEvent('service_file', serviceFileId, message, eventType, {
@@ -1288,5 +1306,54 @@ export async function logTrayItemChange(params: {
   }
 }
 
+/**
+ * Loghează în istoric adăugarea unei imagini la o tăviță (cine, când, ce fișier).
+ */
+export async function logTrayImageAdded(params: {
+  trayId: string
+  filename: string
+  imageId?: string | null
+  serviceFileId?: string | null
+}) {
+  const { trayId, filename, imageId, serviceFileId } = params
+  try {
+    const message = `Imagine adăugată: ${filename}`
+    const payload: Record<string, any> = { tray_id: trayId, filename }
+    if (imageId) payload.image_id = imageId
+    await logItemEvent('tray', trayId, message, 'tray_image_added', payload)
+    if (serviceFileId) {
+      await logItemEvent('service_file', serviceFileId, message, 'tray_image_added', {
+        ...payload,
+        service_file_id: serviceFileId,
+      })
+    }
+  } catch (e) {
+    console.warn('[logTrayImageAdded]', e)
+  }
+}
+
+/**
+ * Loghează în istoric ștergerea unei imagini de la o tăviță (cine, când, ce fișier).
+ */
+export async function logTrayImageDeleted(params: {
+  trayId: string
+  filename: string
+  serviceFileId?: string | null
+}) {
+  const { trayId, filename, serviceFileId } = params
+  try {
+    const message = `Imagine ștearsă: ${filename}`
+    const payload = { tray_id: trayId, filename }
+    await logItemEvent('tray', trayId, message, 'tray_image_deleted', payload)
+    if (serviceFileId) {
+      await logItemEvent('service_file', serviceFileId, message, 'tray_image_deleted', {
+        ...payload,
+        service_file_id: serviceFileId,
+      })
+    }
+  } catch (e) {
+    console.warn('[logTrayImageDeleted]', e)
+  }
+}
 
 

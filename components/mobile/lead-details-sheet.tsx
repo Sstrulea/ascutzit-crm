@@ -16,14 +16,13 @@ import { Mail, Phone, Clock, Tag, FileText, Package, User, Loader2, Wrench, Exte
 import { formatDistanceToNow, addDays, addWeeks, addMonths, format } from 'date-fns'
 import { ro } from 'date-fns/locale'
 import { cn, formatCallbackDateDisplay } from '@/lib/utils'
-import { formatTraySizeDisplay } from '@/lib/utils/trayDisplay'
 import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
 import { listServiceFilesForLead, listTraysForServiceFile, listTrayItemsForTray, updateTrayItem, updateTray, type TrayItem } from '@/lib/supabase/serviceFileOperations'
 import { parseServiceFileDetails } from '@/lib/utils/serviceFileDetails'
 import { uploadTrayImage, deleteTrayImage, listTrayImages, saveTrayImageReference, deleteTrayImageReference, type TrayImage } from '@/lib/supabase/imageOperations'
 import { moveItemToStage } from '@/lib/supabase/pipelineOperations'
 import { startWorkSession } from '@/lib/supabase/workSessionOperations'
-import { logTrayItemChange, logLeadEvent, updateLeadWithHistory, getTrayDetails, logItemEvent, getPipelineStageDetails } from '@/lib/supabase/leadOperations'
+import { logTrayItemChange, logLeadEvent, updateLeadWithHistory, getTrayDetails, logItemEvent, getPipelineStageDetails, logTrayImageAdded, logTrayImageDeleted } from '@/lib/supabase/leadOperations'
 import { toggleLeadTag } from '@/lib/supabase/tagOperations'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/contexts/AuthContext'
@@ -73,7 +72,6 @@ interface ServiceFile {
 interface Tray {
   id: string
   number: string
-  size: string
   status: string
   service_file_id: string
 }
@@ -113,11 +111,18 @@ export function LeadDetailsSheet({
 
   const effectivePipelineSlug = overridePipelineSlug ?? pipelineSlug
 
-  // Salvare în istoric la fiecare acces la detaliile lead-ului (sheet deschis)
+  // Salvare în istoric o singură dată per deschidere a sheet-ului pentru acel lead
+  const lastLoggedOpenLeadIdRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!open || !lead) return
+    if (!open) {
+      lastLoggedOpenLeadIdRef.current = null
+      return
+    }
+    if (!lead) return
     const leadId = (lead as any).leadId ?? (lead as any).lead_id ?? (lead as any).id
     if (!leadId || typeof leadId !== 'string') return
+    if (lastLoggedOpenLeadIdRef.current === leadId) return
+    lastLoggedOpenLeadIdRef.current = leadId
     logLeadEvent(leadId, 'Detalii lead deschise', 'lead_details_opened', { source: 'mobile_sheet' }).catch(() => {})
   }, [open, lead?.id, (lead as any)?.leadId])
 
@@ -175,7 +180,7 @@ export function LeadDetailsSheet({
   const [savingTrayDetails, setSavingTrayDetails] = useState(false)
   
   // State pentru informații tăviță
-  const [trayInfo, setTrayInfo] = useState<{ number?: string; size?: string; status?: string } | null>(null)
+  const [trayInfo, setTrayInfo] = useState<{ number?: string; status?: string } | null>(null)
   
   const [isDetailsOpen, setIsDetailsOpen] = useState(true)
   const [isContactOpen, setIsContactOpen] = useState(true)
@@ -279,7 +284,7 @@ export function LeadDetailsSheet({
   
   // Pentru Receptie mobil: prima tăviță a primei fișe (card fișă + o singură opțiune atașare imagini)
   const [receptieTrayId, setReceptieTrayId] = useState<string | null>(null)
-  const [receptieTrayInfo, setReceptieTrayInfo] = useState<{ number?: string; size?: string; status?: string } | null>(null)
+  const [receptieTrayInfo, setReceptieTrayInfo] = useState<{ number?: string; status?: string } | null>(null)
   const [receptieFile, setReceptieFile] = useState<ServiceFile | null>(null)
   
   // Verifică dacă utilizatorul este tehnician
@@ -396,7 +401,7 @@ export function LeadDetailsSheet({
         try {
           const trayDetails = await getTrayDetails(leadAny.id)
           const trayLabel = trayDetails
-            ? `${trayDetails.number}${trayDetails.size ? ` ${formatTraySizeDisplay(trayDetails.size)}` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+            ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
             : 'nesemnată'
           let pipelineNameForLog = leadAny.pipelineName
           if (!pipelineNameForLog && leadAny.pipelineId) {
@@ -425,7 +430,6 @@ export function LeadDetailsSheet({
                 ? {
                     id: trayDetails.id,
                     number: trayDetails.number,
-                    size: trayDetails.size,
                     status: trayDetails.status,
                     service_file_id: trayDetails.service_file_id,
                   }
@@ -501,7 +505,7 @@ export function LeadDetailsSheet({
         try {
           const trayDetails = await getTrayDetails(leadAny.id)
           const trayLabel = trayDetails
-            ? `${trayDetails.number}${trayDetails.size ? ` ${formatTraySizeDisplay(trayDetails.size)}` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+            ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
             : 'nesemnată'
           let pipelineNameForLog = leadAny.pipelineName
           if (!pipelineNameForLog && leadAny.pipelineId) {
@@ -530,7 +534,6 @@ export function LeadDetailsSheet({
                 ? {
                     id: trayDetails.id,
                     number: trayDetails.number,
-                    size: trayDetails.size,
                     status: trayDetails.status,
                     service_file_id: trayDetails.service_file_id,
                   }
@@ -606,7 +609,7 @@ export function LeadDetailsSheet({
         try {
           const trayDetails = await getTrayDetails(leadAny.id)
           const trayLabel = trayDetails
-            ? `${trayDetails.number}${trayDetails.size ? ` ${formatTraySizeDisplay(trayDetails.size)}` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+            ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
             : 'nesemnată'
           let pipelineNameForLog = leadAny.pipelineName
           if (!pipelineNameForLog && leadAny.pipelineId) {
@@ -635,7 +638,6 @@ export function LeadDetailsSheet({
                 ? {
                     id: trayDetails.id,
                     number: trayDetails.number,
-                    size: trayDetails.size,
                     status: trayDetails.status,
                     service_file_id: trayDetails.service_file_id,
                   }
@@ -756,7 +758,7 @@ export function LeadDetailsSheet({
         try {
           const trayDetails = await getTrayDetails(leadAny.id)
           const trayLabel = trayDetails
-            ? `${trayDetails.number}${trayDetails.size ? ` ${formatTraySizeDisplay(trayDetails.size)}` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+            ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
             : 'nesemnată'
           let pipelineNameForLog = leadAny.pipelineName
           if (!pipelineNameForLog && leadAny.pipelineId) {
@@ -786,7 +788,6 @@ export function LeadDetailsSheet({
                 ? {
                     id: trayDetails.id,
                     number: trayDetails.number,
-                    size: trayDetails.size,
                     status: trayDetails.status,
                     service_file_id: trayDetails.service_file_id,
                   }
@@ -814,7 +815,6 @@ export function LeadDetailsSheet({
                 ? {
                     id: trayDetails.id,
                     number: trayDetails.number,
-                    size: trayDetails.size,
                     status: trayDetails.status,
                     service_file_id: trayDetails.service_file_id,
                   }
@@ -873,7 +873,6 @@ export function LeadDetailsSheet({
                 allTrays.push(...fileTrays.map((t: any) => ({
                   id: t.id,
                   number: t.number,
-                  size: t.size,
                   status: t.status,
                   service_file_id: file.id,
                 })))
@@ -916,7 +915,7 @@ export function LeadDetailsSheet({
     if (!tray) return
     setReceptieFile(file)
     setReceptieTrayId(tray.id)
-    setReceptieTrayInfo({ number: tray.number, size: tray.size, status: tray.status })
+    setReceptieTrayInfo({ number: tray.number, status: tray.status })
     let cancelled = false
     ;(async () => {
       try {
@@ -1159,7 +1158,6 @@ export function LeadDetailsSheet({
             if (!trayError && trayData) {
               setTrayInfo({
                 number: (trayData as any).number,
-                size: (trayData as any).size,
                 status: (trayData as any).status,
               })
             }
@@ -1605,6 +1603,7 @@ export function LeadDetailsSheet({
         const { url, path } = await uploadTrayImage(trayId, file)
         const savedImage = await saveTrayImageReference(trayId, url, path, file.name)
         setTrayImages(prev => [savedImage, ...prev])
+        logTrayImageAdded({ trayId, filename: file.name, imageId: savedImage.id }).catch(() => {})
         toast.success('Imagine încărcată cu succes', { id: toastId })
       } catch (error: any) {
         console.error('Error uploading image:', error)
@@ -1625,9 +1624,15 @@ export function LeadDetailsSheet({
   const handleImageDelete = useCallback(async (imageId: string, filePath: string) => {
     if (!confirm('Ești sigur că vrei să ștergi această imagine?')) return
     
+    const trayId = getEffectiveTrayId()
+    const imageToDelete = trayImages.find(img => img.id === imageId)
+    const filename = imageToDelete?.filename ?? filePath.split('/').pop() ?? 'imagine'
     try {
       await deleteTrayImage(filePath)
       await deleteTrayImageReference(imageId)
+      if (trayId) {
+        logTrayImageDeleted({ trayId, filename }).catch(() => {})
+      }
       setTrayImages(prev => prev.filter(img => img.id !== imageId))
       if (assignedImageId === imageId) setAssignedImageId(null)
       toast.success('Imagine ștearsă')
@@ -1637,7 +1642,7 @@ export function LeadDetailsSheet({
         description: error?.message || 'Te rog încearcă din nou'
       })
     }
-  }, [assignedImageId])
+  }, [assignedImageId, getEffectiveTrayId, trayImages])
 
   // Setează sau scoate imaginea reprezentativă (Recepție / departamente)
   const handleAssignImage = useCallback(async (imageId: string | null) => {
@@ -1754,7 +1759,7 @@ export function LeadDetailsSheet({
                       <div className="pt-2 border-t border-border/50 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Package className="h-3.5 w-3.5" />
-                          <span>Tăviță #{receptieTrayInfo.number || '—'} • {receptieTrayInfo.size || 'N/A'} • {getStatusLabel(receptieTrayInfo.status || '')}</span>
+                          <span>Tăviță #{receptieTrayInfo.number || '—'} • {getStatusLabel(receptieTrayInfo.status || '')}</span>
                         </div>
                         <Button
                           variant="ghost"
@@ -2415,13 +2420,8 @@ export function LeadDetailsSheet({
                               </Button>
                             )}
                           </div>
-                          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                            <div>
-                              <span className="font-medium">Dimensiune:</span> {formatTraySizeDisplay(trayInfo.size) || 'N/A'}
-                            </div>
-                            <div>
-                              <span className="font-medium">Status:</span> {getStatusLabel(trayInfo.status || '')}
-                            </div>
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">Status:</span> {getStatusLabel(trayInfo.status || '')}
                           </div>
                         </div>
                       )}
@@ -2902,7 +2902,7 @@ export function LeadDetailsSheet({
                                           <div className="flex-1">
                                             <p className="text-sm font-medium">Tăviță #{tray.number}</p>
                                             <p className="text-xs text-muted-foreground">
-                                              {formatTraySizeDisplay(tray.size) || tray.size} • {getStatusLabel(tray.status)}
+                                              {getStatusLabel(tray.status)}
                                             </p>
                                           </div>
                                         </div>
@@ -2977,7 +2977,7 @@ export function LeadDetailsSheet({
                                   <div className="flex-1">
                                     <p className="font-medium">Tăviță #{tray.number}</p>
                                     <p className="text-sm text-muted-foreground">
-                                      {formatTraySizeDisplay(tray.size) || tray.size} • {getStatusLabel(tray.status)}
+                                      {getStatusLabel(tray.status)}
                                     </p>
                                   </div>
                                 </div>

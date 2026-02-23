@@ -22,7 +22,6 @@ export interface TrayPrintItem {
 export interface TrayPrintQuote {
   id: string
   number?: string | number
-  size?: string
 }
 
 /** Un „sheet” = o tăviță cu items */
@@ -150,11 +149,10 @@ export function buildTrayPrintDocumentHtml(data: TrayPrintData): string {
   for (const sheet of sheets) {
     const q = sheet.quote
     const nr = q?.number ?? '—'
-    const size = q?.size ? ' (' + escapeHtml(q.size) + ')' : ''
     const groups = groupItemsByInstrument(sheet.items, instrumentsMap)
 
     bodyHtml += '<div class="tray-block">'
-    bodyHtml += '<div class="tray-title">Tăviță ' + escapeHtml(nr) + size + '</div>'
+    bodyHtml += '<div class="tray-title">Tăviță ' + escapeHtml(nr) + '</div>'
 
     if (groups.length === 0 && sheet.items.length === 0) {
       bodyHtml += '<div style="font-size:9pt;color:#666">Fără instrumente/servicii</div>'

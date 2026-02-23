@@ -2,7 +2,7 @@
  * Hook pentru operațiile cu tăvițe (create, update, delete, move, validate, send to pipeline)
  */
 
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
 import { useAuth } from '@/lib/contexts/AuthContext'
@@ -289,7 +289,7 @@ export function usePreturiTrayOperations({
   }, [selectedQuote, setEditingTrayNumber, setShowEditTrayDialog])
 
   // Funcție pentru editare tăviță inline (direct din TrayTabs) - disponibilă pentru toți utilizatorii
-  const handleEditTrayInline = useCallback(async (trayId: string, newNumber: string, _newSize?: string) => {
+  const handleEditTrayInline = useCallback(async (trayId: string, newNumber: string) => {
     if (!trayId || !newNumber.trim()) {
       toast.error('Introduceți numărul tăviței')
       return
@@ -542,18 +542,16 @@ export function usePreturiTrayOperations({
         const trayToDeleteObj = quotes.find((q: any) => q.id === trayToDelete)
         if (trayToDeleteObj) {
           const trayNumber = trayToDeleteObj.number || 'nesemnată'
-          const traySize = trayToDeleteObj.size || 'm'
           
           // Log pentru tăviță (înainte de ștergere)
           await logItemEvent(
             'tray',
             trayToDelete,
-            `Tăvița "${trayNumber}" (${traySize}) a fost ștearsă`,
+            `Tăvița "${trayNumber}" a fost ștearsă`,
             'tray_deleted',
             {
               tray_id: trayToDelete,
               tray_number: trayNumber,
-              tray_size: traySize
             }
           )
           
@@ -562,12 +560,11 @@ export function usePreturiTrayOperations({
             await logItemEvent(
               'service_file',
               fisaId,
-              `Tăvița "${trayNumber}" (${traySize}) a fost ștearsă din fișa de serviciu`,
+              `Tăvița "${trayNumber}" a fost ștearsă din fișa de serviciu`,
               'tray_deleted',
               {
                 tray_id: trayToDelete,
                 tray_number: trayNumber,
-                tray_size: traySize
               }
             )
           }
@@ -816,10 +813,10 @@ export function usePreturiTrayOperations({
         
         // Formatează numele tăvițelor pentru mesaj
         const sourceTrayLabel = sourceTrayDetails 
-          ? `${sourceTrayDetails.number}${sourceTrayDetails.size ? ` (${sourceTrayDetails.size})` : ''}${sourceTrayDetails.status ? ` - ${sourceTrayDetails.status}` : ''}`
+          ? `${sourceTrayDetails.number}${sourceTrayDetails.status ? ` - ${sourceTrayDetails.status}` : ''}`
           : 'nesemnată'
         const targetTrayLabel = targetTrayDetails
-          ? `${targetTrayDetails.number}${targetTrayDetails.size ? ` (${targetTrayDetails.size})` : ''}${targetTrayDetails.status ? ` - ${targetTrayDetails.status}` : ''}`
+          ? `${targetTrayDetails.number}${targetTrayDetails.status ? ` - ${targetTrayDetails.status}` : ''}`
           : 'nesemnată'
         
         // Log pentru tăvița sursă
@@ -840,7 +837,6 @@ export function usePreturiTrayOperations({
               tray: {
                 id: sourceTrayDetails.id,
                 number: sourceTrayDetails.number,
-                size: sourceTrayDetails.size,
                 status: sourceTrayDetails.status,
                 service_file_id: sourceTrayDetails.service_file_id,
               },
@@ -869,7 +865,6 @@ export function usePreturiTrayOperations({
               tray: {
                 id: targetTrayDetails.id,
                 number: targetTrayDetails.number,
-                size: targetTrayDetails.size,
                 status: targetTrayDetails.status,
                 service_file_id: targetTrayDetails.service_file_id,
               },
@@ -897,14 +892,12 @@ export function usePreturiTrayOperations({
               source_tray: sourceTrayDetails ? {
                 id: sourceTrayDetails.id,
                 number: sourceTrayDetails.number,
-                size: sourceTrayDetails.size,
                 status: sourceTrayDetails.status,
                 service_file_id: sourceTrayDetails.service_file_id,
               } : null,
               target_tray: targetTrayDetails ? {
                 id: targetTrayDetails.id,
                 number: targetTrayDetails.number,
-                size: targetTrayDetails.size,
                 status: targetTrayDetails.status,
                 service_file_id: targetTrayDetails.service_file_id,
               } : null,
@@ -1200,7 +1193,6 @@ export function usePreturiTrayOperations({
             tray: trayDetailsFull ? {
               id: trayDetailsFull.id,
               number: trayDetailsFull.number,
-              size: trayDetailsFull.size,
               status: trayDetailsFull.status,
               service_file_id: trayDetailsFull.service_file_id,
             } : undefined,
@@ -1358,7 +1350,7 @@ export function usePreturiTrayOperations({
         try {
           const { data: allTrays } = await listTraysForServiceFile(fisaId)
           if (allTrays?.length) {
-            setQuotes(allTrays.map((t: any) => ({ id: t.id, number: t.number, size: t.size, status: t.status })))
+            setQuotes(allTrays.map((t: any) => ({ id: t.id, number: t.number, status: t.status })))
           }
         } catch {
           // reîncarcă doar lista de quotes dacă e nevoie
@@ -1423,13 +1415,11 @@ export function usePreturiTrayOperations({
       
       const trayItems = await listQuoteItems(tray.id, services, instruments, pipelinesWithIds)
       
-      // NOTĂ: Nu mai blocăm tăvițele „goale” aici.
-      // Este posibil ca serviciile/piesele să fie în curs de salvare sau fișa să fie parțial completată,
-      // iar tehnicienii pot adăuga conținut în departament.
-      // if (trayItems.length === 0) {
-      //   errors.push(`Tăvița ${tray.number} este goală`)
-      //   continue
-      // }
+      // Nu permite trimiterea tăvițelor goale (fără servicii/piese/instrumente) la departamente
+      if (!trayItems || trayItems.length === 0) {
+        errors.push(`Tăvița "${tray.number}" este goală. Adaugă cel puțin un serviciu, piesă sau instrument înainte de trimitere.`)
+        continue
+      }
       
       // Validare: într-o tăviță nu pot exista instrumente din departamente diferite.
       // Determinăm departamentul după instruments.pipeline (care poate fi ID sau nume pipeline).
@@ -1564,11 +1554,25 @@ export function usePreturiTrayOperations({
     }
   }, [setTraysAlreadyInDepartments])
 
+  // Ref pentru a evita rularea dublă (double-click sau double-invoke)
+  const sendAllTraysInProgressRef = useRef(false)
+
   // Funcție pentru trimiterea tuturor tăvițelor în pipeline-urile departamentelor
   // (MOD SIMPLIFICAT: NU mai excludem nimic – nici tăvițele de vânzare, nici cele „goale”)
   const sendAllTraysToPipeline = useCallback(async () => {
-    // Trimit toate tăvițele din fișă, indiferent de număr sau tip (vânzare / normal)
-    const traysToSend = quotes
+    if (sendAllTraysInProgressRef.current) return
+    sendAllTraysInProgressRef.current = true
+    // Trimitem doar tăvițe cu număr (non-goale); tăvițele fără număr sau de vânzare nu merg la departamente
+    const traysToSend = quotes.filter((q: any) => {
+      const num = q?.number != null ? String(q.number).trim() : ''
+      if (!num) return false
+      return !isVanzareTray(num)
+    })
+    if (traysToSend.length === 0) {
+      sendAllTraysInProgressRef.current = false
+      toast.error('Nu există tăvițe de trimis. Adaugă tăvițe cu număr și conținut (servicii/piese) înainte de trimitere.')
+      return
+    }
 
     setSendingTrays(true)
     
@@ -1579,6 +1583,7 @@ export function usePreturiTrayOperations({
     // - (opțional) imagini, dacă MANDATORY_TRAY_IMAGES_ENABLED
     const validation = await validateTraysBeforeSend()
     if (!validation.valid) {
+      sendAllTraysInProgressRef.current = false
       const msg =
         validation.errors.length === 1
           ? validation.errors[0]
@@ -1792,94 +1797,44 @@ export function usePreturiTrayOperations({
           results.push(`Tăvița ${tray.number || (traysToSend.indexOf(tray) + 1)} → ${targetPipelineName}`)
           successCount++
           
-          // Loghează repartizarea tăviței cu detalii complete
+          // Loghează repartizarea o singură dată per tăviță: la service_file când avem fișă (istoric lead/fișă), altfel la tray
           try {
-            // Reîncarcă detaliile tăviței pentru a obține pipeline-ul nou
             const updatedTrayDetails = await getTrayDetails(tray.id)
-            const trayLabel = updatedTrayDetails 
-              ? `${updatedTrayDetails.number}${updatedTrayDetails.size ? ` (${updatedTrayDetails.size})` : ''}${updatedTrayDetails.status ? ` - ${updatedTrayDetails.status}` : ''}`
-              : `${tray.number || (traysToSend.indexOf(tray) + 1)}${tray.size ? ` (${tray.size})` : ''}`
-            
-            await logItemEvent(
-              'tray',
-              tray.id,
-              `Tăvița "${trayLabel}" a fost repartizată în pipeline-ul "${targetPipelineName}" (stage: ${stageToUse.name})`,
-              'tray_moved_to_pipeline',
-              {
-                source_pipeline_id: sourceTrayDetails?.pipeline?.id || null,
-                target_pipeline_id: departmentPipeline.id,
-                target_stage_id: stageToUse.id,
+            const trayLabel = updatedTrayDetails
+              ? `${updatedTrayDetails.number}${updatedTrayDetails.status ? ` - ${updatedTrayDetails.status}` : ''}`
+              : `${tray.number || (traysToSend.indexOf(tray) + 1)}`
+            const message = `Tăvița "${trayLabel}" a fost repartizată în pipeline-ul "${targetPipelineName}" (stage: ${stageToUse.name})`
+            const payload = {
+              tray_id: tray.id,
+              source_pipeline_id: sourceTrayDetails?.pipeline?.id || null,
+              target_pipeline_id: departmentPipeline.id,
+              target_stage_id: stageToUse.id,
+            }
+            const details = {
+              tray: updatedTrayDetails ? {
+                id: updatedTrayDetails.id,
+                number: updatedTrayDetails.number,
+                status: updatedTrayDetails.status,
+                service_file_id: updatedTrayDetails.service_file_id,
+              } : {
+                id: tray.id,
+                number: tray.number || 'nesemnată',
+                status: 'in_receptie',
+                service_file_id: fisaId || null,
               },
-              {
-                tray: updatedTrayDetails ? {
-                  id: updatedTrayDetails.id,
-                  number: updatedTrayDetails.number,
-                  size: updatedTrayDetails.size,
-                  status: updatedTrayDetails.status,
-                  service_file_id: updatedTrayDetails.service_file_id,
-                } : {
-                  id: tray.id,
-                  number: tray.number || 'nesemnată',
-                  size: tray.size || '',
-                  status: 'in_receptie',
-                  service_file_id: fisaId || null,
-                },
-                source_pipeline: sourceTrayDetails?.pipeline || undefined,
-                pipeline: {
-                  id: departmentPipeline.id,
-                  name: targetPipelineName,
-                },
-                stage: {
-                  id: nouaStage.id,
-                  name: nouaStage.name,
-                },
-                user: currentUser || undefined,
-              },
-              { currentUserId: authUser?.id, currentUserName: authUser?.email?.split('@')[0] ?? null, currentUserEmail: authUser?.email ?? null }
-            )
-            
+              source_pipeline: sourceTrayDetails?.pipeline || undefined,
+              pipeline: { id: departmentPipeline.id, name: targetPipelineName },
+              stage: { id: nouaStage.id, name: nouaStage.name },
+              user: currentUser || undefined,
+            }
+            const actorOpt = { currentUserId: authUser?.id, currentUserName: authUser?.email?.split('@')[0] ?? null, currentUserEmail: authUser?.email ?? null }
             if (fisaId) {
-              await logItemEvent(
-                'service_file',
-                fisaId,
-                `Tăvița "${trayLabel}" a fost repartizată în pipeline-ul "${targetPipelineName}" (stage: ${nouaStage.name})`,
-                'tray_moved_to_pipeline',
-                {
-                  tray_id: tray.id,
-                  source_pipeline_id: sourceTrayDetails?.pipeline?.id || null,
-                  target_pipeline_id: departmentPipeline.id,
-                  target_stage_id: nouaStage.id,
-                },
-                {
-                  tray: updatedTrayDetails ? {
-                    id: updatedTrayDetails.id,
-                    number: updatedTrayDetails.number,
-                    size: updatedTrayDetails.size,
-                    status: updatedTrayDetails.status,
-                    service_file_id: updatedTrayDetails.service_file_id,
-                  } : {
-                    id: tray.id,
-                    number: tray.number || 'nesemnată',
-                    size: tray.size || '',
-                    status: 'in_receptie',
-                    service_file_id: fisaId,
-                  },
-                  pipeline: {
-                    id: departmentPipeline.id,
-                    name: targetPipelineName,
-                  },
-                  stage: {
-                    id: nouaStage.id,
-                    name: nouaStage.name,
-                  },
-                  user: currentUser || undefined,
-                },
-                { currentUserId: authUser?.id, currentUserName: authUser?.email?.split('@')[0] ?? null, currentUserEmail: authUser?.email ?? null }
-              )
+              await logItemEvent('service_file', fisaId, message, 'tray_moved_to_pipeline', payload, details, actorOpt)
+            } else {
+              await logItemEvent('tray', tray.id, message, 'tray_moved_to_pipeline', payload, details, actorOpt)
             }
           } catch (logError) {
             console.error('[sendAllTraysToPipeline] Error logging tray move:', logError)
-            // Nu blocăm fluxul dacă logging-ul eșuează
           }
         }
       }
@@ -1899,7 +1854,7 @@ export function usePreturiTrayOperations({
         // 🔔 NOTIFICĂ TEHNICIENII DESPRE TĂVIȚELE NOI
         try {
           // Colectează informații despre pipeline-urile în care au fost mutate tăvițele
-          const traysToNotify: Array<{ id: string; number: string; size: string; pipelineId?: string; pipelineName?: string }> = []
+          const traysToNotify: Array<{ id: string; number: string; pipelineId?: string; pipelineName?: string }> = []
           
           // Parcurge rezultatele pentru a găsi pipeline_id-ul pentru fiecare tăviță trimisă cu succes
           for (let i = 0; i < quotes.length; i++) {
@@ -1920,28 +1875,22 @@ export function usePreturiTrayOperations({
                 traysToNotify.push({
                   id: tray.id,
                   number: tray.number || 'Fără număr',
-                  size: tray.size || 'm',
                   pipelineId: pipeline?.id,
                   pipelineName: pipeline?.name || pipelineName,
                 })
               } else {
-                // Dacă nu găsim numele pipeline-ului în rezultat, încercăm să-l găsim din database
                 traysToNotify.push({
                   id: tray.id,
                   number: tray.number || 'Fără număr',
-                  size: tray.size || 'm',
                 })
               }
             }
           }
           
-          // Dacă nu avem tăvițe cu pipeline_id setat, încercăm să le găsim din database
           if (traysToNotify.length === 0) {
-            // Fallback: adăugă toate tăvițele și lasă funcția să găsească pipeline-urile
             traysToNotify.push(...quotes.map((q: any) => ({
-            id: q.id,
-            number: q.number || 'Fără număr',
-            size: q.size || 'm',
+              id: q.id,
+              number: q.number || 'Fără număr',
             })))
           }
           
@@ -1980,6 +1929,7 @@ export function usePreturiTrayOperations({
       console.error('[usePreturiTrayOperations] Error sending trays:', error?.message || 'Unknown error')
       toast.error(`Eroare: ${error?.message || 'Eroare necunoscută'}`)
     } finally {
+      sendAllTraysInProgressRef.current = false
       setSendingTrays(false)
       setShowSendConfirmation(false)
     }
@@ -2013,10 +1963,10 @@ export function usePreturiTrayOperations({
     sendAllTraysToPipeline,
   } as {
     onAddSheet: () => Promise<void>
-    handleCreateTray: (overrides?: { number: string; size: string }) => Promise<void>
+    handleCreateTray: (overrides?: { number: string }) => Promise<void>
     onEditTray: () => void
     handleUpdateTray: () => Promise<void>
-    handleEditTrayInline: (trayId: string, newNumber: string, newSize: string) => Promise<void>
+    handleEditTrayInline: (trayId: string, newNumber: string) => Promise<void>
     handleDeleteTray: () => Promise<void>
     handleMoveInstrument: (trayIdOverride?: string, groupOverride?: { instrument: { id: string; name: string }; items: any[] } | null, options?: { newTrayNumber?: string }) => Promise<void>
     handleSplitTrayItemsToTechnician: (args: {

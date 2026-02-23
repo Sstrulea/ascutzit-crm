@@ -38,7 +38,7 @@ import {
 } from '@/lib/supabase/imageOperations'
 import { listParts, type Part } from '@/lib/supabase/partOperations'
 import { moveItemToStage } from '@/lib/supabase/pipelineOperations'
-import { getPipelinesWithStages, logItemEvent, logTrayItemChange, getTrayDetails, getTechnicianDetails, getUserDetails } from '@/lib/supabase/leadOperations'
+import { getPipelinesWithStages, logItemEvent, logTrayItemChange, getTrayDetails, getTechnicianDetails, getUserDetails, logTrayImageAdded, logTrayImageDeleted } from '@/lib/supabase/leadOperations'
 import { createNotification } from '@/lib/supabase/notificationOperations'
 import { getServiceFile, appendTechnicianDetail } from '@/lib/supabase/serviceFileOperations'
 import type { TechnicianDetailEntry } from '@/lib/supabase/serviceFileOperations'
@@ -698,7 +698,13 @@ export default function TehnicianTrayPage() {
       
       try {
         const { url, path } = await uploadTrayImage(trayId, file)
-        await saveTrayImageReference(trayId, url, path, file.name)
+        const savedImage = await saveTrayImageReference(trayId, url, path, file.name)
+        logTrayImageAdded({
+          trayId,
+          filename: file.name,
+          imageId: savedImage.id,
+          serviceFileId: trayData?.service_file_id ?? undefined,
+        }).catch(() => {})
         await loadTrayImages()
         toast.success('Imagine încărcată cu succes', { id: toastId })
       } catch (error: any) {
@@ -718,9 +724,16 @@ export default function TehnicianTrayPage() {
 
   // Șterge imagine
   const handleImageDelete = async (imageId: string, filePath: string) => {
+    const imageToDelete = trayImages.find(img => img.id === imageId)
+    const filename = imageToDelete?.filename ?? filePath.split('/').pop() ?? 'imagine'
     try {
       await deleteTrayImage(filePath)
       await deleteTrayImageReference(imageId)
+      logTrayImageDeleted({
+        trayId,
+        filename,
+        serviceFileId: trayData?.service_file_id ?? undefined,
+      }).catch(() => {})
       setTrayImages(prev => prev.filter(img => img.id !== imageId))
       toast.success('Imagine ștearsă')
     } catch (error: any) {
@@ -1740,7 +1753,7 @@ export default function TehnicianTrayPage() {
             Tăviță #{trayData.number}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {trayData.size} • {trayData.status === 'in_receptie' ? 'În recepție' : 
+            {trayData.status === 'in_receptie' ? 'În recepție' : 
                               trayData.status === 'in_lucru' ? 'În lucru' : 
                               trayData.status === 'gata' ? 'Gata' : trayData.status}
           </p>
@@ -1997,7 +2010,7 @@ export default function TehnicianTrayPage() {
                           ])
                           
                           const trayLabel = trayDetails 
-                            ? `${trayDetails.number}${trayDetails.size ? ` (${trayDetails.size})` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+                            ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
                             : 'nesemnată'
                           
                           await logItemEvent(
@@ -2015,7 +2028,6 @@ export default function TehnicianTrayPage() {
                               tray: trayDetails ? {
                                 id: trayDetails.id,
                                 number: trayDetails.number,
-                                size: trayDetails.size,
                                 status: trayDetails.status,
                                 service_file_id: trayDetails.service_file_id,
                               } : undefined,

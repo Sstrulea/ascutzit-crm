@@ -16,7 +16,6 @@ import type {
 } from './types'
 import { getTechnicianName } from './cache'
 import { URGENT_MARKUP_PCT, matchesStagePattern } from './constants'
-import { formatTraySizeDisplay } from '@/lib/utils/trayDisplay'
 import { getLeadDisplayName, getLeadDisplayPhone } from '@/lib/utils/leadDisplay'
 
 // ==================== LEAD TRANSFORMER ====================
@@ -221,7 +220,6 @@ export function transformTrayToKanbanItem(
     technician,
     type: 'tray',
     trayNumber: tray.number,
-    traySize: formatTraySizeDisplay(tray.size),
     trayStatus: tray.status,
     isSplitChild: tray.status === 'Splited', // Marchează tăvitele rezultate din split
     total,
@@ -396,7 +394,6 @@ export function transformTrayToVirtualKanbanItems(
       technicianId: techId,
       type: 'tray',
       trayNumber: tray.number,
-      traySize: formatTraySizeDisplay(tray.size),
       trayStatus: tray.status,
       isSplitChild: tray.status === 'Splited', // Marchează tăvitele rezultate din split
       total,
@@ -465,7 +462,6 @@ export function transformTrayToVirtualKanbanItems(
       technicianId: techId,
       type: 'tray',
       trayNumber: tray.number,
-      traySize: formatTraySizeDisplay(tray.size),
       trayStatus: tray.status,
       isSplitChild: tray.status === 'Splited', // Marchează tăvitele rezultate din split
       total: techTotal,

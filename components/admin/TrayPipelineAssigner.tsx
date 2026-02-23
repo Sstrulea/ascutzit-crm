@@ -363,7 +363,6 @@ export default function TrayPipelineAssigner() {
                   <TableRow>
                     <TableHead className="w-12"></TableHead>
                     <TableHead>Tăviță</TableHead>
-                    <TableHead>Dimensiune</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Fișă Serviciu</TableHead>
                     <TableHead>Client</TableHead>
@@ -384,9 +383,6 @@ export default function TrayPipelineAssigner() {
                           <Package className="h-3 w-3 text-muted-foreground" />
                           {tray.number}
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{tray.size}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant={tray.status === 'active' ? 'default' : 'secondary'}>

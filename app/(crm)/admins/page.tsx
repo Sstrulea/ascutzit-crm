@@ -113,7 +113,6 @@ export default function AdminsPage() {
   useEffect(() => {
     loadMembers()
     loadPipelines()
-    loadDashboardStats()
   }, [])
 
   async function loadPipelines() {
@@ -265,40 +264,6 @@ export default function AdminsPage() {
     }
   }
 
-  async function loadDashboardStats() {
-    // Load dashboard statistics for overview
-    try {
-      const { count: totalLeads } = await supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      
-      const { count: totalSales } = await supabase
-        .from('service_files')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      
-      const { count: activePipelines } = await supabase
-        .from('pipelines')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true)
-      
-      setDashboardStats({
-        totalLeads: totalLeads || 0,
-        totalSales: totalSales || 0,
-        activePipelines: activePipelines || 0
-      })
-    } catch (error) {
-      console.error('[loadDashboardStats] Error:', error)
-    }
-  }
-
-  const [dashboardStats, setDashboardStats] = useState({
-    totalLeads: 0,
-    totalSales: 0,
-    activePipelines: 0
-  })
-
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault()
     if (!newEmail || !newName) {
@@ -319,7 +284,6 @@ export default function AdminsPage() {
       setNewName("")
       setNewRole("admin")
       loadMembers()
-      loadDashboardStats()
     } catch (error: any) {
       toast.error(error.message)
     } finally {
@@ -359,7 +323,6 @@ export default function AdminsPage() {
       setMembers(prev => prev.filter(m => m.user_id !== memberToDelete.user_id))
       setDeleteDialogOpen(false)
       setMemberToDelete(null)
-      loadDashboardStats()
     } catch (error: any) {
       toast.error(error.message)
     } finally {
@@ -505,11 +468,6 @@ export default function AdminsPage() {
     admins: admins.length,
     members: regularMembers.length,
     activeMembers: members.length, // Assuming all are active for now
-    weeklyStats: {
-      newLeads: dashboardStats.totalLeads,
-      sales: dashboardStats.totalSales,
-      activePipelines: dashboardStats.activePipelines
-    },
     recentActivity: members.slice(0, 5).map(m => ({
       id: m.user_id,
       userId: m.user_id,

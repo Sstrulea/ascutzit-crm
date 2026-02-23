@@ -77,7 +77,6 @@ export interface TechnicianStatistics {
 export interface TrayProcessed {
   trayId: string
   trayNumber: string
-  traySize: string | null
   serviceFileId: string | null
   leadId: string | null
   clientName: string | null

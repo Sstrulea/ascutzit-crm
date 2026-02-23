@@ -80,7 +80,6 @@ export interface V4Part {
 export interface V4LocalTray {
   id: string
   number: string
-  size?: string
 }
 
 export interface V4SaveData {
@@ -126,7 +125,7 @@ export async function saveVanzariViewV4ToDb(
       localTrays.length > 0
         ? localTrays
         : instruments.length > 0 || services.length > 0 || parts.length > 0
-          ? [{ id: '__default__', number: '', size: 'm' as const }]
+          ? [{ id: '__default__', number: '' }]
           : []
 
     // 1. Încarcă tăvițele existente pentru fișă
@@ -134,8 +133,12 @@ export async function saveVanzariViewV4ToDb(
     if (listErr) throw listErr
     const existing = existingTrays || []
 
-    // 2. Șterge toate tray_items (și brand_serials) pentru aceste tăvițe
+    // 2. Șterge tray_items doar pentru tăvițe care sunt în payload (le resincronizăm).
+    // Tăvițe existente care nu sunt în payload (ex. trimise în departament) nu le atingem.
+    const payloadTrayNumbers = new Set(traysToUse.map((t) => t.number?.trim() ?? ''))
     for (const tray of existing) {
+      const key = tray.number?.trim() ?? ''
+      if (!payloadTrayNumbers.has(key)) continue
       const { data: items } = await listTrayItemsForTray(tray.id)
       const itemIds = (items || []).map((i: any) => i.id)
       if (itemIds.length > 0) {
@@ -144,8 +147,12 @@ export async function saveVanzariViewV4ToDb(
       await supabase.from('tray_items').delete().eq('tray_id', tray.id)
     }
 
-    // 3. Șterge tăvițe care nu mai sunt în data.trays (match by number)
-    const wantedKeys = new Set(traysToUse.map((t) => t.number?.trim() ?? ''))
+    // 3. Șterge doar tăvițe care nu mai sunt în data.trays ȘI nu există deja în DB pentru această fișă.
+    // IMPORTANT: Nu ștergem tăvițe existente doar pentru că lipsesc din payload (ex: tăviță trimisă
+    // în departament poate să nu fie în state la salvare) – evită bugul „tăvița dispare după urgent”.
+    const wantedKeysFromPayload = new Set(traysToUse.map((t) => t.number?.trim() ?? ''))
+    const existingKeys = new Set(existing.map((t) => t.number?.trim() ?? ''))
+    const wantedKeys = new Set([...wantedKeysFromPayload, ...existingKeys])
     for (const t of existing) {
       const key = t.number?.trim() ?? ''
       if (!wantedKeys.has(key)) {

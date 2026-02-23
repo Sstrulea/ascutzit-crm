@@ -192,30 +192,37 @@ async function searchViaDirectQueries(
       .order('full_name', { ascending: true, nullsFirst: false })
       .limit(LIMIT_PER_TYPE)
 
-    // 1b. LEADS: telefon normalizat
+    // 1b. LEADS: telefon normalizat (0773739114 ↔ +40773739114) – variante pentru potrivire 0 vs +40
     const digitsOnly = normalizePhoneNumber(term)
     let phoneLeads: typeof leads = []
     if (digitsOnly.length >= 3) {
-      const phoneVariants = new Set<string>()
-      phoneVariants.add(`%${digitsOnly}%`)
-      if (digitsOnly.startsWith('0')) {
-        phoneVariants.add(`%4${digitsOnly}%`)
-        phoneVariants.add(`%+4${digitsOnly}%`)
+      const patterns: string[] = []
+      patterns.push(digitsOnly)
+      if (digitsOnly.startsWith('0') && digitsOnly.length >= 10) {
+        patterns.push('4' + digitsOnly)
+        patterns.push(digitsOnly.slice(1))
       }
       if (digitsOnly.startsWith('40') && digitsOnly.length > 2) {
-        phoneVariants.add(`%0${digitsOnly.slice(2)}%`)
+        patterns.push('0' + digitsOnly.slice(2))
       }
-      if (term.startsWith('+40') && digitsOnly.length > 2) {
-        phoneVariants.add(`%0${digitsOnly.slice(2)}%`)
+      const seenPhoneIds = new Set<string>()
+      for (const p of patterns) {
+        const pattern = `%${p}%`
+        const { data: chunk } = await supabase
+          .from('leads')
+          .select('id, full_name, company_name, phone_number, email')
+          .ilike('phone_number', pattern)
+          .order('full_name', { ascending: true, nullsFirst: false })
+          .limit(LIMIT_PER_TYPE)
+        for (const row of chunk || []) {
+          const id = row?.id as string
+          if (id && !seenPhoneIds.has(id)) {
+            seenPhoneIds.add(id)
+            phoneLeads = [...(phoneLeads || []), row]
+          }
+        }
+        if ((phoneLeads?.length ?? 0) >= LIMIT_PER_TYPE) break
       }
-      const orFilters = [...phoneVariants].map((v) => `phone_number.ilike.${v}`).join(',')
-      const { data: phoneLds } = await supabase
-        .from('leads')
-        .select('id, full_name, company_name, phone_number, email')
-        .or(orFilters)
-        .order('full_name', { ascending: true, nullsFirst: false })
-        .limit(LIMIT_PER_TYPE)
-      phoneLeads = phoneLds || []
     }
 
     // 1c. ID-uri lead-uri găsite (nume, companie, telefon) – pentru fișe și tăvițe asociate
@@ -277,7 +284,6 @@ async function searchViaDirectQueries(
           .select(`
             id,
             number,
-            size,
             service_file:service_files!inner(number, lead:leads!inner(full_name, company_name))
           `)
           .in('service_file_id', sfIdsForTrays)
@@ -290,7 +296,7 @@ async function searchViaDirectQueries(
           const lead = sf?.lead
           const leadName = lead?.full_name || lead?.company_name || ''
           const sfNum = sf?.number || ''
-          const title = `Tăviță ${t.number || ''}${t.size ? ` ${t.size}` : ''}`.trim() || `Tăviță ${id}`
+          const title = `Tăviță ${t.number || ''}`.trim() || `Tăviță ${id}`
           const subtitle = [leadName, sfNum].filter(Boolean).join(' · ')
           rawResults.push({ type: 'tray', id, title, subtitle: subtitle || undefined, openId: id, fallbackSlug: 'saloane', fallbackName: 'Saloane' })
         }
@@ -303,7 +309,7 @@ async function searchViaDirectQueries(
       const id = t.trayId
       if (!id || seenKeys.has(`tray:${id}`)) continue
       seenKeys.add(`tray:${id}`)
-      const title = `Tăviță ${t.trayNumber}${t.traySize ? ` ${t.traySize}` : ''}`
+      const title = `Tăviță ${t.trayNumber}`
       const subtitle = [t.leadName, t.serviceFileNumber].filter(Boolean).join(' · ')
       rawResults.push({ type: 'tray', id, title, subtitle: subtitle || undefined, openId: id, fallbackSlug: 'saloane', fallbackName: 'Saloane' })
     }

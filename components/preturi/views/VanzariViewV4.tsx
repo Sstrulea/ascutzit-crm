@@ -78,11 +78,10 @@ interface Part {
   trayId?: string
 }
 
-/** Tăviță creată local în view (număr + mărime opțională). */
+/** Tăviță creată local în view (număr). */
 export interface LocalTray {
   id: string
   number: string
-  size?: string
 }
 
 export interface VanzariViewV4Props {
@@ -548,7 +547,7 @@ interface SummaryTableProps {
   isLocked: boolean
   /** Cantitate instrument per înregistrare în tabel (independentă de QT din card). Cheie = localId. */
   instrumentQuantityInTable: Record<string, number>
-  onAddTray: (number: string, size?: string) => void
+  onAddTray: (number: string) => void
   onRemoveTray: (trayId: string) => void
   onUpdateTray: (trayId: string, newNumber: string) => void
   onUpdateServiceTray: (instrumentLocalId: string, serviceId: string, trayId: string | undefined) => void
@@ -1301,7 +1300,6 @@ export function VanzariViewV4({
         .map((t) => ({
           id: t.id,
           number: t.number,
-          size: t.size,
         }))
     )
     setInstrumentTrayId(initialData.instrumentTrayId ?? {})
@@ -1355,7 +1353,6 @@ export function VanzariViewV4({
       (cached.trays ?? []).map((t) => ({
         id: t.id,
         number: t.number,
-        size: t.size,
       }))
     )
     setInstrumentTrayId(cached.instrumentTrayId ?? {})
@@ -1559,8 +1556,8 @@ export function VanzariViewV4({
     setParts(prev => prev.map(p => p.id === partId ? { ...p, instrumentQty: Math.max(1, qty) } : p))
   }
 
-  const handleAddTray = (number: string, size?: string) => {
-    setTrays(prev => [...prev, { id: generateId(), number: number.trim(), size: size?.trim() || undefined }])
+  const handleAddTray = (number: string) => {
+    setTrays(prev => [...prev, { id: generateId(), number: number.trim() }])
   }
 
   const handleRemoveTray = (trayId: string) => {

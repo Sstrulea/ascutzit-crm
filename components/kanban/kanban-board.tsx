@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { LazyLeadCard } from "./LazyLeadCard"
 import { cn } from "@/lib/utils"
 import type { KanbanLead } from "../lib/types/database"
-import { Trash2, Loader2, TrendingUp, Inbox, Move, X, ArrowUpDown, ArrowUp, ArrowDown, MessageSquare, Package, PhoneCall, PhoneMissed, XCircle, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, Layers } from "lucide-react"
+import { Trash2, Loader2, TrendingUp, Inbox, Move, X, ArrowUpDown, ArrowUp, ArrowDown, MessageSquare, Package, PhoneCall, PhoneMissed, XCircle, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, Layers, Minus } from "lucide-react"
 import { toast } from "sonner"
 import { updateLead } from "@/lib/supabase/leadOperations"
 import { setLeadNoDeal } from "@/lib/vanzari/leadOperations"
@@ -139,6 +139,13 @@ export function KanbanBoard({
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollToFirstStage = useCallback(() => {
     scrollContainerRef.current?.scrollTo({ left: 0, behavior: 'smooth' })
+  }, [])
+  const scrollToMiddleStage = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (el) {
+      const target = Math.max(0, (el.scrollWidth - el.clientWidth) / 2)
+      el.scrollTo({ left: target, behavior: 'smooth' })
+    }
   }, [])
   const scrollToLastStage = useCallback(() => {
     const el = scrollContainerRef.current
@@ -986,6 +993,17 @@ export function KanbanBoard({
               variant="outline"
               size="sm"
               className="h-8 px-2"
+              onClick={scrollToMiddleStage}
+              title="Mergi la mijlocul stage-urilor"
+            >
+              <Minus className="h-4 w-4 mr-1" />
+              Stage din mijloc
+              <Minus className="h-4 w-4 ml-1" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2"
               onClick={scrollToLastStage}
               title="Mergi la ultimul stage"
             >
@@ -1161,7 +1179,8 @@ export function KanbanBoard({
                             setCurierAjunsAziMoveLoading(true)
                             try {
                               await onBulkMoveCurierAjunsAziToAvemComanda(leadIds)
-                              onRefresh?.()
+                              // Întârziere scurtă ca DB-ul și realtime să persiste înainte de refetch
+                              setTimeout(() => onRefresh?.(), 500)
                             } finally {
                               setCurierAjunsAziMoveLoading(false)
                             }

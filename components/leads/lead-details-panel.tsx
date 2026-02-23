@@ -83,7 +83,6 @@ import { listServices } from "@/lib/supabase/serviceOperations"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { formatTraySizeDisplay } from "@/lib/utils/trayDisplay"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 type Maybe<T> = T | null
@@ -263,16 +262,19 @@ export function LeadDetailsPanel({
   // NOTĂ: Toate state-urile sunt gestionate în useLeadDetailsBusiness hook
   // Folosim business.state.* pentru toate state-urile
 
-  // Salvare în istoric la fiecare acces la detaliile lead-ului (același leadId ca în tab-ul Istoric)
+  // Salvare în istoric o singură dată per deschidere a aceluiași lead (evită zeci de evenimente la fiecare re-render)
+  const lastLoggedOpenLeadIdRef = useRef<string | null>(null)
   useEffect(() => {
-    const lid = business.getLeadId()
+    const lid = (lead as any)?.leadId ?? lead?.id ?? business.getLeadId()
     if (!lid) return
+    if (lastLoggedOpenLeadIdRef.current === lid) return
+    lastLoggedOpenLeadIdRef.current = lid
     logLeadEvent(lid, 'Detalii lead deschise', 'lead_details_opened', { source: 'panel' }).catch((err) => {
       if (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') {
         console.warn('[LeadDetailsPanel] Istoric acces lead:', err)
       }
     })
-  }, [lead?.id, (lead as any)?.leadId, business.getLeadId])
+  }, [lead?.id, (lead as any)?.leadId])
 
   // Detalii tehnician: note manuale (technician_details) + evenimente QC din istoric (items_events)
   const technicianDetailsMerged = useMemo(() => {
@@ -446,13 +448,12 @@ export function LeadDetailsPanel({
         if (!isMounted) return
         
         // Încarcă toate tăvițele din toate service_files
-        const allTraysList: Array<{ id: string; number: string; size: string; service_file_id: string }> = []
+        const allTraysList: Array<{ id: string; number: string; service_file_id: string }> = []
         for (const sheet of sheets) {
           const trays = await listTraysForServiceSheet(sheet.id)
           allTraysList.push(...trays.map((t: any) => ({
             id: t.id,
             number: t.number,
-            size: t.size,
             service_file_id: sheet.id
           })))
         }
@@ -1149,7 +1150,7 @@ export function LeadDetailsPanel({
                           ])
                           
                           const trayLabel = trayDetails 
-                            ? `${trayDetails.number}${trayDetails.size ? ` ${formatTraySizeDisplay(trayDetails.size)}` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+                            ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
                             : 'nesemnată'
                           
                           await logItemEvent(
@@ -1167,7 +1168,6 @@ export function LeadDetailsPanel({
                               tray: trayDetails ? {
                                 id: trayDetails.id,
                                 number: trayDetails.number,
-                                size: trayDetails.size,
                                 status: trayDetails.status,
                                 service_file_id: trayDetails.service_file_id,
                               } : undefined,

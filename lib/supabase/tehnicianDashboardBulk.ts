@@ -837,7 +837,7 @@ function buildDetailedDayData(
       }
 
       // Arhiva tavite unite
-      const mergedTrayInfoByChildId = new Map<string, { trayNumber: string | null; traySize: string | null; serviceFileId: string | null; parentTrayId: string | null }>()
+      const mergedTrayInfoByChildId = new Map<string, { trayNumber: string | null; serviceFileId: string | null; parentTrayId: string | null }>()
       const foundTrayIds = new Set(trayById.keys())
       const missingTrayIds = trayIds.filter(id => !foundTrayIds.has(id))
       if (missingTrayIds.length > 0) {
@@ -850,7 +850,6 @@ function buildDetailedDayData(
             if (!missingSet.has(cid)) continue
             mergedTrayInfoByChildId.set(cid, {
               trayNumber: childNumbers[i] != null && childNumbers[i] !== '' ? String(childNumbers[i]) : null,
-              traySize: row?.tray_size ?? null,
               serviceFileId: row?.service_file_id ? String(row.service_file_id) : null,
               parentTrayId: row?.parent_tray_id ? String(row.parent_tray_id) : null,
             })
@@ -1177,7 +1176,7 @@ function buildDetailedDayData(
             const sfArchive = archived.serviceFileId ? serviceFileById.get(archived.serviceFileId) : null
             const clientNameArchive = sfArchive?.lead_id ? leadNameById.get(String(sfArchive.lead_id)) ?? null : null
             list.push({
-              trayId, trayNumber: archived.trayNumber, traySize: archived.traySize,
+              trayId, trayNumber: archived.trayNumber,
               serviceFileId: archived.serviceFileId, serviceFileNumber: sfArchive?.number ?? null,
               leadId: sfArchive?.lead_id ? String(sfArchive.lead_id) : null, clientName: clientNameArchive,
               minutesInLucru: time.traysByTechnician.get(techId)?.get(trayId) ?? 0,
@@ -1200,7 +1199,7 @@ function buildDetailedDayData(
           const clientName = sf?.lead_id ? leadNameById.get(String(sf.lead_id)) ?? null : null
           const stageInfo = trayCurrentStage.get(trayId)
           list.push({
-            trayId, trayNumber: t?.number ?? null, traySize: t?.size ?? null,
+            trayId, trayNumber: t?.number ?? null,
             serviceFileId: sfId, serviceFileNumber: sf?.number ?? null,
             leadId: sf?.lead_id ? String(sf.lead_id) : null, clientName,
             minutesInLucru: time.traysByTechnician.get(techId)?.get(trayId) ?? 0,

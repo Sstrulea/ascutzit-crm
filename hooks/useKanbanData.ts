@@ -914,7 +914,7 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
                   getUserDetails(currentUserId, { currentUser: currentUserOption }),
                 ])
                 const trayLabel = trayDetails
-                  ? `${trayDetails.number}${trayDetails.size ? ` (${trayDetails.size})` : ''}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
+                  ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}`
                   : 'nesemnată'
                 let pipelineForLog = trayDetails?.pipeline
                 const leadAny = previousLead as any
@@ -929,7 +929,7 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
                   'technician_assigned',
                   {},
                   {
-                    tray: trayDetails ? { id: trayDetails.id, number: trayDetails.number, size: trayDetails.size, status: trayDetails.status, service_file_id: trayDetails.service_file_id } : undefined,
+                    tray: trayDetails ? { id: trayDetails.id, number: trayDetails.number, status: trayDetails.status, service_file_id: trayDetails.service_file_id } : undefined,
                     technician: technicianDetails ? { id: technicianDetails.id, name: technicianDetails.name, email: technicianDetails.email } : undefined,
                     pipeline: pipelineForLog || undefined,
                     stage: trayDetails?.stage || undefined,

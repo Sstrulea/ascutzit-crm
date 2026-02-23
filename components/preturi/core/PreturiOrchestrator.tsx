@@ -213,7 +213,7 @@ interface PreturiOrchestratorProps {
   canAssignTrayImage?: boolean
   onMoveInstrument: (instrumentGroup: { instrument: { id: string; name: string }; items: LeadQuoteItem[] }) => void
   onMoveInstrumentToTray?: (group: { instrument: { id: string; name: string }; items: LeadQuoteItem[] }, trayId: string) => void
-  onMoveInstrumentToNewTray?: (group: { instrument: { id: string; name: string }; items: LeadQuoteItem[] }, number: string, size: string) => Promise<void>
+  onMoveInstrumentToNewTray?: (group: { instrument: { id: string; name: string }; items: LeadQuoteItem[] }, number: string) => Promise<void>
   onSplitTrayItemsToTechnician?: (args: {
     trayId?: string
     mode?: 'split' | 'merge'
@@ -255,7 +255,7 @@ interface PreturiOrchestratorProps {
   onCreateTray: () => Promise<void>
   onCreateTrayInline?: (number: string) => Promise<void>
   onUpdateTray: () => Promise<void>
-  onEditTrayInline?: (trayId: string, newNumber: string, newSize?: string) => Promise<void>
+  onEditTrayInline?: (trayId: string, newNumber: string) => Promise<void>
   onMoveInstrumentConfirm: () => Promise<void>
   onNewTrayNumberChange: (value: string) => void
   onEditingTrayNumberChange: (value: string) => void
@@ -519,9 +519,31 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
   
   
   if (isReceptiePipeline) {
-    // Aceeași structură ca la Vânzări (VanzariViewV4): tăvițe, sumar, instrumente, Urgent/Abonament/Office/Curier/Retur, Salvează în Istoric + Trimite tăvițele
+    // Imagini tăviță afișate primele, apoi conținutul VanzariViewV4
     return (
       <>
+        {props.canViewTrayImages && selectedQuoteId && (
+          <TrayImagesSection
+            trayImages={props.trayImages}
+            uploadingImage={props.uploadingImage}
+            isImagesExpanded={props.isImagesExpanded}
+            canAddTrayImages={props.canAddTrayImages}
+            canViewTrayImages={props.canViewTrayImages}
+            selectedQuoteId={selectedQuoteId}
+            onToggleExpanded={props.onToggleImagesExpanded || (() => {})}
+            onImageUpload={async (e) => {
+              const file = e.target?.files?.[0]
+              if (file && props.onImageUpload) await props.onImageUpload(file)
+            }}
+            onDownloadAll={props.onDownloadAllImages || (() => Promise.resolve())}
+            onImageDelete={async (imageId, filePath) => {
+              if (props.onImageDelete) await props.onImageDelete(imageId)
+            }}
+            assignedImageId={props.assignedImageId ?? null}
+            onAssignImage={props.onAssignTrayImage}
+            canAssignImage={props.canAssignTrayImage ?? false}
+          />
+        )}
         <VanzariViewV4
           availableInstruments={props.availableInstruments}
           services={props.services}
@@ -552,28 +574,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
           onReturChange={props.onReturChange}
           onSubscriptionChange={props.onSubscriptionChange}
         />
-        {props.canViewTrayImages && selectedQuoteId && (
-          <TrayImagesSection
-            trayImages={props.trayImages}
-            uploadingImage={props.uploadingImage}
-            isImagesExpanded={props.isImagesExpanded}
-            canAddTrayImages={props.canAddTrayImages}
-            canViewTrayImages={props.canViewTrayImages}
-            selectedQuoteId={selectedQuoteId}
-            onToggleExpanded={props.onToggleImagesExpanded || (() => {})}
-            onImageUpload={async (e) => {
-              const file = e.target?.files?.[0]
-              if (file && props.onImageUpload) await props.onImageUpload(file)
-            }}
-            onDownloadAll={props.onDownloadAllImages || (() => Promise.resolve())}
-            onImageDelete={async (imageId, filePath) => {
-              if (props.onImageDelete) await props.onImageDelete(imageId)
-            }}
-            assignedImageId={props.assignedImageId ?? null}
-            onAssignImage={props.onAssignTrayImage}
-            canAssignImage={props.canAssignTrayImage ?? false}
-          />
-        )}
         <CreateTrayDialog
           open={props.showCreateTrayDialog}
           onOpenChange={(open) => { if (!open) props.onCancelCreateTray() }}
@@ -652,7 +652,7 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
   }
   
   if (isDepartmentPipeline) {
-    // Aceeași structură ca la Vânzări/Recepție (VanzariViewV4) + Acțiuni tăviță (Împarte/Reunește)
+    // Imagini tăviță afișate primele, apoi conținutul VanzariViewV4 + Acțiuni tăviță
     const departmentActions: Array<{ label: string; onClick: () => void }> = []
     if (props.onSplitTrayItemsToTechnician) {
       departmentActions.push({ label: 'Împarte volum către tehnician', onClick: () => setShowSplitTechnicianDialog(true) })
@@ -667,6 +667,28 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
 
     return (
       <>
+        {props.canViewTrayImages && selectedQuoteId && (
+          <TrayImagesSection
+            trayImages={props.trayImages}
+            uploadingImage={props.uploadingImage}
+            isImagesExpanded={props.isImagesExpanded}
+            canAddTrayImages={props.canAddTrayImages}
+            canViewTrayImages={props.canViewTrayImages}
+            selectedQuoteId={selectedQuoteId}
+            onToggleExpanded={props.onToggleImagesExpanded || (() => {})}
+            onImageUpload={async (e) => {
+              const file = e.target?.files?.[0]
+              if (file && props.onImageUpload) await props.onImageUpload(file)
+            }}
+            onDownloadAll={props.onDownloadAllImages || (() => Promise.resolve())}
+            onImageDelete={async (imageId, _filePath) => {
+              if (props.onImageDelete) await props.onImageDelete(imageId)
+            }}
+            assignedImageId={props.assignedImageId ?? null}
+            onAssignImage={props.onAssignTrayImage}
+            canAssignImage={props.canAssignTrayImage ?? false}
+          />
+        )}
         <VanzariViewV4
           availableInstruments={props.availableInstruments}
           services={props.services}
@@ -694,28 +716,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
           onReturChange={props.onReturChange}
           onSubscriptionChange={props.onSubscriptionChange}
         />
-        {props.canViewTrayImages && selectedQuoteId && (
-          <TrayImagesSection
-            trayImages={props.trayImages}
-            uploadingImage={props.uploadingImage}
-            isImagesExpanded={props.isImagesExpanded}
-            canAddTrayImages={props.canAddTrayImages}
-            canViewTrayImages={props.canViewTrayImages}
-            selectedQuoteId={selectedQuoteId}
-            onToggleExpanded={props.onToggleImagesExpanded || (() => {})}
-            onImageUpload={async (e) => {
-              const file = e.target?.files?.[0]
-              if (file && props.onImageUpload) await props.onImageUpload(file)
-            }}
-            onDownloadAll={props.onDownloadAllImages || (() => Promise.resolve())}
-            onImageDelete={async (imageId, _filePath) => {
-              if (props.onImageDelete) await props.onImageDelete(imageId)
-            }}
-            assignedImageId={props.assignedImageId ?? null}
-            onAssignImage={props.onAssignTrayImage}
-            canAssignImage={props.canAssignTrayImage ?? false}
-          />
-        )}
         <CreateTrayDialog
           open={props.showCreateTrayDialog}
           onOpenChange={(open) => { if (!open) props.onCancelCreateTray() }}
