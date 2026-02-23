@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireOwner } from '@/lib/supabase/api-helpers'
 
-type Role = 'owner' | 'admin' | 'member'
+type Role = 'owner' | 'admin' | 'member' | 'vanzator' | 'receptie' | 'tehnician'
 
 export async function POST(req: Request) {
   try {

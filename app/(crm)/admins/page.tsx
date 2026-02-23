@@ -1,16 +1,12 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
-import { useRole } from "@/lib/contexts/AuthContext"
+import { useEffect, useState } from "react"
+import { useRole, useAuthContext } from "@/lib/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Loader2, Crown, ChevronDown, ChevronUp, Save, Shield, UserPlus, Edit2, X, Check, Database, Users, Package, FileSearch, List } from "lucide-react"
+import { Loader2, Users, Database, Package, FileSearch, List, UserPlus, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
-import { Checkbox } from "@/components/ui/checkbox"
-import { grantPipelineAccess, revokePipelineAccess } from "@/lib/supabase/pipelinePermissions"
-import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
 import dynamic from "next/dynamic"
 import {
   AlertDialog,
@@ -22,26 +18,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
 
-interface AppMember {
-  id: string
-  user_id: string
-  role: "owner" | "admin" | "member"
-  created_at: string
-  email?: string
-  name?: string
-}
-
-const supabase = supabaseBrowser()
-const DEFAULT_PASSWORD = "Welcome123"
-
+// Import existing admin components
 const BackupManager = dynamic(() => import('@/components/admin/BackupManager').then(mod => mod.default), {
   ssr: false,
   loading: () => <Loader2 className="h-8 w-8 animate-spin" />
@@ -62,47 +41,80 @@ const PipelineItemsManager = dynamic(() => import('@/components/admin/PipelineIt
   loading: () => <Loader2 className="h-8 w-8 animate-spin" />
 })
 
+// Import new components
+const OverviewDashboard = dynamic(() => import('@/components/admin/OverviewDashboard').then(mod => mod.default), {
+  ssr: false,
+  loading: () => <Loader2 className="h-8 w-8 animate-spin" />
+})
+
+const MemberTable = dynamic(() => import('@/components/admin/MemberTable').then(mod => mod.default), {
+  ssr: false,
+  loading: () => <Loader2 className="h-8 w-8 animate-spin" />
+})
+
+const MemberDetailsModal = dynamic(() => import('@/components/admin/MemberDetailsModal').then(mod => mod.default), {
+  ssr: false,
+  loading: () => <Loader2 className="h-8 w-8 animate-spin" />
+})
+
+const supabase = supabaseBrowser()
+const DEFAULT_PASSWORD = "Welcome123"
+
+type MemberRole = "owner" | "admin" | "member" | "vanzator" | "receptie" | "tehnician"
+
+interface AppMember {
+  id: string
+  user_id: string
+  role: MemberRole
+  created_at: string
+  email?: string
+  name?: string
+}
+
+interface ExtendedMember extends AppMember {
+  last_login?: string
+  status: 'active' | 'inactive'
+  leads_count: number
+  sales_count: number
+  pipelines_count: number
+  permissions_count: number
+  permissions: string[]
+}
+
 export default function AdminsPage() {
-  const { isOwner, loading: roleLoading } = useRole()
-  const [activeTab, setActiveTab] = useState<'members' | 'backups' | 'trays' | 'tray-finder' | 'pipeline-items'>('members')
-  const [members, setMembers] = useState<AppMember[]>([])
+  const { isOwner, loading: roleLoading, role, user } = useRole()
+  
+  // Debug: Log auth state
+  useEffect(() => {
+    console.log('[AdminsPage] Auth state:', {
+      isOwner,
+      role,
+      roleLoading,
+      userId: user?.id,
+      userEmail: user?.email
+    })
+  }, [isOwner, role, roleLoading, user])
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'backups' | 'trays' | 'tray-finder' | 'pipeline-items'>('dashboard')
+  const [members, setMembers] = useState<ExtendedMember[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [newEmail, setNewEmail] = useState("")
   const [newName, setNewName] = useState("")
-  const [newRole, setNewRole] = useState<"owner" | "admin" | "member">("admin")
+  const [newRole, setNewRole] = useState<MemberRole>("admin")
   const [adding, setAdding] = useState(false)
-  const [updatingRole, setUpdatingRole] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [memberToDelete, setMemberToDelete] = useState<AppMember | null>(null)
+  const [memberToDelete, setMemberToDelete] = useState<ExtendedMember | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [expandedMember, setExpandedMember] = useState<string | null>(null)
   const [pipelines, setPipelines] = useState<Array<{ id: string; name: string }>>([])
   const [memberPermissions, setMemberPermissions] = useState<{ [userId: string]: string[] }>({})
-  const [savingPermissions, setSavingPermissions] = useState(false)
-  const [editingName, setEditingName] = useState<string | null>(null)
-  const [editingNameValue, setEditingNameValue] = useState("")
-  const [savingName, setSavingName] = useState(false)
+  const [selectedMember, setSelectedMember] = useState<ExtendedMember | null>(null)
+  const [memberModalOpen, setMemberModalOpen] = useState(false)
 
   useEffect(() => {
     loadMembers()
     loadPipelines()
+    loadDashboardStats()
   }, [])
-
-  // IMPORTANT: Reîncarcă permisiunile când se schimbă lista de membri (după salvare, refresh, etc.)
-  // Folosim JSON.stringify pentru a detecta schimbări în lista de membri
-  useEffect(() => {
-    if (members.length > 0) {
-      console.log('[AdminsPage] Reîncărcare permisiuni pentru membrii existenți:', members.length)
-      const userIds = members.map(m => m.user_id)
-      console.log('[AdminsPage] User IDs pentru reîncărcare:', userIds)
-      loadAllMemberPermissions(userIds)
-    }
-  }, [JSON.stringify(members.map(m => m.user_id))]) // Reîncarcă când se schimbă lista de membri
-
-  // DEBUG: Monitorizează schimbările în memberPermissions
-  useEffect(() => {
-    console.log('[AdminsPage] memberPermissions changed:', memberPermissions)
-  }, [memberPermissions])
 
   async function loadPipelines() {
     const { data } = await supabase
@@ -116,159 +128,176 @@ export default function AdminsPage() {
   async function loadMembers() {
     setLoading(true)
     try {
+      console.log('[AdminsPage] Loading members...')
       const res = await fetch("/api/admin/members")
       const data = await res.json()
+      
+      console.log('[AdminsPage] Response:', data)
+      
       if (!res.ok || !data.ok) throw new Error(data.error || "Error")
       const loadedMembers = data.members || []
-      setMembers(loadedMembers)
       
-      await loadAllMemberPermissions(loadedMembers.map((m: AppMember) => m.user_id))
+      console.log('[AdminsPage] Loaded members count:', loadedMembers.length)
+      
+      // Add extended data to members
+      const extendedMembers = await Promise.all(loadedMembers.map(async (member: AppMember) => {
+        const [permissions, stats, lastLogin] = await Promise.all([
+          getMemberPermissions(member.user_id),
+          getMemberStats(member.user_id),
+          getLastLogin(member.user_id)
+        ])
+        
+        return {
+          ...member,
+          ...permissions,
+          ...stats,
+          ...lastLogin,
+          status: 'active' as const // Default to active for now
+        }
+      }))
+      
+      console.log('[AdminsPage] Extended members count:', extendedMembers.length)
+      console.log('[AdminsPage] First member:', extendedMembers[0])
+      
+      setMembers(extendedMembers)
+      
+      // Load all member permissions
+      const userIds = extendedMembers.map(m => m.user_id)
+      const allPermissions = await getAllMemberPermissions(userIds)
+      setMemberPermissions(allPermissions)
     } catch (error: any) {
+      console.error('[AdminsPage] Error loading members:', error)
       toast.error(error.message || "Eroare la încărcare")
     } finally {
       setLoading(false)
     }
   }
 
-  async function loadAllMemberPermissions(userIds: string[]) {
-    if (userIds.length === 0) {
-      console.log('[loadAllMemberPermissions] Nu există user IDs')
-      return
-    }
-    
-    console.log('[loadAllMemberPermissions] ════════════════════════════════════════')
-    console.log('[loadAllMemberPermissions] Încărcare permisiuni pentru user IDs:', userIds)
-    console.log('[loadAllMemberPermissions] User IDs count:', userIds.length)
-    
+  async function getMemberPermissions(userId: string): Promise<{ permissions: string[], permissions_count: number }> {
     try {
-      // IMPORTANT: Verifică dacă există permisiuni în DB pentru orice user (fără filtru)
-      const { data: allData, error: allError } = await supabase
-      .from('user_pipeline_permissions')
-      .select('user_id, pipeline_id')
-        .limit(10) // Doar primele 10 pentru debugging
-      
-      console.log('[loadAllMemberPermissions] 🔍 DEBUG: Toate permisiunile din DB (primele 10):', allData)
-      if (allError) {
-        console.error('[loadAllMemberPermissions] ❌ EROARE la query general:', allError)
-      }
-      
-      // Query-ul principal pentru user IDs specifici
-      const { data, error, count } = await supabase
+      const { data } = await supabase
         .from('user_pipeline_permissions')
-        .select('user_id, pipeline_id', { count: 'exact' })
-      .in('user_id', userIds)
-    
-      if (error) {
-        console.error('[loadAllMemberPermissions] ❌ EROARE la încărcare permisiuni:', error)
-        console.error('[loadAllMemberPermissions] Error details:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
-        })
-        
-        // Dacă este eroare RLS, încercă cu service role sau altă metodă
-        if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
-          console.error('[loadAllMemberPermissions] ⚠️ PROBLEMĂ RLS IDENTIFICATĂ!')
-          console.error('[loadAllMemberPermissions] Policy-ul actual permite doar utilizatorilor să vadă permisiunile proprii.')
-          console.error('[loadAllMemberPermissions] Owner-ii nu pot vedea permisiunile altor utilizatori.')
-          console.error('[loadAllMemberPermissions] SOLUȚIE: Rulează scriptul SQL din Secvente/FIX_RLS_USER_PIPELINE_PERMISSIONS.sql')
-          toast.error('Eroare RLS: Owner-ii nu pot vedea permisiunile. Rulează scriptul SQL pentru fix.')
-        } else {
-          toast.error(`Eroare la încărcare permisiuni: ${error.message}`)
-        }
-        return
+        .select('pipeline_id')
+        .eq('user_id', userId)
+      
+      const permissions = (data || []).map((p: any) => String(p.pipeline_id))
+      return {
+        permissions,
+        permissions_count: permissions.length
       }
-      
-      console.log('[loadAllMemberPermissions] ✅ Query executat cu succes')
-      console.log('[loadAllMemberPermissions] Count din DB:', count)
-      console.log('[loadAllMemberPermissions] Date primite din DB:', data)
-      console.log('[loadAllMemberPermissions] Data length:', data?.length || 0)
-      
-    const permsMap: { [userId: string]: string[] } = {}
-    userIds.forEach(id => {
-      permsMap[id] = []
-    })
-    
-      if (data && data.length > 0) {
-        console.log('[loadAllMemberPermissions] ✅ Procesare', data.length, 'permisiuni')
-      data.forEach((p: any) => {
-          const userId = String(p.user_id)
-          const pipelineId = String(p.pipeline_id)
-          
-          console.log(`[loadAllMemberPermissions]   → user=${userId}, pipeline=${pipelineId}`)
-          
-          if (!permsMap[userId]) {
-            permsMap[userId] = []
-        }
-          permsMap[userId].push(pipelineId)
-        })
-      } else {
-        console.warn('[loadAllMemberPermissions] ⚠️ Nu există permisiuni în DB pentru acești utilizatori')
-        console.warn('[loadAllMemberPermissions] Verifică dacă există permisiuni în tabelul user_pipeline_permissions')
-        console.warn('[loadAllMemberPermissions] User IDs căutați:', userIds)
-        console.warn('[loadAllMemberPermissions] Dacă există permisiuni în DB dar nu se încarcă, verifică RLS policies')
-      }
-      
-      console.log('[loadAllMemberPermissions] Permisiuni procesate:', permsMap)
-      console.log('[loadAllMemberPermissions] Detalii per user:')
-      Object.keys(permsMap).forEach(userId => {
-        const count = permsMap[userId].length
-        console.log(`[loadAllMemberPermissions]   - ${userId}: ${count} permisiuni`, permsMap[userId])
-        if (count === 0) {
-          console.warn(`[loadAllMemberPermissions]     ⚠️ User ${userId} are 0 permisiuni`)
-    }
-      })
-    
-      setMemberPermissions(prev => {
-        const updated = { ...prev, ...permsMap }
-        console.log('[loadAllMemberPermissions] State actualizat:', updated)
-        console.log('[loadAllMemberPermissions] ════════════════════════════════════════')
-        return updated
-      })
-    } catch (err: any) {
-      console.error('[loadAllMemberPermissions] ❌ Exception:', err)
-      toast.error(`Eroare neașteptată: ${err.message}`)
+    } catch (error) {
+      console.error('[getMemberPermissions] Error:', error)
+      return { permissions: [], permissions_count: 0 }
     }
   }
 
-  async function loadMemberPermissions(userId: string) {
+  async function getAllMemberPermissions(userIds: string[]): Promise<{ [userId: string]: string[] }> {
     try {
       const { data, error } = await supabase
-      .from('user_pipeline_permissions')
-      .select('pipeline_id')
-      .eq('user_id', userId)
+        .from('user_pipeline_permissions')
+        .select('user_id, pipeline_id')
+        .in('user_id', userIds)
       
-      if (error) {
-        console.error('[loadMemberPermissions] Eroare la încărcare permisiuni pentru user:', userId, error)
-        toast.error(`Eroare la încărcare permisiuni: ${error.message}`)
-        return
+      if (error) throw error
+      
+      const permsMap: { [userId: string]: string[] } = {}
+      userIds.forEach(id => { permsMap[id] = [] })
+      
+      if (data) {
+        data.forEach((p: any) => {
+          const userId = String(p.user_id)
+          const pipelineId = String(p.pipeline_id)
+          if (!permsMap[userId]) {
+            permsMap[userId] = []
+          }
+          permsMap[userId].push(pipelineId)
+        })
       }
       
-      // IMPORTANT: Asigură-te că pipeline_id este string și nu null/undefined
-      const pipelineIds = (data || [])
-        .map((p: any) => {
-          // Convert to string to ensure consistent comparison
-          const id = p.pipeline_id
-          return id != null && id !== undefined ? String(id) : null
-        })
-        .filter((id: any) => id != null) as string[]
-      
-      console.log('[loadMemberPermissions] Permisiuni încărcate pentru user:', userId)
-      console.log('[loadMemberPermissions] Pipeline IDs (raw):', data)
-      console.log('[loadMemberPermissions] Pipeline IDs (processed):', pipelineIds)
-      console.log('[loadMemberPermissions] Available pipelines:', pipelines.map(p => ({ id: String(p.id), name: p.name })))
-      
-      setMemberPermissions(prev => {
-        const updated = { ...prev, [userId]: pipelineIds }
-        console.log('[loadMemberPermissions] Updated memberPermissions for', userId, ':', pipelineIds)
-        return updated
-      })
-    } catch (err: any) {
-      console.error('[loadMemberPermissions] Exception:', err)
-      toast.error(`Eroare la încărcare permisiuni: ${err.message}`)
+      return permsMap
+    } catch (error) {
+      console.error('[getAllMemberPermissions] Error:', error)
+      return {}
     }
   }
+
+  async function getMemberStats(userId: string): Promise<{ leads_count: number, sales_count: number, pipelines_count: number }> {
+    try {
+      // Get leads count
+      const { count: leadsCount } = await supabase
+        .from('leads')
+        .select('*', { count: 'exact', head: true })
+        .eq('created_by', userId)
+      
+      // Get sales count (service files)
+      const { count: salesCount } = await supabase
+        .from('service_files')
+        .select('*', { count: 'exact', head: true })
+        .eq('created_by', userId)
+      
+      // Get pipelines count from permissions
+      const { count: pipelinesCount } = await supabase
+        .from('user_pipeline_permissions')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+      
+      return {
+        leads_count: leadsCount || 0,
+        sales_count: salesCount || 0,
+        pipelines_count: pipelinesCount || 0
+      }
+    } catch (error) {
+      console.error('[getMemberStats] Error:', error)
+      return { leads_count: 0, sales_count: 0, pipelines_count: 0 }
+    }
+  }
+
+  async function getLastLogin(userId: string): Promise<{ last_login?: string }> {
+    try {
+      // Get last login from auth.users using RPC or API
+      // For now, we'll return undefined as this requires admin access to auth schema
+      // In a production environment, you would use an RPC function
+      // Example: SELECT last_sign_in_at FROM auth.users WHERE id = $1
+      return { last_login: undefined }
+    } catch (error) {
+      console.error('[getLastLogin] Error:', error)
+      return { last_login: undefined }
+    }
+  }
+
+  async function loadDashboardStats() {
+    // Load dashboard statistics for overview
+    try {
+      const { count: totalLeads } = await supabase
+        .from('leads')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      
+      const { count: totalSales } = await supabase
+        .from('service_files')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      
+      const { count: activePipelines } = await supabase
+        .from('pipelines')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true)
+      
+      setDashboardStats({
+        totalLeads: totalLeads || 0,
+        totalSales: totalSales || 0,
+        activePipelines: activePipelines || 0
+      })
+    } catch (error) {
+      console.error('[loadDashboardStats] Error:', error)
+    }
+  }
+
+  const [dashboardStats, setDashboardStats] = useState({
+    totalLeads: 0,
+    totalSales: 0,
+    activePipelines: 0
+  })
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault()
@@ -290,6 +319,7 @@ export default function AdminsPage() {
       setNewName("")
       setNewRole("admin")
       loadMembers()
+      loadDashboardStats()
     } catch (error: any) {
       toast.error(error.message)
     } finally {
@@ -297,9 +327,8 @@ export default function AdminsPage() {
     }
   }
 
-  async function handleRoleChange(member: AppMember, newRole: "owner" | "admin" | "member") {
+  async function handleRoleChange(member: ExtendedMember, newRole: MemberRole) {
     if (member.role === newRole) return
-    setUpdatingRole(member.user_id)
     try {
       const res = await fetch("/api/admin/members", {
         method: "PATCH",
@@ -312,33 +341,6 @@ export default function AdminsPage() {
       setMembers(prev => prev.map(m => m.user_id === member.user_id ? { ...m, role: newRole } : m))
     } catch (error: any) {
       toast.error(error.message)
-    } finally {
-      setUpdatingRole(null)
-    }
-  }
-
-  async function handleNameChange(member: AppMember) {
-    if (!editingNameValue.trim()) {
-      toast.error("Numele nu poate fi gol")
-      return
-    }
-    setSavingName(true)
-    try {
-      const res = await fetch("/api/admin/members", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ memberId: member.user_id, name: editingNameValue.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.ok) throw new Error(data.error || "Error")
-      toast.success("Nume actualizat")
-      setMembers(prev => prev.map(m => m.user_id === member.user_id ? { ...m, name: editingNameValue.trim() } : m))
-      setEditingName(null)
-      setEditingNameValue("")
-    } catch (error: any) {
-      toast.error(error.message)
-    } finally {
-      setSavingName(false)
     }
   }
 
@@ -357,6 +359,7 @@ export default function AdminsPage() {
       setMembers(prev => prev.filter(m => m.user_id !== memberToDelete.user_id))
       setDeleteDialogOpen(false)
       setMemberToDelete(null)
+      loadDashboardStats()
     } catch (error: any) {
       toast.error(error.message)
     } finally {
@@ -364,91 +367,109 @@ export default function AdminsPage() {
     }
   }
 
-  async function toggleMemberExpanded(userId: string) {
-    if (expandedMember === userId) {
-      setExpandedMember(null)
-    } else {
-      setExpandedMember(userId)
-      // IMPORTANT: Reîncarcă permisiunile de fiecare dată când se expandează membru
-      // pentru a asigura că checkbox-urile sunt bifate corect cu permisiunile actuale din DB
-      await loadMemberPermissions(userId)
-    }
-  }
-
-  function togglePermission(userId: string, pipelineId: string) {
-    setMemberPermissions(prev => {
-      const current = prev[userId] || []
-      // IMPORTANT: Compară ca string-uri pentru a fi consistent cu MemberRow
-      const pipelineIdStr = String(pipelineId)
-      const hasPermission = current.some(permId => String(permId) === pipelineIdStr)
-      
-      const newPerms = hasPermission
-        ? current.filter(id => String(id) !== pipelineIdStr) // Elimină permisiunea
-        : [...current, pipelineIdStr] // ✅ ADaugă ca string pentru consistență
-      
-      console.log(`[togglePermission] User: ${userId}, Pipeline: ${pipelineId}, Current:`, current, 'Has permission:', hasPermission, 'New:', newPerms)
-      
-      return {
-        ...prev,
-        [userId]: newPerms
-      }
-    })
-  }
-
-  async function saveMemberPermissions(userId: string) {
-    setSavingPermissions(true)
+  async function handleSaveMember(member: ExtendedMember) {
     try {
-      const newPerms = memberPermissions[userId] || []
-      console.log('[saveMemberPermissions] Permisiuni noi din state:', newPerms)
-      
-      const { data: currentData, error: fetchError } = await supabase
-        .from('user_pipeline_permissions')
-        .select('pipeline_id')
-        .eq('user_id', userId)
-      
-      if (fetchError) {
-        console.error('[saveMemberPermissions] Eroare la citire permisiuni curente:', fetchError)
-        throw fetchError
-      }
-      
-      // ✅ CONVERTEȘTE TOATE LA STRING PENTRU COMPARARE CONSISTENTĂ
-      const currentPerms = (currentData || []).map((p: any) => String(p.pipeline_id))
-      const newPermsStr = newPerms.map(id => String(id))
-      
-      console.log('[saveMemberPermissions] Permisiuni curente din DB:', currentPerms)
-      console.log('[saveMemberPermissions] Permisiuni noi (string):', newPermsStr)
-      
-      const toAdd = newPermsStr.filter(id => !currentPerms.includes(id))
-      const toRemove = currentPerms.filter(id => !newPermsStr.includes(id))
-      
-      console.log('[saveMemberPermissions] Permisiuni de adăugat:', toAdd)
-      console.log('[saveMemberPermissions] Permisiuni de eliminat:', toRemove)
-      
-      for (const pipelineId of toAdd) {
-        await grantPipelineAccess(userId, pipelineId)
-        console.log(`[saveMemberPermissions] Adăugat permisiune pentru pipeline ${pipelineId}`)
-      }
-      for (const pipelineId of toRemove) {
-        await revokePipelineAccess(userId, pipelineId)
-        console.log(`[saveMemberPermissions] Eliminat permisiune pentru pipeline ${pipelineId}`)
-      }
-      
-      toast.success('Permisiuni actualizate')
-      // IMPORTANT: Reîncarcă toate permisiunile pentru toți membrii pentru a sincroniza state-ul
-      // Nu doar pentru user-ul curent, ci pentru toți pentru a evita probleme la refresh
-      const allUserIds = members.map(m => m.user_id)
-      await loadAllMemberPermissions(allUserIds)
+      const res = await fetch("/api/admin/members", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          memberId: member.user_id, 
+          name: member.name,
+          role: member.role,
+          status: member.status
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || "Error")
+      toast.success("Membru actualizat")
+      setMembers(prev => prev.map(m => m.user_id === member.user_id ? { ...m, ...member } : m))
     } catch (error: any) {
-      console.error('[saveMemberPermissions] Eroare:', error)
-      toast.error(error.message || 'Eroare')
-    } finally {
-      setSavingPermissions(false)
+      toast.error(error.message)
+      throw error
     }
   }
 
-  const owners = members.filter(m => m.role === "owner")
-  const admins = members.filter(m => m.role === "admin")
-  const regularMembers = members.filter(m => m.role === "member")
+  async function handleSavePermissions(userId: string, permissions: string[]) {
+    try {
+      const currentPerms = memberPermissions[userId] || []
+      const toAdd = permissions.filter(p => !currentPerms.includes(p))
+      const toRemove = currentPerms.filter(p => !permissions.includes(p))
+
+      // Add permissions
+      for (const pipelineId of toAdd) {
+        await (supabase.from('user_pipeline_permissions') as any).insert({
+          user_id: userId,
+          pipeline_id: pipelineId
+        })
+      }
+
+      // Remove permissions
+      for (const pipelineId of toRemove) {
+        await (supabase
+          .from('user_pipeline_permissions') as any)
+          .delete()
+          .eq('user_id', userId)
+          .eq('pipeline_id', pipelineId)
+      }
+
+      toast.success('Permisiuni actualizate')
+      
+      // Update local state
+      setMemberPermissions(prev => ({
+        ...prev,
+        [userId]: permissions
+      }))
+
+      // Update member in list
+      setMembers(prev => prev.map(m => 
+        m.user_id === userId 
+          ? { ...m, permissions, permissions_count: permissions.length }
+          : m
+      ))
+    } catch (error: any) {
+      toast.error(error.message || 'Eroare la salvare permisiuni')
+      throw error
+    }
+  }
+
+  async function handleResetPassword(userId: string) {
+    try {
+      const res = await fetch('/api/admin/members/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Eroare')
+      toast.success(
+        `Parolă resetată. Parola temporară: ${data.temporaryPassword} — comunică-o utilizatorului.`,
+        { duration: 12000 }
+      )
+    } catch (error: any) {
+      toast.error(error.message)
+    }
+  }
+
+  async function handleToggleStatus(userId: string, status: 'active' | 'inactive') {
+    try {
+      const res = await fetch('/api/admin/members', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: userId, status }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Eroare')
+      setMembers(prev =>
+        prev.map(m => (m.user_id === userId ? { ...m, status } : m))
+      )
+      if (selectedMember?.user_id === userId) {
+        setSelectedMember(prev => (prev ? { ...prev, status } : null))
+      }
+      toast.success(status === 'active' ? 'Membru activat' : 'Membru dezactivat')
+    } catch (error: any) {
+      toast.error(error.message)
+    }
+  }
 
   if (roleLoading) {
     return (
@@ -473,390 +494,237 @@ export default function AdminsPage() {
     )
   }
 
-  function MemberRow({ member }: { member: AppMember }) {
-    const isExpanded = expandedMember === member.user_id
-    // IMPORTANT: Folosește permisiunile din state, sau array gol dacă nu sunt încărcate
-    // Permisiunile sunt încărcate automat când se expandează membru sau la încărcarea inițială
-    const perms = memberPermissions[member.user_id] || []
-    // IMPORTANT: Compară ca string-uri pentru consistență
-    const permNames = pipelines.filter(p => {
-      const pipelineIdStr = String(p.id)
-      return perms.some(permId => String(permId) === pipelineIdStr)
-    }).map(p => p.name)
-    
-    // DEBUG: Log pentru diagnosticare când se expandează
-    if (isExpanded) {
-      console.log(`[MemberRow] Expanded - User: ${member.email} (${member.user_id})`)
-      console.log(`[MemberRow] Permisiuni din state:`, perms)
-      console.log(`[MemberRow] Pipeline IDs disponibile:`, pipelines.map(p => String(p.id)))
-    }
+  const owners = members.filter(m => m.role === "owner")
+  const admins = members.filter(m => m.role === "admin")
+  const regularMembers = members.filter(m => m.role === "member")
 
-    return (
-      <div className="border rounded-lg overflow-hidden group">
-        <div className="flex items-center gap-4 p-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => toggleMemberExpanded(member.user_id)}
-            className="h-8 w-8 p-0 shrink-0"
-          >
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-          
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">{member.email || 'N/A'}</div>
-            {editingName === member.user_id ? (
-              <div className="flex items-center gap-2 mt-1">
-                <Input
-                  value={editingNameValue}
-                  onChange={(e) => setEditingNameValue(e.target.value)}
-                  className="h-7 text-xs"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleNameChange(member)
-                    if (e.key === 'Escape') {
-                      setEditingName(null)
-                      setEditingNameValue("")
-                    }
-                  }}
-                />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleNameChange(member)}
-                  disabled={savingName}
-                  className="h-7 w-7 p-0"
-                >
-                  {savingName ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setEditingName(null)
-                    setEditingNameValue("")
-                  }}
-                  className="h-7 w-7 p-0"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 mt-1">
-                <div className="text-xs text-muted-foreground truncate flex-1">
-                  {member.name || 'Fără nume'}
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setEditingName(member.user_id)
-                    setEditingNameValue(member.name || "")
-                  }}
-                  className="h-6 w-6 p-0 shrink-0 opacity-60 hover:opacity-100"
-                >
-                  <Edit2 className="h-3 w-3" />
-                </Button>
-              </div>
-            )}
-            {perms.length > 0 && (
-              <div className="text-xs text-muted-foreground mt-1 truncate">
-                {permNames.slice(0, 2).join(', ')}{permNames.length > 2 ? ` +${permNames.length - 2}` : ''}
-              </div>
-            )}
-          </div>
-          
-          <div className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
-            {perms.length} pipeline-uri
-          </div>
-          
-          <div className="flex items-center gap-2 shrink-0">
-            {member.role !== "owner" && (
-              <Select
-                value={member.role}
-                onValueChange={(v) => handleRoleChange(member, v as any)}
-                disabled={updatingRole === member.user_id}
-              >
-                <SelectTrigger className="w-[110px] h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="member">member</SelectItem>
-                  <SelectItem value="admin">admin</SelectItem>
-                  <SelectItem value="owner">owner</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setMemberToDelete(member)
-                setDeleteDialogOpen(true)
-              }}
-              className="h-9"
-            >
-              Șterge
-            </Button>
-          </div>
-        </div>
-
-        {isExpanded && (
-          <div className="px-4 pb-4 pt-0 space-y-4 border-t bg-muted/30">
-            <div className="flex items-center gap-2 pt-4">
-              <Shield className="h-4 w-4" />
-              <span className="text-sm font-medium">Permisiuni Pipeline-uri</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {pipelines.map(pipeline => {
-                // IMPORTANT: Folosește perms din useMemo care se actualizează automat
-                const pipelineIdStr = String(pipeline.id)
-                const hasPermission = perms.some(permId => String(permId) === pipelineIdStr)
-                
-                // DEBUG: Log pentru fiecare checkbox când se expandează
-                if (isExpanded) {
-                  console.log(`[MemberRow] Pipeline: ${pipeline.name} (${pipelineIdStr}), Has permission: ${hasPermission}`)
-                  console.log(`[MemberRow] Current perms (from useMemo):`, perms)
-                  console.log(`[MemberRow] memberPermissions[${member.user_id}]:`, memberPermissions[member.user_id])
-                }
-                
-                return (
-                  <div key={pipeline.id} className="flex items-center justify-between gap-2 p-2 rounded-md hover:bg-muted/50">
-                    <div className="flex items-center gap-2 flex-1">
-                  <Checkbox
-                    id={`${member.user_id}-${pipeline.id}`}
-                        checked={hasPermission}
-                        onCheckedChange={(checked) => {
-                          // IMPORTANT: onCheckedChange primește boolean (true = bifat, false = debifat)
-                          // Toggle permisiunea: dacă checked este true, adaugă; dacă false, elimină
-                          togglePermission(member.user_id, pipeline.id)
-                        }}
-                  />
-                      <Label htmlFor={`${member.user_id}-${pipeline.id}`} className="text-sm cursor-pointer flex-1">
-                    {pipeline.name}
-                  </Label>
-                </div>
-                    {hasPermission && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={async () => {
-                          // Șterge permisiunea direct din DB
-                          try {
-                            await revokePipelineAccess(member.user_id, pipeline.id)
-                            toast.success(`Permisiune pentru ${pipeline.name} eliminată`)
-                            // Reîncarcă permisiunile pentru a actualiza UI
-                            await loadMemberPermissions(member.user_id)
-                          } catch (error: any) {
-                            console.error('[MemberRow] Eroare la ștergere permisiune:', error)
-                            toast.error(error.message || 'Eroare la ștergere permisiune')
-                          }
-                        }}
-                        className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        title={`Elimină permisiunea pentru ${pipeline.name}`}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-            <Button
-              onClick={() => saveMemberPermissions(member.user_id)}
-              disabled={savingPermissions}
-              size="sm"
-              className="w-full"
-            >
-              {savingPermissions && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              <Save className="h-4 w-4 mr-2" />
-              Salvează Permisiuni
-            </Button>
-          </div>
-        )}
-      </div>
-    )
+  // Dashboard stats
+  const dashboardData = {
+    totalMembers: members.length,
+    owners: owners.length,
+    admins: admins.length,
+    members: regularMembers.length,
+    activeMembers: members.length, // Assuming all are active for now
+    weeklyStats: {
+      newLeads: dashboardStats.totalLeads,
+      sales: dashboardStats.totalSales,
+      activePipelines: dashboardStats.activePipelines
+    },
+    recentActivity: members.slice(0, 5).map(m => ({
+      id: m.user_id,
+      userId: m.user_id,
+      email: m.email || '',
+      name: m.name || '',
+      action: 'login',
+      timestamp: m.last_login || m.created_at
+    }))
   }
 
   return (
     <div className="overflow-y-auto max-h-[calc(100vh-6rem)] py-1">
-      <div className="container mx-auto py-8 px-4 max-w-4xl">
-      {/* Tab Navigation */}
-      <div className="flex gap-2 mb-6">
-        <Button
-          variant={activeTab === 'members' ? 'default' : 'outline'}
-          onClick={() => setActiveTab('members')}
-          className="flex items-center gap-2"
-        >
-          <Users className="w-4 h-4" />
-          Membri
-        </Button>
-        <Button
-          variant={activeTab === 'backups' ? 'default' : 'outline'}
-          onClick={() => setActiveTab('backups')}
-          className="flex items-center gap-2"
-        >
-          <Database className="w-4 h-4" />
-          Backup-uri
-        </Button>
-        <Button
-          variant={activeTab === 'trays' ? 'default' : 'outline'}
-          onClick={() => setActiveTab('trays')}
-          className="flex items-center gap-2"
-        >
-          <Package className="w-4 h-4" />
-          Tăvițe
-        </Button>
-        <Button
-          variant={activeTab === 'tray-finder' ? 'default' : 'outline'}
-          onClick={() => setActiveTab('tray-finder')}
-          className="flex items-center gap-2"
-        >
-          <FileSearch className="w-4 h-4" />
-          Caută Fișă
-        </Button>
-        <Button
-          variant={activeTab === 'pipeline-items' ? 'default' : 'outline'}
-          onClick={() => setActiveTab('pipeline-items')}
-          className="flex items-center gap-2"
-        >
-          <List className="w-4 h-4" />
-          Pipeline Items
-        </Button>
-      </div>
+      <div className="container mx-auto py-8 px-4 max-w-6xl">
+        {/* Tab Navigation */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          <Button
+            variant={activeTab === 'dashboard' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('dashboard')}
+            className="flex items-center gap-2"
+          >
+            <Users className="w-4 h-4" />
+            Dashboard
+          </Button>
+          <Button
+            variant={activeTab === 'members' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('members')}
+            className="flex items-center gap-2"
+          >
+            <Users className="w-4 h-4" />
+            Membri
+          </Button>
+          <Button
+            variant={activeTab === 'backups' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('backups')}
+            className="flex items-center gap-2"
+          >
+            <Database className="w-4 h-4" />
+            Backup-uri
+          </Button>
+          <Button
+            variant={activeTab === 'trays' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('trays')}
+            className="flex items-center gap-2"
+          >
+            <Package className="w-4 h-4" />
+            Tăvițe
+          </Button>
+          <Button
+            variant={activeTab === 'tray-finder' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('tray-finder')}
+            className="flex items-center gap-2"
+          >
+            <FileSearch className="w-4 h-4" />
+            Caută Fișă
+          </Button>
+          <Button
+            variant={activeTab === 'pipeline-items' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('pipeline-items')}
+            className="flex items-center gap-2"
+          >
+            <List className="w-4 h-4" />
+            Pipeline Items
+          </Button>
+        </div>
 
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="text-xl">
-            {activeTab === 'members' ? 'ADMINISTRARE ECHIPA' : 
-             activeTab === 'backups' ? 'MANAGER BACKUP-URI' : 
-             activeTab === 'trays' ? 'ASIGNARE TĂVIȚE ÎN PIPELINE' :
-             activeTab === 'tray-finder' ? 'CĂUTARE FIȘĂ DUPĂ ID TĂVIȚĂ' :
-             'MANAGEMENT INTRĂRI PIPELINE'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          {activeTab === 'members' ? (
-            <>
-              <div className="space-y-8">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <UserPlus className="h-5 w-5 text-muted-foreground" />
-                  <h2 className="text-lg font-semibold">Adaugă Membru Nou</h2>
-                </div>
-            
-            <form onSubmit={handleAddMember} className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <Input
-                type="email"
-                placeholder="Email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                className="h-10"
-              />
-              <Input
-                type="text"
-                placeholder="Nume"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="h-10"
-              />
-              <Select value={newRole} onValueChange={(v) => setNewRole(v as any)}>
-                <SelectTrigger className="h-10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="member">member</SelectItem>
-                  <SelectItem value="admin">admin</SelectItem>
-                  <SelectItem value="owner">owner</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button type="submit" disabled={adding || !newEmail || !newName} className="h-10">
-                {adding ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                Adaugă
+        <Card>
+          <CardHeader className="border-b flex flex-row items-center justify-between">
+            <CardTitle className="text-xl">
+              {activeTab === 'dashboard' ? 'ADMIN DASHBOARD' :
+               activeTab === 'members' ? 'ADMINISTRARE ECHIPA' : 
+               activeTab === 'backups' ? 'MANAGER BACKUP-URI' : 
+               activeTab === 'trays' ? 'ASIGNARE TĂVIȚE ÎN PIPELINE' :
+               activeTab === 'tray-finder' ? 'CĂUTARE FIȘĂ DUPĂ ID TĂVIȚĂ' :
+               'MANAGEMENT INTRĂRI PIPELINE'}
+            </CardTitle>
+            {activeTab === 'members' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => loadMembers()}
+                disabled={loading}
+                className="gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
               </Button>
-            </form>
-            
-            <p className="text-sm text-muted-foreground">
-              Parola inițială: <span className="font-mono font-medium">{DEFAULT_PASSWORD}</span>
-            </p>
-          </div>
-
-          {loading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Crown className="h-4 w-4 text-yellow-500" />
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">OWNER</h3>
-                </div>
-                <div className="space-y-2">
-                  {owners.map(m => <MemberRow key={m.user_id} member={m} />)}
-                  {owners.length === 0 && (
-                    <div className="p-6 text-center text-sm text-muted-foreground border rounded-lg">
-                      Niciun owner
+            )}
+          </CardHeader>
+          <CardContent className="pt-6">
+            {activeTab === 'dashboard' ? (
+              <OverviewDashboard stats={dashboardData} />
+            ) : activeTab === 'members' ? (
+              <>
+                <div className="space-y-6">
+                  {/* Add New Member */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <UserPlus className="h-5 w-5 text-muted-foreground" />
+                      <h2 className="text-lg font-semibold">Adaugă Membru Nou</h2>
                     </div>
+                  
+                    <form onSubmit={handleAddMember} className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <Input
+                        type="email"
+                        placeholder="Email"
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        className="h-10"
+                      />
+                      <Input
+                        type="text"
+                        placeholder="Nume"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        className="h-10"
+                      />
+                      <select
+                        value={newRole}
+                        onChange={(e) => setNewRole(e.target.value as MemberRole)}
+                        className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="member">Member</option>
+                        <option value="admin">Admin</option>
+                        <option value="owner">Owner</option>
+                        <option value="vanzator">Vanzator</option>
+                        <option value="receptie">Receptie</option>
+                        <option value="tehnician">Tehnician</option>
+                      </select>
+                      <Button type="submit" disabled={adding || !newEmail || !newName} className="h-10">
+                        {adding ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                        Adaugă
+                      </Button>
+                    </form>
+                  
+                    <p className="text-sm text-muted-foreground">
+                      Parola inițială: <span className="font-mono font-medium">{DEFAULT_PASSWORD}</span>
+                    </p>
+                  </div>
+
+                  {/* Member Table */}
+                  {loading ? (
+                    <div className="flex justify-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <MemberTable
+                      members={members}
+                      onMemberClick={(member) => {
+                        setSelectedMember(member)
+                        setMemberModalOpen(true)
+                      }}
+                      onEditMember={(member) => {
+                        setSelectedMember(member)
+                        setMemberModalOpen(true)
+                      }}
+                      onDeleteMember={(member) => {
+                        setMemberToDelete(member)
+                        setDeleteDialogOpen(true)
+                      }}
+                      onRoleChange={handleRoleChange}
+                    />
                   )}
                 </div>
-              </div>
+              </>
+            ) : activeTab === 'backups' ? (
+              <BackupManager />
+            ) : activeTab === 'trays' ? (
+              <TrayPipelineAssigner />
+            ) : activeTab === 'tray-finder' ? (
+              <TrayFileFinder />
+            ) : (
+              <PipelineItemsManager />
+            )}
+          </CardContent>
+        </Card>
 
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">ADMINI</h3>
-                <div className="space-y-2">
-                  {admins.map(m => <MemberRow key={m.user_id} member={m} />)}
-                  {admins.length === 0 && (
-                    <div className="p-6 text-center text-sm text-muted-foreground border rounded-lg">
-                      Niciun admin
-                    </div>
-                  )}
-                </div>
-              </div>
+        {/* Member Details Modal */}
+        {selectedMember && (
+          <MemberDetailsModal
+            member={selectedMember}
+            pipelines={pipelines}
+            open={memberModalOpen}
+            onClose={() => {
+              setMemberModalOpen(false)
+              setSelectedMember(null)
+            }}
+            onSave={handleSaveMember}
+            onDelete={async (member) => {
+              setMemberToDelete(member)
+              setDeleteDialogOpen(true)
+              setMemberModalOpen(false)
+            }}
+            onResetPassword={handleResetPassword}
+            onToggleStatus={handleToggleStatus}
+            onSavePermissions={handleSavePermissions}
+          />
+        )}
 
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">MEMBRI</h3>
-                <div className="space-y-2">
-                  {regularMembers.map(m => <MemberRow key={m.user_id} member={m} />)}
-                  {regularMembers.length === 0 && (
-                    <div className="p-6 text-center text-sm text-muted-foreground border rounded-lg">
-                      Niciun membru
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-              </div>
-            </>
-          ) : activeTab === 'backups' ? (
-            <BackupManager />
-          ) : activeTab === 'trays' ? (
-            <TrayPipelineAssigner />
-          ) : activeTab === 'tray-finder' ? (
-            <TrayFileFinder />
-          ) : (
-            <PipelineItemsManager />
-          )}
-        </CardContent>
-      </Card>
-
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Șterge membrul?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Ești sigur că vrei să ștergi {memberToDelete?.email}? Această acțiune nu poate fi anulată.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Anulează</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteMember} disabled={deleting}>
-              {deleting ? "Se șterge..." : "Șterge"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Șterge membrul?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Ești sigur că vrei să ștergi {memberToDelete?.email}? Această acțiune nu poate fi anulată.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Anulează</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteMember} disabled={deleting}>
+                {deleting ? "Se șterge..." : "Șterge"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   )

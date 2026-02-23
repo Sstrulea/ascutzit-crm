@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/midnight-ro",
       "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/curier-to-avem-comanda",
+      "schedule": "0 1 * * *"
     }
   ]
 }

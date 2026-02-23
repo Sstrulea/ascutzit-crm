@@ -292,10 +292,19 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
   const { data: membersList } = useTechnicians()
   const isClaimedByMe = !!(currentUser?.id && (lead as any).claimed_by === currentUser.id)
   const isClaimedByOther = !!((lead as any).claimed_by && (lead as any).claimed_by !== currentUser?.id)
+  const isParteneriPipeline = pipelineName?.toLowerCase().includes('parteneri') ?? false
   const showClaimButton =
-    isVanzariPipeline &&
+    (isVanzariPipeline || isParteneriPipeline) &&
     (itemType === 'lead' || itemType === 'service_file') &&
-    isStageAllowedForClaim
+    (isStageAllowedForClaim || isParteneriPipeline)
+  ++++++++ REPLACE
+
+  ------- SEARCH
+                    {(isOwner || isAdmin) && showClaimButton && (
+                      <Popover open={assignPopoverOpen} onOpenChange={setAssignPopoverOpen}>
+                    {(isOwner || isAdmin || (pipelineName?.toLowerCase().includes('parteneri'))) && showClaimButton && (
+                      <Popover open={assignPopoverOpen} onOpenChange={setAssignPopoverOpen}>
+  ++++++++ REPLACE
 
   const actorOption = useMemo(() => ({
     currentUserId: currentUser?.id ?? undefined,

@@ -8,7 +8,7 @@
  * Redirect-ul efectiv la sign-in se face în app/(crm)/layout.tsx din useAuth().
  */
 
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
@@ -25,14 +25,33 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Reîmprospătează sesiunea Supabase – actualizează cookie-urile în response.
-  // Timeout 3s ca să nu blocheze răspunsul (ex. RSC/document pending) dacă Supabase e lent.
   const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return res
+  }
+
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return req.cookies.getAll()
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          res.cookies.set(name, value, options)
+        })
+      },
+    },
+  })
+
+  // Reîmprospătează sesiunea – actualizează cookie-urile în response.
+  // Timeout 3s ca să nu blocheze răspunsul dacă Supabase e lent.
   await Promise.race([
     supabase.auth.getSession(),
     new Promise((r) => setTimeout(r, 3000)),
   ]).catch(() => {})
+
   return res
 }
 

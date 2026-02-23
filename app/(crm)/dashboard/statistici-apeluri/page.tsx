@@ -90,7 +90,7 @@ export default function StatisticiApeluriPage() {
       if (!data?.length) { setAllowed(false); return }
       const vanzari = data.find((p: any) => toSlug(p?.name || '') === 'vanzari' || (p?.name || '').toLowerCase().includes('vanzari'))
       if (!vanzari) { setAllowed(false); return }
-      const ok = profile?.role === 'owner' || profile?.role === 'admin' || hasAccess(vanzari.id)
+      const ok = profile?.role === 'owner' || profile?.role === 'admin' || profile?.role === 'vanzator' || hasAccess(vanzari.id)
       setAllowed(ok)
     } catch { setAllowed(false) }
   }, [getPipelines, hasAccess, profile?.role])

@@ -3,7 +3,9 @@ import { requireOwner } from '@/lib/supabase/api-helpers'
 
 export async function GET() {
   try {
-    const { admin } = await requireOwner()
+    console.log('[GET /api/admin/members] Request received')
+    const { admin, user } = await requireOwner()
+    console.log('[GET /api/admin/members] User authenticated:', user?.id, user?.email)
 
     const { data: members, error } = await admin
       .from('app_members')
@@ -25,7 +27,8 @@ export async function GET() {
     const result = (members || []).map(m => ({
       ...m,
       email: emails.get(m.user_id) || `User ${m.user_id.slice(0, 8)}...`,
-      name: (m as any).name || names.get(m.user_id) || null
+      name: (m as any).name || names.get(m.user_id) || null,
+      status: (m as any).is_active === false ? 'inactive' as const : 'active' as const
     }))
 
     return NextResponse.json({ ok: true, members: result })
@@ -69,7 +72,7 @@ export async function DELETE(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const { memberId, role, name } = await req.json()
+    const { memberId, role, name, status } = await req.json()
     
     if (!memberId) {
       return NextResponse.json({ ok: false, error: 'memberId required' }, { status: 400 })
@@ -78,7 +81,7 @@ export async function PATCH(req: Request) {
     const { admin } = await requireOwner()
 
     const updates: any = {}
-    if (role && ['owner', 'admin', 'member'].includes(role)) {
+    if (role && ['owner', 'admin', 'member', 'vanzator', 'receptie', 'tehnician'].includes(role)) {
       updates.role = role
     }
     if (name !== undefined) {
@@ -89,6 +92,9 @@ export async function PATCH(req: Request) {
       await admin.auth.admin.updateUserById(memberId, {
         user_metadata: { ...existingMetadata, name, full_name: name, display_name: name }
       })
+    }
+    if (status === 'active' || status === 'inactive') {
+      updates.is_active = status === 'active'
     }
 
     if (Object.keys(updates).length === 0) {

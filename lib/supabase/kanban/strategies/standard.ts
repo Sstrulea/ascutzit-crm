@@ -899,7 +899,7 @@ export class StandardPipelineStrategy implements PipelineStrategy {
       }
       
       const userMessageCount = userMessageCountByLeadId.get(lead.id) ?? 0
-      kanbanItems.push(transformLeadToKanbanItem(lead, finalPipelineItem, tags, total, userMessageCount))
+      kanbanItems.push(transformLeadToKanbanItem(lead, finalPipelineItem, tags, total, userMessageCount, userNamesMap))
     })
 
     // ==================== VÂNZĂRI: STAGE "CURIER AJUNS AZI" ====================

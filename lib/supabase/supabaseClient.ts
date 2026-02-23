@@ -1,9 +1,17 @@
 'use client'
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
 
-let _client: ReturnType<typeof createClientComponentClient> | null = null
+let _client: ReturnType<typeof createBrowserClient> | null = null
+
 export function supabaseBrowser() {
-  if (!_client) _client = createClientComponentClient()
+  if (!_client) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !anonKey) {
+      throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
+    }
+    _client = createBrowserClient(url, anonKey)
+  }
   return _client
 }

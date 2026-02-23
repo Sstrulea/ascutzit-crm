@@ -94,7 +94,7 @@ export function Sidebar({ canManagePipelines }: SidebarProps) {
   const router = useRouter()
   const { isOwner, role: userRole, isAdmin } = useRole()
   const { user } = useAuth()
-  const { hasAccess, isMember } = useAuthContext()
+  const { hasAccess, isMember, isVanzator, isReceptie, isTehnician } = useAuthContext()
   const { getPipelines, invalidateCache } = usePipelinesCache()
   const supabase = supabaseBrowser()
 
@@ -131,15 +131,18 @@ export function Sidebar({ canManagePipelines }: SidebarProps) {
     if (data?.length) {
       let allPipelines = data.map((p: any) => ({ id: p.id, name: p.name }))
       
-      // Pentru membri, filtrează doar pipeline-urile pentru care au permisiune
-      if (isMember()) {
+      // Owner / admin: toate. Receptie: toate. Member / tehnician: doar cu permisiune. Vanzator: doar pipeline-ul Vanzari (cu permisiune).
+      if (isOwner() || isAdmin() || isReceptie()) {
+        // toate
+      } else if (isVanzator()) {
+        allPipelines = allPipelines.filter(p => hasAccess(p.id) && (p.name || '').toLowerCase().includes('vanzari'))
+      } else {
         allPipelines = allPipelines.filter(p => hasAccess(p.id))
       }
       
-      // Extrage doar numele pentru afișare
       setPipeNames(allPipelines.map(p => p.name))
     }
-  }, [getPipelines, hasAccess, isMember])
+  }, [getPipelines, hasAccess, isMember, isVanzator, isReceptie, isTehnician, isOwner, isAdmin])
 
   // Single unified effect: mount/route-change + custom event from editor/sidebar actions
   useEffect(() => {
@@ -267,7 +270,7 @@ export function Sidebar({ canManagePipelines }: SidebarProps) {
           {/* Sectiunea Principala */}
           {!sidebarCollapsed && (
             <SidebarSection title="Principal" icon={<Home className="h-3 w-3" />}>
-              {isOwner && (
+              {(isOwner || isAdmin || isReceptie()) && (
                 <Link
                   href="/dashboard"
                   prefetch={false}
@@ -298,8 +301,8 @@ export function Sidebar({ canManagePipelines }: SidebarProps) {
           {/* Sectiunea Dashboard-uri */}
           {!sidebarCollapsed && (
             <SidebarSection title="Dashboard-uri" icon={<BarChart3 className="h-3 w-3" />} defaultCollapsed={true}>
-              {/* Statistici Apeluri */}
-              {pipeNames.some((n) => n.toLowerCase().includes('vanzari')) && (
+              {/* Statistici Apeluri: Vanzator sau cine are acces la pipeline Vanzari */}
+              {(isVanzator() || pipeNames.some((n) => n.toLowerCase().includes('vanzari'))) && (
                 <Link
                   href="/dashboard/statistici-apeluri"
                   prefetch={false}
@@ -313,11 +316,11 @@ export function Sidebar({ canManagePipelines }: SidebarProps) {
                 </Link>
               )}
               
-              {/* Tehnician */}
-              {pipeNames.some((n) => {
+              {/* Dashboard Tehnician: rol tehnician sau pipeline-uri de tip tehnician */}
+              {(isTehnician() || pipeNames.some((n) => {
                 const low = n.toLowerCase()
                 return low.includes('saloane') || low.includes('frizerii') || low.includes('horeca') || low.includes('reparatii')
-              }) && (
+              })) && (
                 <Link
                   href="/dashboard/tehnician"
                   prefetch={false}
@@ -403,20 +406,6 @@ export function Sidebar({ canManagePipelines }: SidebarProps) {
                 >
                   <Shield className="h-4 w-4" />
                   <span>Admins</span>
-                </Link>
-              )}
-              
-              {isOwner && (
-                <Link
-                  href="/owner/leads-cu-instrumente"
-                  prefetch={false}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
-                    pathname === "/owner/leads-cu-instrumente" && "bg-blue-800 dark:bg-blue-900 text-white"
-                  )}
-                >
-                  <Wrench className="h-4 w-4" />
-                  <span>Lead-uri cu instrumente</span>
                 </Link>
               )}
               

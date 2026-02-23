@@ -168,7 +168,7 @@ export function usePreturiDeliveryOperations({
       setCurierScheduledAt(null)
     }
 
-    // Atribuie tag-ul „Curier Trimis” pe lead (pentru filtrele din Vânzări)
+    // Atribuie tag-ul „Curier Trimis” pe lead și salvează user + dată (pentru afișare „de [nume]” și regula 24h)
     if (isCurierTrimis && fisaId) {
       try {
         const { data: sf } = await supabase
@@ -180,6 +180,14 @@ export function usePreturiDeliveryOperations({
         if (leadId) {
           const tag = await getOrCreateCurierTrimisTag()
           await addLeadTagIfNotPresent(leadId, tag.id)
+          const nowIso = new Date().toISOString()
+          await updateLead(leadId, {
+            curier_trimis_at: dateTime || nowIso,
+            curier_trimis_user_id: user?.id ?? null,
+            office_direct_at: null,
+            office_direct_user_id: null,
+            ...(user?.id ? { claimed_by: user.id } : {}),
+          })
         }
       } catch (e) {
         console.warn('[usePreturiDeliveryOperations] Cannot assign Curier Trimis tag on lead:', e)
@@ -189,7 +197,7 @@ export function usePreturiDeliveryOperations({
     // IMPORTANT: Nu mai salvăm automat în DB când se bifează checkbox-urile
     // Salvare se face doar la apăsarea butonului "Salvează în Istoric" sau "Close"
     // Această modificare permite utilizatorului să bifeze checkbox-urile fără să blocheze fișa imediat
-  }, [fisaId, setIsDirty, setOfficeDirect, setCurierTrimis, setCurierScheduledAt])
+  }, [fisaId, setIsDirty, setOfficeDirect, setCurierTrimis, setCurierScheduledAt, user?.id])
 
   // Gestionează tag-ul de Retur pentru fișa de serviciu
   const handleReturChange = useCallback(async (isRetur: boolean) => {

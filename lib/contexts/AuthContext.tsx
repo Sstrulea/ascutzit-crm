@@ -8,7 +8,7 @@ import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
 // TYPES
 // ===========================
 
-export type UserRole = 'owner' | 'admin' | 'member'
+export type UserRole = 'owner' | 'admin' | 'member' | 'vanzator' | 'receptie' | 'tehnician'
 
 export interface UserProfile {
   user_id: string
@@ -37,6 +37,9 @@ export interface AuthContextType {
   isOwner: () => boolean
   isAdmin: () => boolean
   isMember: () => boolean
+  isVanzator: () => boolean
+  isReceptie: () => boolean
+  isTehnician: () => boolean
   refreshProfile: () => Promise<void>
 }
 
@@ -65,13 +68,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
   const loadUserAndProfile = useCallback(async () => {
     try {
+      console.log('[AuthContext] Loading user and profile...')
       setLoading(true)
       setError(null)
       
       const supabase = supabaseBrowser()
       
       // 1. Get authenticated user
+      console.log('[AuthContext] Getting user from supabase.auth.getUser()...')
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+      
+      console.log('[AuthContext] Auth result:', {
+        hasAuthUser: !!authUser,
+        authUser: authUser ? { id: authUser.id, email: authUser.email } : null,
+        authError
+      })
       
       if (authError) {
         console.warn('Auth error:', authError)
@@ -83,6 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       if (!authUser) {
+        console.log('[AuthContext] No authenticated user found')
         setUser(null)
         setProfile(null)
         setPermissions([])
@@ -119,12 +131,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       setProfile(profileData as UserProfile)
       
-      // 3. Load permissions (only for members)
-      if (profileData.role === 'member') {
-        await loadPermissions(authUser.id)
+      // 3. Load permissions: owner/admin/receptie = all; member/vanzator/tehnician = from user_pipeline_permissions
+      if (profileData.role === 'owner' || profileData.role === 'admin' || profileData.role === 'receptie') {
+        setPermissions([]) // Empty = "all access" for owner/admin; receptie sees all pipelines
       } else {
-        // Owners and admins have access to all pipelines
-        setPermissions([]) // Empty means "all access" for owner/admin
+        await loadPermissions(authUser.id)
       }
       
       setLoading(false)
@@ -153,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
       
-      const pipelineIds = (data || []).map(p => p.pipeline_id)
+      const pipelineIds = (data || []).map((p: any) => p.pipeline_id)
       setPermissions(pipelineIds)
     } catch (err) {
       console.error('Error in loadPermissions:', err)
@@ -198,12 +209,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hasAccess = useCallback((pipelineId: string): boolean => {
     if (!profile) return false
     
-    // Owners and admins have access to all pipelines
-    if (profile.role === 'owner' || profile.role === 'admin') {
+    // Owners, admins and receptie have access to all pipelines
+    if (profile.role === 'owner' || profile.role === 'admin' || profile.role === 'receptie') {
       return true
     }
     
-    // Members need explicit permission
+    // Member, vanzator, tehnician: explicit pipeline permissions
     return permissions.includes(pipelineId)
   }, [profile, permissions])
   
@@ -225,6 +236,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
   const isMember = useCallback((): boolean => {
     return profile?.role === 'member'
+  }, [profile])
+
+  const isVanzator = useCallback((): boolean => {
+    return profile?.role === 'vanzator'
+  }, [profile])
+
+  const isReceptie = useCallback((): boolean => {
+    return profile?.role === 'receptie'
+  }, [profile])
+
+  const isTehnician = useCallback((): boolean => {
+    return profile?.role === 'tehnician'
   }, [profile])
   
   const refreshProfile = useCallback(async () => {
@@ -248,6 +271,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isOwner,
     isAdmin,
     isMember,
+    isVanzator,
+    isReceptie,
+    isTehnician,
     refreshProfile,
   }
   
