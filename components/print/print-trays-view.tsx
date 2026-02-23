@@ -85,6 +85,27 @@ function groupItemsByInstrument(items: LeadQuoteItem[], instrumentsMap: Map<stri
   return Array.from(groups.values())
 }
 
+/** Serial / Brand: din câmpurile plate sau din brand_groups (tray_item_brands). */
+function getSerialBrandLabel(item: LeadQuoteItem): string {
+  if (item.serial_number || item.brand) {
+    return [item.brand, item.serial_number].filter(Boolean).join(' – ') || '—'
+  }
+  const groups = item.brand_groups
+  if (Array.isArray(groups) && groups.length > 0) {
+    const parts: string[] = []
+    for (const g of groups) {
+      const brand = (g as { brand?: string }).brand?.trim()
+      const serials = (g as { serialNumbers?: string[] }).serialNumbers
+      const list = Array.isArray(serials) ? serials.filter((s) => s != null && String(s).trim()) : []
+      if (brand || list.length > 0) {
+        parts.push([brand, list.join(', ')].filter(Boolean).join(' – '))
+      }
+    }
+    if (parts.length > 0) return parts.join('; ')
+  }
+  return '—'
+}
+
 export function PrintTraysView({
   lead,
   sheets,
@@ -185,19 +206,21 @@ export function PrintTraysView({
                 </tr>
               </thead>
               <tbody>
-                {groups.flatMap((g) =>
-                  g.items.map((item, i) => {
-                    const sn = item.serial_number || item.brand ? [item.brand, item.serial_number].filter(Boolean).join(' – ') : '—'
+                {groups.flatMap((g) => {
+                  const firstSerialInGroup = g.items.map((it) => getSerialBrandLabel(it)).find((s) => s !== '—') || '—'
+                  return g.items.map((item, i) => {
+                    const sn = getSerialBrandLabel(item)
                     const name = item.name_snapshot || (item.service_id && services.find((s) => s.id === item.service_id)?.name) || '—'
                     const price = (item as { price?: number }).price ?? 0
                     const qty = item.qty ?? 1
                     const disc = Math.min(100, Math.max(0, item.discount_pct ?? 0))
                     const total = qty * price * (1 - disc / 100)
                     const isFirst = i === 0
+                    const displaySn = isFirst ? (sn !== '—' ? sn : firstSerialInGroup) : sn
                     return (
                       <tr key={item.id} style={isFirst ? styles.instrumentRow : styles.serviceRow}>
                         <td style={styles.cell}>{isFirst ? g.name : ''}</td>
-                        <td style={styles.cell}>{isFirst ? sn : ''}</td>
+                        <td style={styles.cell}>{isFirst ? displaySn : (sn !== '—' ? sn : '')}</td>
                         <td style={styles.cell}>{name}</td>
                         <td style={styles.cellCenter}>{qty}</td>
                         <td style={styles.cellRight}>{price.toFixed(2)}</td>
@@ -205,7 +228,7 @@ export function PrintTraysView({
                       </tr>
                     )
                   })
-                )}
+                })}
               </tbody>
             </table>
           </div>

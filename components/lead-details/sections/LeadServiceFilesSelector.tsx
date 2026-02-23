@@ -222,17 +222,17 @@ export function LeadServiceFilesSelector({
             )}
           </>
         ) : (
-          <>
-            <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full max-w-2xl mx-auto">
+            <label className="text-sm font-medium text-foreground whitespace-nowrap sm:self-center">
               Selectează fișa de serviciu:
             </label>
-            <div className="flex items-center gap-2 flex-1">
+            <div className="flex flex-1 items-center gap-3 min-w-0">
               <Select
                 value={selectedFisaId || ''}
                 onValueChange={(value) => onFisaIdChange(value)}
                 disabled={loadingSheets}
               >
-                <SelectTrigger className="w-full max-w-md">
+                <SelectTrigger className="flex-1 max-w-md h-9 text-sm">
                   <SelectValue placeholder={loadingSheets ? "Se încarcă..." : "Selectează o fișă"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -241,8 +241,8 @@ export function LeadServiceFilesSelector({
                       ? format(new Date(sheet.created_at), 'dd MMM yyyy')
                       : '';
                     const displayText = createdDate 
-                      ? `${sheet.number} - ${createdDate}`
-                      : sheet.number;
+                      ? `Fișa ${sheet.number} - ${createdDate}`
+                      : `Fișa ${sheet.number}`;
                     return (
                       <SelectItem key={sheet.id} value={sheet.id}>
                         {displayText}
@@ -256,24 +256,21 @@ export function LeadServiceFilesSelector({
                   )}
                 </SelectContent>
               </Select>
-              {/* Buton "Fișă nouă" - pentru pipeline-ul Vânzări (toți utilizatorii) 
-                  și pentru Receptie (doar vânzători / admin / owner) */}
               {(
-                isVanzariPipeline ||               // în Vânzări: întotdeauna vizibil
-                (isReceptiePipeline && isVanzator) // în Receptie: doar pentru vânzători/admin/owner
+                isVanzariPipeline ||
+                (isReceptiePipeline && isVanzator)
               ) && (
                 <Button
-                  variant="outline"
+                  variant="default"
                   size="sm"
                   onClick={onCreateServiceSheet}
-                  className="flex items-center gap-2"
+                  className="shrink-0 h-9 px-4 bg-red-600 hover:bg-red-700 text-white border-0 font-medium"
                 >
-                  <Plus className="h-4 w-4" />
-                  Adaugă Fișă Serviciu
+                  Creează fișa nouă
                 </Button>
               )}
             </div>
-          </>
+          </div>
         )}
         </div>
         )}

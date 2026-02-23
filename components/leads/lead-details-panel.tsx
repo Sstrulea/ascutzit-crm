@@ -33,7 +33,7 @@ import {
 import { LeadDepartmentActions, LeadVanzariActions } from '../lead-details/actions'
 // Import hook-uri refactorizate
 import { useLeadDetailsBusiness } from '@/hooks/leadDetails/useLeadDetailsBusiness'
-import { listTags, toggleLeadTag, getOrCreatePinnedTag, type Tag, type TagColor } from "@/lib/supabase/tagOperations"
+import { listTags, toggleLeadTag, getOrCreatePinnedTag, getOrCreateUrgentareTag, getOrCreateNuRaspundeTag, type Tag, type TagColor } from "@/lib/supabase/tagOperations"
 import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
 import { useRole, useAuth } from "@/lib/contexts/AuthContext"
 import { deleteLead, updateLeadWithHistory, logLeadEvent, logButtonEvent } from "@/lib/supabase/leadOperations"
@@ -47,6 +47,7 @@ import {
   listTrayItemsForTray,
   getNextGlobalServiceFileNumber,
   getServiceFile,
+  updateServiceFile,
   deleteServiceFile,
   deleteTray,
   type ServiceFile,
@@ -62,6 +63,8 @@ import {
 } from "@/hooks/leadDetails/useLeadDetailsDataLoader"
 import { createServiceSheet } from "@/hooks/leadDetails/useLeadDetailsServiceFiles"
 import { moveItemToStage } from "@/lib/supabase/pipelineOperations"
+import { fetchStagesForPipeline } from "@/lib/supabase/kanban/fetchers"
+import { matchesStagePattern } from "@/lib/supabase/kanban/constants"
 import { hasActiveSession as checkActiveSession } from "@/lib/supabase/workSessionOperations"
 import { logItemEvent, getTrayDetails, getTechnicianDetails, getUserDetails } from "@/lib/supabase/leadOperations"
 import { createNotification } from "@/lib/supabase/notificationOperations"
@@ -134,6 +137,8 @@ export function LeadDetailsPanel({
   // State local pentru lead - permite actualizarea după salvarea informațiilor de contact
   const [lead, setLead] = useState<Maybe<Lead>>(initialLead)
   const [isPinning, setIsPinning] = useState(false)
+  const [isUrgentaring, setIsUrgentaring] = useState(false)
+  const [moveToStageLoading, setMoveToStageLoading] = useState<'de_trimis' | 'ridic_personal' | null>(null)
   const [isClaiming, setIsClaiming] = useState(false)
   // Actualizează lead-ul când se schimbă initialLead (de exemplu, după refresh)
   useEffect(() => {
@@ -781,6 +786,7 @@ export function LeadDetailsPanel({
   // Pin/Unpin (Receptie) – direct din detalii
   const leadIdForPin = (lead as any)?.leadId ?? lead?.id
   const isPinned = (lead?.tags ?? []).some((t: { name?: string }) => t?.name === 'PINNED')
+  const isUrgentare = (lead?.tags ?? []).some((t: { name?: string }) => t?.name === 'Urgentare')
   const handlePinClick = useCallback(async () => {
     if (!leadIdForPin) return
     setIsPinning(true)
@@ -798,6 +804,88 @@ export function LeadDetailsPanel({
       setIsPinning(false)
     }
   }, [leadIdForPin, lead?.tags, onTagsChange])
+  const handleUrgentareClick = useCallback(async () => {
+    if (!leadIdForPin) return
+    setIsUrgentaring(true)
+    try {
+      const urgentareTag = await getOrCreateUrgentareTag()
+      await toggleLeadTag(leadIdForPin, urgentareTag.id)
+      const hadUrgentare = (lead?.tags ?? []).some((t: { name?: string }) => t?.name === 'Urgentare')
+      const newTags = hadUrgentare
+        ? (lead?.tags ?? []).filter((t: { name?: string }) => t?.name !== 'Urgentare')
+        : [...(lead?.tags ?? []), urgentareTag]
+      setLead(prev => (prev ? { ...prev, tags: newTags } : prev))
+      business.state.setSelectedTagIds(newTags.map((t: { id: string }) => t.id))
+      onTagsChange?.(leadIdForPin, newTags)
+    } finally {
+      setIsUrgentaring(false)
+    }
+  }, [leadIdForPin, lead?.tags, onTagsChange])
+
+  const currentStageName = (lead as any)?.stage ?? ''
+  const isDeFacturatStage = matchesStagePattern(currentStageName, 'DE_FACTURAT')
+  const isNuRaspundeStage = matchesStagePattern(currentStageName, 'NU_RASPUNDE')
+  const showDeTrimisRidicButtons = isReceptiePipeline && (isDeFacturatStage || isNuRaspundeStage) && !!business.state.selectedFisaId
+
+  const getReceptieStages = useCallback(async () => {
+    const { data: pipes } = await supabase.from('pipelines').select('id,name')
+    const receptie = (pipes || []).find((p: any) => (p.name || '').toLowerCase().includes('receptie'))
+    if (!receptie?.id) return { receptie: null, deTrimis: null, ridicPersonal: null }
+    const { data: stageList } = await fetchStagesForPipeline(receptie.id)
+    const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+    const deTrimis = stageList?.find((s: any) => norm(s.name).includes('de trimis') || norm(s.name).includes('detrimis'))
+    const ridicPersonal = stageList?.find((s: any) => norm(s.name).includes('ridic personal') || norm(s.name).includes('ridicpersonal'))
+    return { receptie, deTrimis, ridicPersonal }
+  }, [])
+
+  const moveToStageAndClearNuRaspundeIfNeeded = useCallback(async (targetStage: { id: string; name: string } | null) => {
+    const fisaId = business.state.selectedFisaId
+    const leadId = (lead as any)?.leadId ?? (lead as any)?.id
+    if (!fisaId || !targetStage) return
+    try {
+      if (isNuRaspundeStage && leadId) {
+        await updateServiceFile(fisaId, { nu_raspunde_callback_at: null })
+        const nuRaspundeTag = await getOrCreateNuRaspundeTag()
+        await toggleLeadTag(leadId, nuRaspundeTag.id)
+      }
+      const { receptie } = await getReceptieStages()
+      if (!receptie?.id) throw new Error('Pipeline Recepție negăsit')
+      const { error } = await moveItemToStage('service_file', fisaId, receptie.id, targetStage.id)
+      if (error) throw error
+      toast.success(`Fișa mutată în ${targetStage.name}.`)
+      onRefresh?.()
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Nu s-a putut muta fișa')
+    }
+  }, [business.state.selectedFisaId, lead, isNuRaspundeStage, getReceptieStages, onRefresh])
+
+  const handleMoveToDeTrimis = useCallback(async () => {
+    const { deTrimis } = await getReceptieStages()
+    if (!deTrimis) {
+      toast.error('Stage „De trimis” negăsit în Recepție')
+      return
+    }
+    setMoveToStageLoading('de_trimis')
+    try {
+      await moveToStageAndClearNuRaspundeIfNeeded(deTrimis)
+    } finally {
+      setMoveToStageLoading(null)
+    }
+  }, [getReceptieStages, moveToStageAndClearNuRaspundeIfNeeded])
+
+  const handleMoveToRidicPersonal = useCallback(async () => {
+    const { ridicPersonal } = await getReceptieStages()
+    if (!ridicPersonal) {
+      toast.error('Stage „Ridic personal” negăsit în Recepție')
+      return
+    }
+    setMoveToStageLoading('ridic_personal')
+    try {
+      await moveToStageAndClearNuRaspundeIfNeeded(ridicPersonal)
+    } finally {
+      setMoveToStageLoading(null)
+    }
+  }, [getReceptieStages, moveToStageAndClearNuRaspundeIfNeeded])
 
   const handleClaimClick = useCallback(async () => {
     if (!user?.id || isClaiming) return
@@ -909,6 +997,10 @@ export function LeadDetailsPanel({
         isPinned={isPinned}
         isPinning={isPinning}
         onPinClick={handlePinClick}
+        showUrgentareButton={itemType === 'service_file' || itemType === 'tray'}
+        isUrgentare={isUrgentare}
+        isUrgentaring={isUrgentaring}
+        onUrgentareClick={handleUrgentareClick}
         claimedByMe={!!(user?.id && (lead as any)?.claimed_by === user.id)}
         claimedByOther={!!((lead as any)?.claimed_by && (lead as any)?.claimed_by !== user?.id)}
         claimedByName={(lead as any)?.claimed_by_name || null}
@@ -1277,6 +1369,43 @@ export function LeadDetailsPanel({
                     isVanzator={isVanzator}
                   />
 
+                  {/* Receptie: De trimis / Ridic personal – când fișa e în De facturat sau Nu răspunde */}
+                  {showDeTrimisRidicButtons && (
+                    <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg border bg-muted/30">
+                      <span className="text-sm font-medium text-muted-foreground mr-1">Mută fișa:</span>
+                      <Button
+                        size="sm"
+                        variant="default"
+                        disabled={!!moveToStageLoading}
+                        onClick={handleMoveToDeTrimis}
+                        className="gap-1.5"
+                        title="Mută fișa în De trimis"
+                      >
+                        {moveToStageLoading === 'de_trimis' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Package className="h-4 w-4" />
+                        )}
+                        De trimis
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!!moveToStageLoading}
+                        onClick={handleMoveToRidicPersonal}
+                        className="gap-1.5"
+                        title="Mută fișa în Ridic personal"
+                      >
+                        {moveToStageLoading === 'ridic_personal' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <MapPin className="h-4 w-4" />
+                        )}
+                        Ridic personal
+                      </Button>
+                    </div>
+                  )}
+
                   {/* Service Files Selector - Refactorizat (selector fișă mutat în header când e Vânzări/Recepție) */}
                   <LeadServiceFilesSelector
                     isDepartmentPipeline={isDepartmentPipeline}
@@ -1364,6 +1493,10 @@ export function LeadDetailsPanel({
                       onAfterSendTrays={onRefresh}
                       onAfterSave={onRefresh}
                       onClose={onClose}
+                      showUrgentareButton={itemType === 'service_file' || itemType === 'tray'}
+                      isUrgentare={isUrgentare}
+                      isUrgentaring={isUrgentaring}
+                      onUrgentareClick={handleUrgentareClick}
                     />
                   ) : (business.state.serviceSheets.length === 0 && !isDepartmentPipeline) || (isDepartmentPipeline && business.state.allTrays.length === 0) ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center">

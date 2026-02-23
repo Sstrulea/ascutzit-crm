@@ -13,6 +13,7 @@ export interface TrayPrintItem {
   name_snapshot?: string | null
   brand?: string | null
   serial_number?: string | null
+  brand_groups?: Array<{ brand?: string; serialNumbers?: string[] }>
   qty?: number
   price?: number
   discount_pct?: number
@@ -62,6 +63,25 @@ function groupItemsByInstrument(
     groups.get(iid)!.items.push(it)
   }
   return Array.from(groups.values())
+}
+
+function getSerialBrandLabel(item: TrayPrintItem): string {
+  if (item.serial_number || item.brand) {
+    return [item.brand, item.serial_number].filter(Boolean).join(' – ') || '—'
+  }
+  const groups = item.brand_groups
+  if (Array.isArray(groups) && groups.length > 0) {
+    const parts: string[] = []
+    for (const g of groups) {
+      const brand = g.brand?.trim()
+      const list = Array.isArray(g.serialNumbers) ? g.serialNumbers.filter((s) => s != null && String(s).trim()) : []
+      if (brand || list.length > 0) {
+        parts.push([brand, list.join(', ')].filter(Boolean).join(' – '))
+      }
+    }
+    if (parts.length > 0) return parts.join('; ')
+  }
+  return '—'
 }
 
 const PRINT_STYLES = `
@@ -167,13 +187,12 @@ export function buildTrayPrintDocumentHtml(data: TrayPrintData): string {
       bodyHtml += '</tr></thead><tbody>'
 
       for (const g of groups) {
+        const firstSerialInGroup = g.items.map(getSerialBrandLabel).find((s) => s !== '—') || '—'
         for (let i = 0; i < g.items.length; i++) {
           const item = g.items[i]
           const isFirst = i === 0
-          const sn =
-            item.serial_number || item.brand
-              ? [item.brand, item.serial_number].filter(Boolean).join(' – ')
-              : '—'
+          const sn = getSerialBrandLabel(item)
+          const displaySn = isFirst ? (sn !== '—' ? sn : firstSerialInGroup) : sn
           const name =
             item.name_snapshot ||
             (item.service_id ? servicesMap.get(item.service_id) || '—' : '—')
@@ -185,7 +204,7 @@ export function buildTrayPrintDocumentHtml(data: TrayPrintData): string {
 
           bodyHtml += '<tr style="' + bg + '">'
           bodyHtml += '<td>' + escapeHtml(isFirst ? g.name : '') + '</td>'
-          bodyHtml += '<td>' + escapeHtml(isFirst ? sn : '') + '</td>'
+          bodyHtml += '<td>' + escapeHtml(isFirst ? displaySn : (sn !== '—' ? sn : '')) + '</td>'
           bodyHtml += '<td>' + escapeHtml(name) + '</td>'
           bodyHtml += '<td style="text-align:center">' + escapeHtml(qty) + '</td>'
           bodyHtml += '<td style="text-align:right">' + price.toFixed(2) + '</td>'

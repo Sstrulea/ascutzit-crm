@@ -114,6 +114,23 @@ export async function getOrCreatePinnedTag(): Promise<Tag> {
   return newTag as Tag
 }
 
+/** Găsește sau creează tag-ul Urgentare (poziționează cardul primul în listă – pentru fișe de serviciu și tăvițe). */
+export async function getOrCreateUrgentareTag(): Promise<Tag> {
+  const { data: existingTag } = await supabase
+    .from('tags')
+    .select('id,name,color')
+    .eq('name', 'Urgentare')
+    .maybeSingle()
+  if (existingTag) return existingTag as Tag
+  const { data: newTag, error } = await supabase
+    .from('tags')
+    .insert([{ name: 'Urgentare', color: 'orange' }] as any)
+    .select('id,name,color')
+    .single()
+  if (error) throw error
+  return newTag as Tag
+}
+
 /** Găsește sau creează tag-ul "Nu raspunde" (pentru evidențiere card fișă). */
 export async function getOrCreateNuRaspundeTag(): Promise<Tag> {
   // Pentru a evita duplicate ("Nu răspunde" vs "Nu raspunde"), listăm și canonicalizăm.

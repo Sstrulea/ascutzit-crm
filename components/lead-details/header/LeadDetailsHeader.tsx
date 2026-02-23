@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Mail, Phone, Trash2, Printer, ChevronsUpDown, X, Tag, PhoneCall, CalendarIcon, Pin, Loader2, Plus, Info, UserPlus, UserCheck } from "lucide-react"
+import { Mail, Phone, Trash2, Printer, ChevronsUpDown, X, Tag, PhoneCall, CalendarIcon, Pin, Loader2, Plus, Info, UserPlus, UserCheck, ArrowUpCircle } from "lucide-react"
 import { format } from "date-fns"
 import { ro } from "date-fns/locale"
 import type { Tag as TagType, TagColor } from '@/lib/supabase/tagOperations'
@@ -70,6 +70,12 @@ interface LeadDetailsHeaderProps {
   isPinned?: boolean
   isPinning?: boolean
   onPinClick?: () => void
+
+  // Urgentare (fișe/tăvițe) – poziționează cardul primul în listă
+  showUrgentareButton?: boolean
+  isUrgentare?: boolean
+  isUrgentaring?: boolean
+  onUrgentareClick?: () => void
 
   // Handlers
   onEmailClick: (email: string) => void
@@ -151,6 +157,10 @@ export function LeadDetailsHeader({
   isPinned = false,
   isPinning = false,
   onPinClick,
+  showUrgentareButton = false,
+  isUrgentare = false,
+  isUrgentaring = false,
+  onUrgentareClick,
   onEmailClick,
   onPhoneClick,
   onDeleteClick,
@@ -213,20 +223,20 @@ export function LeadDetailsHeader({
             <h2 className="text-lg font-bold text-slate-900 dark:text-white truncate">
               {leadName}
             </h2>
-            <div className="flex items-center gap-2 mt-1">
-              {/* Atribuie tag — doar taguri ne-atribuite automat */}
+            <div className="flex flex-wrap items-center gap-3 mt-2">
+              {/* Atribuie tag — doar taguri ne-atribuite automat; buton mărit ~2x pentru vizibilitate */}
               {assignableTags.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button 
                       variant="outline" 
-                      size="sm" 
-                      className="h-6 px-2 text-[10px] gap-1"
+                      size="default"
+                      className="h-12 px-4 text-base gap-2 min-w-[140px]"
                       disabled={!isAdmin && !(isReceptiePipeline && assignableTags.some(t => t.name === 'PINNED'))}
                     >
-                      <Tag className="h-3 w-3" />
-                      Atribuie tag
-                      <ChevronsUpDown className="h-3 w-3 opacity-50" />
+                      <Tag className="h-5 w-5 shrink-0" />
+                      <span className="whitespace-nowrap">Atribuie tag</span>
+                      <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-[220px]">
@@ -251,13 +261,13 @@ export function LeadDetailsHeader({
                 <DropdownMenuTrigger asChild>
                   <Button 
                     variant="ghost" 
-                    size="sm" 
-                    className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground gap-1"
+                    size="default"
+                    className="h-10 px-3 text-sm text-muted-foreground hover:text-foreground gap-1.5"
                     disabled={!isAdmin && !isReceptiePipeline}
                   >
-                    <Tag className="h-3 w-3" />
+                    <Tag className="h-4 w-4" />
                     Etichete
-                    <ChevronsUpDown className="h-3 w-3 opacity-50" />
+                    <ChevronsUpDown className="h-4 w-4 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-[240px]">
@@ -287,15 +297,16 @@ export function LeadDetailsHeader({
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {/* Selected Tags Pills — cu buton X pentru înlăturare (când tag-ul nu e auto sau e PINNED în Receptie); tag-urile din TAGS_HIDDEN_FROM_UI nu se afișează */}
-              <div className="flex flex-wrap gap-1 max-w-[400px]">
+              {/* Selected Tags Pills — pe același rând orizontal cu butoanele */}
+              <div className="flex flex-wrap items-center gap-2 max-w-[500px]">
                 {allTags
                   .filter(t => selectedTagIds.includes(t.id) && !isTagHiddenFromUI(t.name))
                   .map(tag => {
                     const isUrgent = tag.name.toLowerCase() === 'urgent'
                     const isRetur = tag.name === 'RETUR'
-                    const isSpecial = isUrgent || isRetur
-                    const canRemove = !isAutoTag(tag.name) || (tag.name === 'PINNED' && isReceptiePipeline)
+                    const isUrgentare = tag.name === 'Urgentare'
+                    const isSpecial = isUrgent || isRetur || isUrgentare
+                    const canRemove = !isAutoTag(tag.name) || (tag.name === 'PINNED' && isReceptiePipeline) || tag.name === 'Urgentare'
                     
                     if (isUrgent && isVanzariPipeline) return null
                     
@@ -331,7 +342,17 @@ export function LeadDetailsHeader({
                       )
                     }
                     
-                    if (isSpecial) {
+                    if (isUrgentare) {
+                      return (
+                        <span
+                          key={tag.id}
+                          className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500 text-white"
+                        >
+                          {pillContent}
+                        </span>
+                      )
+                    }
+                    if (isUrgent || isRetur) {
                       return (
                         <span
                           key={tag.id}
@@ -361,8 +382,8 @@ export function LeadDetailsHeader({
 
         {/* Center: Selector fișă de serviciu (același rând cu nume și butoane) */}
         {showSheetSelectorInHeader && onFisaIdChange && (
-          <div className="flex items-center justify-center gap-2 flex-1 min-w-0 mx-2">
-            <label className="text-sm font-medium text-muted-foreground whitespace-nowrap hidden sm:inline">
+          <div className="flex items-center justify-center gap-3 flex-1 min-w-0 mx-2">
+            <label className="text-sm font-medium text-foreground whitespace-nowrap hidden sm:inline">
               Selectează fișa de serviciu:
             </label>
             <Select
@@ -370,7 +391,7 @@ export function LeadDetailsHeader({
               onValueChange={onFisaIdChange}
               disabled={loadingSheets}
             >
-              <SelectTrigger className="w-[200px] sm:w-[240px] h-8 text-sm">
+              <SelectTrigger className="w-[200px] sm:w-[260px] h-9 text-sm">
                 <SelectValue placeholder={loadingSheets ? "Se încarcă..." : "Selectează o fișă"} />
               </SelectTrigger>
               <SelectContent>
@@ -379,8 +400,8 @@ export function LeadDetailsHeader({
                     ? format(new Date(sheet.created_at), 'dd MMM yyyy')
                     : ''
                   const displayText = createdDate
-                    ? `${sheet.number} - ${createdDate}`
-                    : sheet.number
+                    ? `Fișa ${sheet.number} - ${createdDate}`
+                    : `Fișa ${sheet.number}`
                   return (
                     <SelectItem key={sheet.id} value={sheet.id}>
                       {displayText}
@@ -397,13 +418,12 @@ export function LeadDetailsHeader({
             {(isVanzariPipeline || (isReceptiePipeline && isVanzator)) && onCreateServiceSheet && (
               <Button
                 data-button-id="receptieAddServiceSheetButton"
-                variant="outline"
+                variant="default"
                 size="sm"
-                onClick={wrap('vanzariPanelAddServiceSheetButton', 'Adaugă Fișă Serviciu', onCreateServiceSheet)}
-                className="h-8 gap-1.5 text-xs flex-shrink-0"
+                onClick={wrap('vanzariPanelAddServiceSheetButton', 'Creează fișa nouă', onCreateServiceSheet)}
+                className="h-9 px-4 bg-red-600 hover:bg-red-700 text-white border-0 font-medium text-sm flex-shrink-0"
               >
-                <Plus className="h-4 w-4" />
-                <span className="hidden xs:inline">Adaugă Fișă Serviciu</span>
+                Creează fișa nouă
               </Button>
             )}
           </div>
@@ -425,6 +445,22 @@ export function LeadDetailsHeader({
             >
               {isPinning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pin className={cn("h-3.5 w-3.5", isPinned && "fill-current")} />}
               <span className="hidden sm:inline">{isPinned ? "Unpin" : "Pin"}</span>
+            </Button>
+          )}
+          {showUrgentareButton && onUrgentareClick && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={wrap('vanzariPanelUrgentareButton', 'Urgentare', onUrgentareClick)}
+              disabled={isUrgentaring}
+              className={cn(
+                "h-8 gap-1.5 text-xs border-slate-200 dark:border-slate-700",
+                isUrgentare && "text-orange-600 border-orange-300 bg-orange-50 dark:bg-orange-950 dark:border-orange-800"
+              )}
+              title={isUrgentare ? "Anulează urgentare" : "Urgentare (apare primul în listă)"}
+            >
+              {isUrgentaring ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpCircle className={cn("h-3.5 w-3.5", isUrgentare && "fill-current")} />}
+              <span className="hidden sm:inline">{isUrgentare ? "Anulează urgentare" : "Urgentare"}</span>
             </Button>
           )}
           {onClaimClick && (isVanzariPipeline || isReceptiePipeline) && (

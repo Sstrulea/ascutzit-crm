@@ -167,6 +167,11 @@ interface PreturiOrchestratorProps {
   setQuotes?: (quotes: LeadQuote[] | ((prev: LeadQuote[]) => LeadQuote[])) => void
   setSelectedQuoteId?: (id: string | null) => void
   onUrgentChange: (checked: boolean) => Promise<void>
+  /** Urgentare (fișe/tăvițe) – buton lângă Urgent în Recepție Comandă */
+  showUrgentareButton?: boolean
+  isUrgentare?: boolean
+  isUrgentaring?: boolean
+  onUrgentareClick?: () => void
   onSubscriptionChange: (value: 'services' | 'parts' | 'both' | '') => void
   onOfficeDirectChange: (checked: boolean) => Promise<void>
   onCurierTrimisChange?: (checked: boolean, dateTime?: string) => Promise<void>
@@ -569,6 +574,10 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
           onSave={(data) => props.onSave(data)}
           onClose={props.onClose}
           onUrgentChange={props.onUrgentChange}
+          showUrgentareButton={props.showUrgentareButton}
+          isUrgentare={props.isUrgentare}
+          isUrgentaring={props.isUrgentaring}
+          onUrgentareClick={props.onUrgentareClick}
           onOfficeDirectChange={props.onOfficeDirectChange}
           onCurierTrimisChange={props.onCurierTrimisChange}
           onReturChange={props.onReturChange}
@@ -711,6 +720,10 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
           onSave={(data) => props.onSave(data)}
           onClose={props.onClose}
           onUrgentChange={props.onUrgentChange}
+          showUrgentareButton={props.showUrgentareButton}
+          isUrgentare={props.isUrgentare}
+          isUrgentaring={props.isUrgentaring}
+          onUrgentareClick={props.onUrgentareClick}
           onOfficeDirectChange={props.onOfficeDirectChange}
           onCurierTrimisChange={props.onCurierTrimisChange}
           onReturChange={props.onReturChange}
@@ -905,6 +918,10 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
         fisaIdForCache={props.fisaId ?? undefined}
         serviceFileId={props.fisaId ?? undefined}
         onUrgentChange={props.onUrgentChange}
+        showUrgentareButton={props.showUrgentareButton}
+        isUrgentare={props.isUrgentare}
+        isUrgentaring={props.isUrgentaring}
+        onUrgentareClick={props.onUrgentareClick}
         onOfficeDirectChange={props.onOfficeDirectChange}
         onCurierTrimisChange={props.onCurierTrimisChange}
         onReturChange={props.onReturChange}

@@ -44,6 +44,10 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
   onAfterSendTrays,
   onAfterSave,
   onClose,
+  showUrgentareButton,
+  isUrgentare,
+  isUrgentaring,
+  onUrgentareClick,
 }, ref) {
   
   // Normalizează lead-ul pentru a evita conflicte de tipuri
@@ -911,6 +915,10 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
       onSendTraysValidityChange={setViewUnassignedNames}
       onPrintTrays={() => setShowPrintTraysDialog(true)}
       onUrgentChange={async (checked: boolean) => business.handleUrgentChange(checked)}
+      showUrgentareButton={showUrgentareButton}
+      isUrgentare={isUrgentare}
+      isUrgentaring={isUrgentaring}
+      onUrgentareClick={onUrgentareClick}
       onSubscriptionChange={state.setSubscriptionType}
       onOfficeDirectChange={business.handleDeliveryCheckboxChange}
       onCurierTrimisChange={business.handleCurierTrimisChange}

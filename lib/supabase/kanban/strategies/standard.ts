@@ -29,6 +29,7 @@ import {
   calculateTrayTotals
 } from '../transformers'
 import type { PipelineItemWithStage } from '../types'
+import { isLivrariOrCurierAjunsAziStage } from '../constants'
 import { isForeignPhone } from '@/lib/facebook-lead-helpers'
 
 const TZ_RO = 'Europe/Bucharest'
@@ -132,12 +133,11 @@ export class StandardPipelineStrategy implements PipelineStrategy {
         }) || null
       : null
 
-    // Stage "Curier Ajuns Azi": lead-uri pentru care s-a creat azi (RO) o fișă cu Curier trimis sau Office direct activ
+    // Stage "Curier Ajuns Azi" / "LIVRARI": lead-uri pentru care s-a creat azi (RO) o fișă cu Curier trimis sau Office direct activ
     const curierAjunsAziStage = isVanzari
       ? context.allStages.find(s => {
           if (s.pipeline_id !== context.pipelineId) return false
-          const nameLower = (s.name || '').toLowerCase().trim()
-          return nameLower.includes('curier') && nameLower.includes('ajuns') && nameLower.includes('azi')
+          return isLivrariOrCurierAjunsAziStage(s.name || '')
         }) || null
       : null
 
@@ -824,6 +824,12 @@ export class StandardPipelineStrategy implements PipelineStrategy {
         if (isInArhivat) {
           // Păstrează în Arhivat
         } else if (isWithin24h(tagAssignedAt)) {
+          // Dacă utilizatorul a mutat explicit lead-ul în Avem Comandă, păstrăm poziția (nu îl readucem în Curier Ajuns Azi)
+          if (avemComandaStage && pipelineItem.stage_id === avemComandaStage.id) {
+            const userMessageCount = userMessageCountByLeadId.get(lead.id) ?? 0
+            kanbanItems.push(transformLeadToKanbanItem(lead, pipelineItem, tags, total, userMessageCount, userNamesMap))
+            return
+          }
           // Nu adăuga aici – va apărea în Curier Ajuns Azi
           return
         } else if (avemComandaStage) {
@@ -910,6 +916,8 @@ export class StandardPipelineStrategy implements PipelineStrategy {
         for (const lead of sortedLeads) {
           const pipelineItem = getPipelineItem(itemMap, 'lead', lead.id)
           if (!pipelineItem) continue
+          // Exclude lead-uri mutate explicit în Avem Comandă – păstrăm poziția aleasă de utilizator
+          if (avemComandaStage && pipelineItem.stage_id === avemComandaStage.id) continue
           const tags = tagMap.get(lead.id) || []
           const hasCurierOrOffice = curierOfficeTagAssignedAt.has(lead.id) || hasCurierTrimisTag(tags) || hasOfficeDirectTag(tags)
           if (!hasCurierOrOffice) continue

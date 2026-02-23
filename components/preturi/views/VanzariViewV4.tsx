@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Calendar } from '@/components/ui/calendar'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Loader2, Trash2, CalendarIcon, Clock, Plus, Minus, X, Package, Printer, ChevronDown, ChevronRight, Check, GitMerge, Pencil, FileCheck } from 'lucide-react'
+import { Loader2, Trash2, CalendarIcon, Clock, Plus, Minus, X, Package, Printer, ChevronDown, ChevronRight, Check, GitMerge, Pencil, FileCheck, ArrowUpCircle } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -140,6 +140,11 @@ export interface VanzariViewV4Props {
   onPrintTrays?: () => void
   /** Pentru departamente tehnice: acțiuni extra (Împarte tăvița, Reunește, etc.) afișate într-un dropdown */
   departmentActions?: Array<{ label: string; onClick: () => void }>
+  /** Urgentare (fișe/tăvițe): buton lângă Urgent în Recepție Comandă */
+  showUrgentareButton?: boolean
+  isUrgentare?: boolean
+  isUrgentaring?: boolean
+  onUrgentareClick?: () => void
 }
 
 // ============================================================================
@@ -1221,6 +1226,10 @@ export function VanzariViewV4({
   onValidateTrayQc,
   onPrintTrays,
   departmentActions,
+  showUrgentareButton = false,
+  isUrgentare = false,
+  isUrgentaring = false,
+  onUrgentareClick,
 }: VanzariViewV4Props) {
   const { user: currentUser } = useAuth()
   const actorOption = useMemo(() => ({
@@ -1701,6 +1710,27 @@ export function VanzariViewV4({
               </span>
             )}
           </label>
+
+          {showUrgentareButton && onUrgentareClick && (
+            <>
+              <div className="h-4 w-px bg-border/60" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isLocked || isUrgentaring}
+                onClick={() => { logBtn('vanzariViewUrgentareButton', isUrgentare ? 'Anulează urgentare' : 'Urgentare'); onUrgentareClick() }}
+                title={isUrgentare ? 'Anulează urgentare' : 'Urgentare (apare primul în listă)'}
+                className={cn(
+                  "h-8 px-2.5 text-xs font-medium gap-1.5",
+                  isUrgentare && "border-orange-500/50 text-orange-700 dark:text-orange-400 bg-orange-500/10"
+                )}
+              >
+                {isUrgentaring ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpCircle className={cn("h-3.5 w-3.5", isUrgentare && "fill-current")} />}
+                {isUrgentare ? 'Anulează urgentare' : 'Urgentare'}
+              </Button>
+            </>
+          )}
           
           <div className="h-4 w-px bg-border/60" />
           

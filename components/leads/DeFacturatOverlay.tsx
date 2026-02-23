@@ -35,13 +35,16 @@ import {
   listTraysForServiceFile,
   getServiceFile,
   updateServiceFileWithHistory,
+  updateServiceFile,
   clearTrayPositionsOnFacturare,
 } from '@/lib/supabase/serviceFileOperations'
 import {
   addServiceFileToPipeline,
   tryMoveLeadToArhivatIfAllFacturate,
   moveItemToStage,
+  getPipelineIdForItem,
 } from '@/lib/supabase/pipelineOperations'
+import { findStageByPattern } from '@/lib/supabase/kanban/constants'
 import { updateLeadWithHistory } from '@/lib/supabase/leadOperations'
 import { fetchStagesForPipeline } from '@/lib/supabase/kanban/fetchers'
 import { listServices } from '@/lib/supabase/serviceOperations'
@@ -91,6 +94,7 @@ type DeFacturatCacheEntry = {
   instruments: Array<{ id: string; name: string; weight: number; department_id: string | null; pipeline?: string | null }>
   pipelinesWithIds: Array<{ id: string; name: string }>
   convMessages: Array<{ id: string; content: string | null; message_type: string | null; created_at: string; sender_id?: string }>
+  senderNamesByUserId?: Record<string, string>
   cachedAt: number
 }
 const defacturatCache = new Map<string, DeFacturatCacheEntry>()
@@ -127,10 +131,14 @@ export function DeFacturatOverlay({
   const [editBilling, setEditBilling] = useState<{ full_name?: string; phone_number?: string; email?: string }>({})
   const [billingSaving, setBillingSaving] = useState(false)
   const [convMessages, setConvMessages] = useState<Array<{ id: string; content: string | null; message_type: string | null; created_at: string; sender_id?: string }>>([])
+  const [senderNamesByUserId, setSenderNamesByUserId] = useState<Record<string, string>>({})
   const [showNuRaspundeDialog, setShowNuRaspundeDialog] = useState(false)
   const [isPinning, setIsPinning] = useState(false)
   const [isPinned, setIsPinned] = useState(false)
+  const [retrimiteLoading, setRetrimiteLoading] = useState(false)
   const [techniciansByTrayId, setTechniciansByTrayId] = useState<Map<string, string>>(new Map())
+
+  const DEPARTMENT_NAMES = ['Saloane', 'Frizerii', 'Horeca', 'Reparatii']
 
   const fisaId = serviceFile?.id ?? (kanbanLead?.type === 'service_file' ? kanbanLead?.id : null)
   const leadId = leadFull?.id ?? kanbanLead?.leadId ?? kanbanLead?.lead_id ?? (kanbanLead?.type === 'service_file' ? null : kanbanLead?.id)
@@ -162,6 +170,7 @@ export function DeFacturatOverlay({
       setInstruments(cached.instruments)
       setPipelinesWithIds(cached.pipelinesWithIds)
       setConvMessages(cached.convMessages ?? [])
+      setSenderNamesByUserId(cached.senderNamesByUserId ?? {})
       setLoading(false)
       return
     }
@@ -224,6 +233,16 @@ export function DeFacturatOverlay({
       setServices(servicesRes || [])
       setInstruments((instrumentsRes as any)?.data ?? instrumentsRes ?? [])
       setConvMessages(messagesList)
+
+      let senderNamesMap: Record<string, string> = {}
+      const senderIds = [...new Set((messagesList as any[]).map((m: any) => m.sender_id).filter(Boolean))]
+      if (senderIds.length > 0) {
+        const { data: members } = await supabase.from('app_members').select('user_id, name').in('user_id', senderIds)
+        ;(members || []).forEach((m: any) => { senderNamesMap[m.user_id] = (m.name || '').trim() || `User ${String(m.user_id).slice(0, 8)}` })
+        setSenderNamesByUserId(senderNamesMap)
+      } else {
+        setSenderNamesByUserId({})
+      }
       const pipes = pipelinesRes?.data ?? pipelinesRes ?? []
       setPipelinesWithIds(Array.isArray(pipes) ? pipes : [])
 
@@ -335,6 +354,7 @@ export function DeFacturatOverlay({
           instruments: (instrumentsRes as any)?.data ?? [],
           pipelinesWithIds: Array.isArray(pipes) ? pipes : [],
           convMessages: messagesList,
+          senderNamesByUserId: senderNamesMap,
           cachedAt: Date.now(),
         })
       }
@@ -461,6 +481,11 @@ export function DeFacturatOverlay({
       toast({ title: 'Pipeline Recepție negăsit', variant: 'destructive' })
       return
     }
+    const tagLeadId = serviceFile?.lead_id ?? leadId
+    if (!tagLeadId) {
+      toast({ title: 'Eroare', description: 'Lead-ul fișei nu a putut fi identificat', variant: 'destructive' })
+      return
+    }
     setFacturareLoading(true)
     try {
       const now = new Date()
@@ -478,7 +503,7 @@ export function DeFacturatOverlay({
       }
 
       const nuRaspundeTag = await getOrCreateNuRaspundeTag()
-      await addLeadTagIfNotPresent(leadId, nuRaspundeTag.id)
+      await addLeadTagIfNotPresent(tagLeadId, nuRaspundeTag.id)
 
       const { error: updateErr } = await updateServiceFileWithHistory(fisaId, { nu_raspunde_callback_at: target.toISOString() })
       if (updateErr) throw updateErr
@@ -527,6 +552,56 @@ export function DeFacturatOverlay({
       toast({ title: 'Eroare', description: e?.message ?? 'Nu s-a putut actualiza starea de fixare', variant: 'destructive' })
     } finally {
       setIsPinning(false)
+    }
+  }
+
+  /** Retrimite tăvițele în departament (stage Noua) cu tag Fixed pe lead, apoi mută fișa în Colet Ajuns. */
+  const handleRetrimiteInDepartamentSiColetAjuns = async () => {
+    if (!fisaId || !leadId) return
+    const receptie = (pipelinesWithStages || []).find((p: any) => norm(p.name || '').includes('receptie'))
+    if (!receptie?.id) {
+      toast({ title: 'Eroare', description: 'Pipeline Recepție negăsit', variant: 'destructive' })
+      return
+    }
+    const receptieStages = receptie.stages || []
+    const coletAjunsStage = findStageByPattern(receptieStages, 'COLET_AJUNS')
+    if (!coletAjunsStage) {
+      toast({ title: 'Eroare', description: 'Stage „Colet ajuns” negăsit în Recepție', variant: 'destructive' })
+      return
+    }
+    setRetrimiteLoading(true)
+    try {
+      await updateServiceFile(fisaId, { nu_raspunde_callback_at: null, colet_ajuns: true })
+      const nuRaspundeTag = await getOrCreateNuRaspundeTag()
+      await toggleLeadTag(leadId, nuRaspundeTag.id)
+      const trayIds = (quotes || []).map((q: any) => q.id).filter(Boolean)
+      for (const trayId of trayIds) {
+        const { data: pipelineId } = await getPipelineIdForItem('tray', trayId)
+        if (!pipelineId) continue
+        const pipeline = (pipelinesWithStages || []).find((p: any) => p.id === pipelineId)
+        if (!pipeline || !DEPARTMENT_NAMES.includes(pipeline.name)) continue
+        let stages = Array.isArray(pipeline.stages) ? pipeline.stages : []
+        if (stages.length === 0) {
+          const { data: fetchedStages } = await fetchStagesForPipeline(pipelineId)
+          stages = fetchedStages || []
+        }
+        const nouaStage = findStageByPattern(stages, 'NOUA')
+        if (!nouaStage) continue
+        const { error } = await moveItemToStage('tray', trayId, pipelineId, nouaStage.id)
+        if (error) console.warn('[DeFacturatOverlay] move tray to Noua:', error)
+      }
+      const pinnedTag = await getOrCreatePinnedTag()
+      await addLeadTagIfNotPresent(leadId, pinnedTag.id)
+      const { error: moveErr } = await moveItemToStage('service_file', fisaId, receptie.id, coletAjunsStage.id)
+      if (moveErr) throw moveErr
+      toast.success('Tăvițele au fost retrimise în departament (Noua), tag Fixed aplicat, fișa mutată în Colet ajuns.')
+      defacturatCache.delete(getCacheKey(kanbanLead))
+      onRefresh?.()
+      onOpenChange(false)
+    } catch (e: any) {
+      toast({ title: 'Eroare', description: e?.message ?? 'Nu s-a putut retrimite', variant: 'destructive' })
+    } finally {
+      setRetrimiteLoading(false)
     }
   }
 
@@ -670,6 +745,17 @@ export function DeFacturatOverlay({
                 >
                   {isPinning ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <Pin className={`h-5 w-5 shrink-0 ${isPinned ? 'fill-current' : ''}`} />}
                   {isPinned ? 'Desfixează' : 'Fixează'}
+                </Button>
+                <Button
+                  data-button-id="receptieRetrimiteDepartamentColetAjunsButton"
+                  variant="outline"
+                  onClick={handleRetrimiteInDepartamentSiColetAjuns}
+                  disabled={!fisaId || !leadId || retrimiteLoading}
+                  className="gap-2 text-base min-h-11 border-emerald-600/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                  title="Retrimite tăvițele în departament (stage Noua) cu tag Fixed, fișa în Colet ajuns"
+                >
+                  {retrimiteLoading ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <RotateCcw className="h-5 w-5 shrink-0" />}
+                  Retrimite în departament
                 </Button>
               </div>
 
@@ -823,8 +909,10 @@ export function DeFacturatOverlay({
                         const type = (msg.message_type || '').toLowerCase()
                         const content = msg.content?.trim()
                         const label = type === 'file' ? '[Fișier]' : type === 'image' ? '[Imagine]' : content || '[Mesaj gol]'
+                        const senderName = msg.sender_id ? (senderNamesByUserId[msg.sender_id] || `User ${String(msg.sender_id).slice(0, 8)}`) : null
                         return (
                           <div key={msg.id} className="flex flex-col gap-0.5 py-2 border-b border-border/50 last:border-0">
+                            {senderName && <span className="text-xs font-medium text-muted-foreground">{senderName}</span>}
                             <p className="break-words text-red-600 dark:text-red-400 font-bold">{label}</p>
                             <span className="text-xs text-muted-foreground">{new Date(msg.created_at).toLocaleString('ro-RO')}</span>
                           </div>

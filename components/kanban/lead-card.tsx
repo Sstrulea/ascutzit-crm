@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, useMemo, useRef } from "react"
-import { MoreHorizontal, Mail, Calendar, Clock, User, Phone, Pin, Trash2, CheckCircle2, Circle, Building2, Sparkles, Scissors, Wrench, Building, PhoneOff, PhoneCall, PhoneMissed, XCircle, Info, Package, Pencil, Tag, MessageCircle, UserPlus, UserCheck, UserX, Users, Archive, Loader2 } from "lucide-react"
+import { MoreHorizontal, Mail, Calendar, Clock, User, Phone, Pin, Trash2, CheckCircle2, Circle, Building2, Sparkles, Scissors, Wrench, Building, PhoneOff, PhoneCall, PhoneMissed, XCircle, Info, Package, Pencil, Tag, MessageCircle, UserCheck, UserX, Archive, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -20,7 +20,7 @@ import type { Lead } from "@/app/(crm)/dashboard/page"
 import type { TagColor } from "@/lib/supabase/tagOperations"
 import { getOrCreatePinnedTag, getOrCreateNuRaspundeTag, getOrCreateSunaTag, getOrCreateCurierTrimisTag, getOrCreateOfficeDirectTag, getOrCreateReturTag, getOrCreateUrgentTag, getOrCreateNuAVenitTag, toggleLeadTag, addLeadTagIfNotPresent, listTags } from "@/lib/supabase/tagOperations"
 import { isTagHiddenFromUI } from "@/hooks/leadDetails/useLeadDetailsTags"
-import { deleteLead, updateLead, logLeadEvent, logButtonEvent, claimLead } from "@/lib/supabase/leadOperations"
+import { deleteLead, updateLead, logLeadEvent, logButtonEvent } from "@/lib/supabase/leadOperations"
 import { setLeadNoDeal, setLeadCurierTrimis, setLeadOfficeDirect } from "@/lib/vanzari/leadOperations"
 import { recordVanzariApelForDeliveryByStageName } from "@/lib/supabase/vanzariApeluri"
 import { deleteServiceFile, deleteTray, updateServiceFileWithHistory } from "@/lib/supabase/serviceFileOperations"
@@ -28,11 +28,11 @@ import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
 import { CallbackDialog } from "@/components/leads/vanzari/CallbackDialog"
 import { NuRaspundeDialog } from "@/components/leads/vanzari/NuRaspundeDialog"
 import { useRole, useAuth } from "@/lib/contexts/AuthContext"
-import { useTechnicians } from "@/hooks/queries/use-technicians"
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns"
 import { ro } from "date-fns/locale"
 import { useToast } from "@/hooks/use-toast"
 import { formatExactDuration } from "@/lib/utils/service-time"
+import { isLivrariOrCurierAjunsAziStage, isLivrariOrCurierAjunsStage } from "@/lib/supabase/kanban/constants"
 
 /** Render details text: Instrument/Problemă în bold roșu; Număr De Telefon în albastru marin bold. */
 function renderDetailsWithRedHighlight(text: string): React.ReactNode {
@@ -279,76 +279,14 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
 
   const leadIdForDb = (lead as any).leadId || lead.id
 
-  // Preluare lead – doar în stage-urile: Leaduri, Leaduri straine, Nu raspunde, Call Back
-  const CLAIM_ALLOWED_STAGES = ['leaduri', 'leaduri straine', 'nu raspunde', 'call back', 'curier ajuns azi']
-  const stageNorm = (s: string) => String(s || '').toLowerCase().trim().replace(/\s+/g, ' ')
-  const isStageAllowedForClaim = CLAIM_ALLOWED_STAGES.some(
-    (allowed) => stageNorm(lead.stage || '').includes(allowed) || stageNorm(lead.stage || '').replace(/\s/g, '') === allowed.replace(/\s/g, '')
-  )
-  const [isClaiming, setIsClaiming] = useState(false)
-  const [assignPopoverOpen, setAssignPopoverOpen] = useState(false)
-  const [isAssigning, setIsAssigning] = useState(false)
-  const { data: membersList } = useTechnicians()
   const isClaimedByMe = !!(currentUser?.id && (lead as any).claimed_by === currentUser.id)
   const isClaimedByOther = !!((lead as any).claimed_by && (lead as any).claimed_by !== currentUser?.id)
-  const isParteneriPipeline = pipelineName?.toLowerCase().includes('parteneri') ?? false
-  const showClaimButton =
-    (isVanzariPipeline || isParteneriPipeline) &&
-    (itemType === 'lead' || itemType === 'service_file') &&
-    (isStageAllowedForClaim || isParteneriPipeline)
 
   const actorOption = useMemo(() => ({
     currentUserId: currentUser?.id ?? undefined,
     currentUserName: currentUser?.email?.split('@')[0] ?? null,
     currentUserEmail: currentUser?.email ?? null,
   }), [currentUser?.id, currentUser?.email])
-
-  const handleClaimLead = async () => {
-    if (!currentUser?.id || isClaiming) return
-    if (isClaimedByOther) return
-    setIsClaiming(true)
-    try {
-      if (isClaimedByMe) {
-        const { unclaimLead } = await import('@/lib/supabase/leadOperations')
-        await unclaimLead(lead.leadId || lead.id)
-      } else {
-        const { error } = await claimLead(lead.leadId || lead.id, currentUser.id)
-        if (error) {
-          const { toast } = await import('sonner')
-          toast.error(error.message || 'Nu s-a putut prelua lead-ul')
-          return
-        }
-      }
-      logButtonEvent({ leadId: leadIdForDb, buttonId: 'vanzariCardClaimButton', buttonLabel: isClaimedByMe ? 'Eliberează' : 'Preia', actorOption }).catch(() => {})
-      // Actualizare optimistă – fără refresh complet
-      const claimedByName = (currentUser as any)?.user_metadata?.full_name ?? currentUser?.email?.split('@')[0] ?? 'Eu'
-      onClaimChange?.(lead.id, isClaimedByMe ? null : currentUser.id, isClaimedByMe ? null : claimedByName)
-    } catch (e: any) {
-      console.error('Claim lead error:', e)
-    } finally {
-      setIsClaiming(false)
-    }
-  }
-
-  const handleAssignTo = async (userId: string, userName: string) => {
-    if (!leadIdForDb || isAssigning) return
-    setIsAssigning(true)
-    try {
-      const { error } = await claimLead(leadIdForDb, userId, true)
-      if (error) {
-        toast({ variant: 'destructive', title: 'Eroare', description: (error as Error)?.message ?? 'Nu s-a putut atribui lead-ul.' })
-        return
-      }
-      logButtonEvent({ leadId: leadIdForDb, buttonId: 'vanzariCardAssignButton', buttonLabel: 'Atribuie', actorOption }).catch(() => {})
-      onClaimChange?.(lead.id, userId, userName)
-      setAssignPopoverOpen(false)
-      toast({ title: 'Lead atribuit', description: `Atribuit lui ${userName || 'membru'}.` })
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Eroare', description: e?.message ?? 'Nu s-a putut atribui.' })
-    } finally {
-      setIsAssigning(false)
-    }
-  }
 
   const handleNoDeal = async () => {
     if ((lead as any).type === 'tray' || (lead as any).type === 'service_file') return
@@ -496,7 +434,15 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
   const isNoDeal = !!(lead as any).no_deal // Ascunde tag-uri și triggere dacă e NO DEAL
   const isNoDealStage = (lead.stage || '').toLowerCase().includes('no deal') // Verifică și după numele stage-ului
   const inNoDeal = isNoDeal || isNoDealStage // Card în No deal → elimină Call back, Nu raspunde, Curier Trimis, Office direct
-  const isCurierAjunsAziStage = (lead.stage || '').toLowerCase().includes('curier') && (lead.stage || '').toLowerCase().includes('ajuns') && (lead.stage || '').toLowerCase().includes('azi') // Stage "Curier Ajuns Azi"
+  const stageLower = (lead.stage || '').toLowerCase()
+  const isCurierAjunsAziStage = isLivrariOrCurierAjunsAziStage(stageLower)
+  // Buton Livrare: afișat în Leaduri, Leaduri Straine, Nu răspunde, Call back și Livrari (ex-Curier Ajuns)
+  const isCurierAjunsStage = isLivrariOrCurierAjunsStage(stageLower)
+  const isLeaduriStage = stageLower === 'leaduri' || stageLower === 'leads' || (stageLower.includes('leaduri') && !stageLower.includes('straine'))
+  const isLeaduriStraineStage = stageLower.includes('straine') && stageLower.includes('lead')
+  const isNuRaspundeStage = stageLower.includes('nu') && stageLower.includes('raspunde')
+  const isCallBackStage = stageLower.includes('call') && stageLower.includes('back')
+  const showDeliveryButton = isCurierAjunsStage || isLeaduriStage || isLeaduriStraineStage || isNuRaspundeStage || isCallBackStage
   const shouldHideTriggersAndTags = isNoDeal || isNoDealStage || isCurierAjunsAziStage // Combinație: ascunde dacă flag-ul e true SAU stage-ul e No Deal SAU stage-ul e Curier Ajuns Azi
 
   const handleRemoveCurierTrimis = async () => {
@@ -626,7 +572,6 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
     return diffInHours < 4
   }, [lead.createdAt, (lead as any).type, currentTime])
 
-  const stageLower = (lead.stage || '').toLowerCase()
   const isInLeaduriStage = stageLower === 'leads' || stageLower === 'leaduri' ||
     (stageLower.includes('lead') && !stageLower.includes('callback') && !stageLower.includes('nou'))
   const hasFollowUp = (lead.tags || []).some((t: { name?: string }) => t?.name === 'Follow Up')
@@ -1270,68 +1215,10 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                     )}
                   </div>
                   <div className="flex items-center gap-0.5 justify-end self-end" data-menu data-quick-action onClick={(e) => { e.stopPropagation(); e.preventDefault() }}>
-                    {showClaimButton && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={`h-7 w-7 rounded-full p-0 transition-all ${isClaimedByMe ? 'bg-blue-100 dark:bg-blue-900/40' : isClaimedByOther ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-100 dark:hover:bg-blue-900/30'}`}
-                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleClaimLead() }}
-                        title={isClaimedByMe ? 'Eliberează lead-ul' : isClaimedByOther ? `Preluat de ${(lead as any).claimed_by_name || 'altcineva'}` : 'Preia lead-ul'}
-                        disabled={isClaiming || isClaimedByOther}
-                        data-quick-action={true}
-                      >
-                        {isClaimedByMe
-                          ? <UserCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                          : <UserPlus className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
-                      </Button>
-                    )}
-                    {(isOwner || isAdmin) && showClaimButton && (
-                      <Popover open={assignPopoverOpen} onOpenChange={setAssignPopoverOpen}>
-                        <PopoverTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 rounded-full p-0 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all"
-                            onClick={(e) => { e.stopPropagation(); setAssignPopoverOpen(prev => !prev) }}
-                            title="Atribuie lead cuiva"
-                            disabled={isAssigning}
-                            data-quick-action={true}
-                          >
-                            <Users className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-56 p-2" align="end" onOpenAutoFocus={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
-                          <p className="text-xs font-medium text-muted-foreground px-2 py-1">Atribuie lead</p>
-                          <div className="max-h-[220px] overflow-y-auto space-y-0.5">
-                            {(membersList ?? []).map((m) => {
-                              const name = m.name || `User ${(m.user_id ?? '').slice(0, 8)}`
-                              const isCurrent = (lead as any).claimed_by === m.user_id
-                              return (
-                                <Button
-                                  key={m.user_id}
-                                  variant="ghost"
-                                  size="sm"
-                                  className="w-full justify-start text-sm font-normal h-8"
-                                  onClick={() => handleAssignTo(m.user_id, name)}
-                                  disabled={isAssigning}
-                                >
-                                  {isCurrent && <UserCheck className="h-3.5 w-3.5 mr-2 text-green-600" />}
-                                  {name}
-                                </Button>
-                              )
-                            })}
-                          </div>
-                          {(!membersList || membersList.length === 0) && (
-                            <p className="text-xs text-muted-foreground px-2 py-2">Niciun membru</p>
-                          )}
-                        </PopoverContent>
-                      </Popover>
-                    )}
                     <Button
                       variant="ghost"
                       size="sm"
-                      className={`h-7 w-7 rounded-full p-0 transition-all ${(inNoDeal || !isCurierAjunsAziStage) ? 'hidden' : ''} ${deliveryAlreadyActiveNotArchived ? 'opacity-50 cursor-not-allowed hover:bg-transparent dark:hover:bg-transparent' : 'hover:bg-violet-100 dark:hover:bg-violet-900/30'}`}
+                      className={`h-7 w-7 rounded-full p-0 transition-all ${(inNoDeal || !showDeliveryButton) ? 'hidden' : ''} ${deliveryAlreadyActiveNotArchived ? 'opacity-50 cursor-not-allowed hover:bg-transparent dark:hover:bg-transparent' : 'hover:bg-violet-100 dark:hover:bg-violet-900/30'}`}
                       onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!deliveryAlreadyActiveNotArchived) { logButtonEvent({ leadId: leadIdForDb, buttonId: 'vanzariCardDeliveryButton', buttonLabel: 'Livrare', actorOption }).catch(() => {}); setShowDeliveryOverlay(true) } }}
                       title={deliveryAlreadyActiveNotArchived ? 'Curier trimis / Office direct deja active (sau arhivează pentru a reseta)' : 'Curier trimis / Office direct'}
                       disabled={isSavingDelivery || deliveryAlreadyActiveNotArchived}

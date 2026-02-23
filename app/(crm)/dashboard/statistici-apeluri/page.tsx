@@ -604,7 +604,7 @@ export default function StatisticiApeluriPage() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <UserPlus2 className="h-5 w-5 text-primary" />
-              Leaduri create {period === 'day' ? (format(selectedDate, 'd MMM yyyy', { locale: ro }) === format(new Date(), 'd MMM yyyy', { locale: ro }) ? 'astăzi' : `pe ${format(selectedDate, 'd MMM yyyy', { locale: ro })}`) : `în perioada selectată`}
+              Leaduri create din alte surse {period === 'day' ? (format(selectedDate, 'd MMM yyyy', { locale: ro }) === format(new Date(), 'd MMM yyyy', { locale: ro }) ? 'astăzi' : `pe ${format(selectedDate, 'd MMM yyyy', { locale: ro })}`) : `în perioada selectată`}
             </CardTitle>
             <Button
               variant="ghost"
@@ -625,7 +625,7 @@ export default function StatisticiApeluriPage() {
               <div className="flex items-center gap-4 mb-4">
                 <p className="text-2xl font-bold">{leadsCreated.length}</p>
                 <p className="text-sm text-muted-foreground">
-                  leaduri create în perioada selectată
+                  din alte surse (nu de utilizatori CRM)
                 </p>
               </div>
               {leadsCreatedExpanded && leadsCreated.length > 0 && (
@@ -742,7 +742,7 @@ export default function StatisticiApeluriPage() {
                 </div>
               )}
               {leadsCreatedExpanded && leadsCreated.length === 0 && (
-                <p className="text-sm text-muted-foreground py-4">Nu au fost create leaduri în perioada selectată.</p>
+                <p className="text-sm text-muted-foreground py-4">Nu au fost create leaduri din alte surse în perioada selectată.</p>
               )}
             </>
           )}

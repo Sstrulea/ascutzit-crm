@@ -382,7 +382,8 @@ export async function fetchLeadsCreatedForDate(
 }
 
 /**
- * Lead-uri create în intervalul [start, end] (created_at).
+ * Lead-uri create în intervalul [start, end] (created_at), doar din alte surse (nu de utilizatori CRM).
+ * Filtru: created_by IS NULL = creat prin import, API, formular, Facebook etc.
  */
 export async function fetchLeadsCreatedForDateRange(
   start: Date,
@@ -393,6 +394,7 @@ export async function fetchLeadsCreatedForDateRange(
     .select('id, full_name, details, contact_person, company_name, email, phone_number, billing_nume_prenume, created_at, created_by, claimed_by, curier_trimis_user_id, office_direct_user_id, curier_trimis_at, office_direct_at')
     .gte('created_at', start.toISOString())
     .lte('created_at', end.toISOString())
+    .is('created_by', null)
     .order('created_at', { ascending: false })
     .limit(500)
   if (error || !leads?.length) return []

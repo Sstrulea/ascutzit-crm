@@ -1006,7 +1006,10 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
     
     if (!targetPipeline) return
     
+    const stageNameNorm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+    const newStageNameNorm = stageNameNorm(newStageName)
     const newStage = targetPipeline.stages.find((s: any) => s.name === newStageName)
+      ?? targetPipeline.stages.find((s: any) => stageNameNorm(s?.name || '') === newStageNameNorm)
     if (!newStage) return
 
     // OPTIMISTIC UPDATE: Actualizează UI-ul imediat pentru feedback vizual

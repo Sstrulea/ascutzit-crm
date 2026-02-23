@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { isLivrariOrCurierAjunsAziStage } from "@/lib/supabase/kanban/constants"
 
 interface KanbanBoardProps {
   leads: KanbanLead[]
@@ -112,7 +113,9 @@ export function KanbanBoard({
   
   // Încarcă mesajele de la tehnicieni pentru stage-ul Messages
   const isReceptiePipeline = currentPipelineName?.toLowerCase().includes('receptie') || false
-  const isVanzariPipeline = currentPipelineName?.toLowerCase().includes('vanzari') || false
+  // Normalizare fără diacritice ca „Vânzări” să fie recunoscut (vanzari)
+  const pipelineNameNorm = (currentPipelineName ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const isVanzariPipeline = pipelineNameNorm.includes('vanzari') || false
   const hasMessagesStage = stages.some(s => s.toLowerCase() === 'messages')
   /** La Vânzări, lead-urile rămân doar în acest pipeline și nu pot fi mutate în alt pipeline. */
   const canShowMoveToPipeline = canMovePipeline && !isVanzariPipeline
@@ -424,6 +427,12 @@ export function KanbanBoard({
         
         if (aIsPinned && !bIsPinned) return -1
         if (!aIsPinned && bIsPinned) return 1
+        
+        // prioritate pentru Urgentare (fișe/tăvițe – primul în listă, după PINNED)
+        const aHasUrgentare = aTags.some((t: any) => t && t.name === 'Urgentare')
+        const bHasUrgentare = bTags.some((t: any) => t && t.name === 'Urgentare')
+        if (aHasUrgentare && !bHasUrgentare) return -1
+        if (!aHasUrgentare && bHasUrgentare) return 1
         
         // prioritate pentru cardurile cu tag Retur (afișate primele, după PINNED)
         let aHasRetur = false
@@ -1161,12 +1170,13 @@ export function KanbanBoard({
                       </Button>
                     )}
 
-                    {/* Owner only: Curier Ajuns Azi -> Avem Comandă (mută toate lead-urile din stage) */}
+                    {/* Owner only: Livrari (ex-Curier Ajuns Azi) -> Avem Comandă (mută toate cardurile din stage) */}
                     {(() => {
-                      const isCurierAjunsAzi = stageLower.includes('curier') && stageLower.includes('ajuns') && stageLower.includes('azi')
+                      const isCurierAjunsAzi = isLivrariOrCurierAjunsAziStage(stage)
                       const showBtn = isCurierAjunsAzi && isVanzariPipeline && isOwner && onBulkMoveCurierAjunsAziToAvemComanda && stageLeads.length > 0
                       if (!showBtn) return null
-                      const leadIds = stageLeads.map((l: KanbanLead) => (l as any).leadId ?? l.id).filter(Boolean) as string[]
+                      // ID-uri carduri (l.id) ca fiecare card să fie mutat; pentru service_file l.id e fișa, pentru lead l.id e lead-ul
+                      const cardIds = stageLeads.map((l: KanbanLead) => l.id).filter(Boolean) as string[]
                       return (
                         <Button
                           variant="secondary"
@@ -1175,10 +1185,10 @@ export function KanbanBoard({
                           disabled={curierAjunsAziMoveLoading}
                           onClick={async (e) => {
                             e.stopPropagation()
-                            if (leadIds.length === 0) return
+                            if (cardIds.length === 0) return
                             setCurierAjunsAziMoveLoading(true)
                             try {
-                              await onBulkMoveCurierAjunsAziToAvemComanda(leadIds)
+                              await onBulkMoveCurierAjunsAziToAvemComanda(cardIds)
                               // Întârziere scurtă ca DB-ul și realtime să persiste înainte de refetch
                               setTimeout(() => onRefresh?.(), 500)
                             } finally {
@@ -1203,12 +1213,20 @@ export function KanbanBoard({
                     {(() => {
                       const isVanzariPipeline = currentPipelineName?.toLowerCase().includes('vanzari') || false
                       const isReceptiePipeline = currentPipelineName?.toLowerCase().includes('receptie') || false
+                      const stageLower = stage.toLowerCase()
                       const excludedReceptieStages = ['messages', 'de confirmat'].map(s => s.toLowerCase())
-                      const isExcludedStage = isReceptiePipeline && excludedReceptieStages.includes(stage.toLowerCase())
+                      const isExcludedStage = isReceptiePipeline && excludedReceptieStages.includes(stageLower)
+                      // Fără sumă totală: Colet neridicat, Curier trimis, Office direct, Arhivat (Receptie)
+                      const isNoTotalReceptieStage = isReceptiePipeline && (
+                        (stageLower.includes('colet') && stageLower.includes('neridicat')) ||
+                        (stageLower.includes('curier') && stageLower.includes('trimis')) ||
+                        (stageLower.includes('office') && stageLower.includes('direct')) ||
+                        stageLower.includes('arhivat')
+                      )
                       const showColetNeridicat = isReceptiePipeline && stageLower.includes('curier') && stageLower.includes('trimis')
                       
-                      // Nu afișează statistici/totale pentru stage-uri exclude (Messages, De confirmat)
-                      if (isVanzariPipeline || isExcludedStage || stage.toLowerCase() === 'messages') {
+                      // Nu afișează statistici/totale pentru stage-uri exclude (Messages, De confirmat, Colet neridicat, Curier trimis, Office direct, Arhivat)
+                      if (isVanzariPipeline || isExcludedStage || isNoTotalReceptieStage || stageLower === 'messages') {
                         return null
                       }
                       
@@ -1473,14 +1491,18 @@ export function KanbanBoard({
                     {(() => {
                       const isVanzariPipeline = currentPipelineName?.toLowerCase().includes('vanzari') || false
                       const isReceptiePipeline = currentPipelineName?.toLowerCase().includes('receptie') || false
+                      const stageLower = stage.toLowerCase()
                       const excludedReceptieStages = ['messages', 'de confirmat'].map(s => s.toLowerCase())
-                      const isExcludedStage = isReceptiePipeline && excludedReceptieStages.includes(stage.toLowerCase())
-                      
-                      // Nu afișează statistici/totale pentru stage-uri exclude (Messages, De confirmat)
-                      if (isVanzariPipeline || isExcludedStage || stage.toLowerCase() === 'messages') {
+                      const isExcludedStage = isReceptiePipeline && excludedReceptieStages.includes(stageLower)
+                      const isNoTotalReceptieStage = isReceptiePipeline && (
+                        (stageLower.includes('colet') && stageLower.includes('neridicat')) ||
+                        (stageLower.includes('curier') && stageLower.includes('trimis')) ||
+                        (stageLower.includes('office') && stageLower.includes('direct')) ||
+                        stageLower.includes('arhivat')
+                      )
+                      if (isVanzariPipeline || isExcludedStage || isNoTotalReceptieStage || stageLower === 'messages') {
                         return null
                       }
-                      
                       return (
                         <div className="text-right flex-shrink-0">
                           {isLoading ? (
@@ -1719,14 +1741,18 @@ export function KanbanBoard({
                     {(() => {
                       const isVanzariPipeline = currentPipelineName?.toLowerCase().includes('vanzari') || false
                       const isReceptiePipeline = currentPipelineName?.toLowerCase().includes('receptie') || false
+                      const stageLower = stage.toLowerCase()
                       const excludedReceptieStages = ['messages', 'de confirmat'].map(s => s.toLowerCase())
-                      const isExcludedStage = isReceptiePipeline && excludedReceptieStages.includes(stage.toLowerCase())
-                      
-                      // Nu afișează statistici/totale pentru stage-uri exclude (Messages, De confirmat)
-                      if (isVanzariPipeline || isExcludedStage || stage.toLowerCase() === 'messages') {
+                      const isExcludedStage = isReceptiePipeline && excludedReceptieStages.includes(stageLower)
+                      const isNoTotalReceptieStage = isReceptiePipeline && (
+                        (stageLower.includes('colet') && stageLower.includes('neridicat')) ||
+                        (stageLower.includes('curier') && stageLower.includes('trimis')) ||
+                        (stageLower.includes('office') && stageLower.includes('direct')) ||
+                        stageLower.includes('arhivat')
+                      )
+                      if (isVanzariPipeline || isExcludedStage || isNoTotalReceptieStage || stageLower === 'messages') {
                         return null
                       }
-                      
                       return (
                         <div className="text-right flex-shrink-0">
                           {isLoading ? (

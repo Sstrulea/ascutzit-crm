@@ -167,11 +167,30 @@ export class QualityPipelineStrategy implements PipelineStrategy {
       return []
     }
 
+    // Re-verificare poziție curentă: doar tăvițe care sunt ÎNCĂ în Finalizată în departamentul lor.
+    // (Evită afișarea în QC a tăvițelor mutate în RETUR sau alt stage.)
+    const initialTrayIds = [...new Set((rowsAny as any[]).map((r: any) => r?.item_id).filter(Boolean))]
+    const finalizataStageIdsSet = new Set(finalizataStageIds)
+    let currentRows: any[] = rowsAny
+    if (initialTrayIds.length > 0) {
+      const { data: currentItems } = await supabase
+        .from('pipeline_items')
+        .select('item_id, pipeline_id, stage_id, updated_at, created_at')
+        .in('item_id', initialTrayIds)
+        .in('pipeline_id', departmentPipelineIds)
+        .eq('type', 'tray')
+      const currentAny = Array.isArray(currentItems) ? (currentItems as any[]) : []
+      currentRows = currentAny.filter(
+        (r: any) => r?.stage_id && finalizataStageIdsSet.has(r.stage_id)
+      )
+      if (currentRows.length === 0) return []
+    }
+
     // Construim mapping tray_id -> { updated_at, source_pipeline_id }
     const trayIdToDeptUpdatedAt = new Map<string, string>()
     const trayIdToSourcePipelineId = new Map<string, string>()
     const trayIdsSet = new Set<string>()
-    for (const r of rowsAny) {
+    for (const r of currentRows) {
       const trayId = r?.item_id as string | undefined
       const pipelineId = r?.pipeline_id as string | undefined
       const updatedAt = (r?.updated_at as string | undefined) || (r?.created_at as string | undefined)

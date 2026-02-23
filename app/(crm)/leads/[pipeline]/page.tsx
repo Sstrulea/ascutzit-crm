@@ -38,7 +38,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { listTrayItemsForTray, updateTray, updateTrayItem } from "@/lib/supabase/serviceFileOperations"
 import { moveItemToStage, getSingleKanbanItem } from "@/lib/supabase/pipelineOperations"
-import { matchesStagePattern } from "@/lib/supabase/kanban/constants"
+import { matchesStagePattern, isLivrariOrCurierAjunsAziStage } from "@/lib/supabase/kanban/constants"
 import { DeFacturatOverlay } from "@/components/leads/DeFacturatOverlay"
 import { NuRaspundeOverlay } from "@/components/leads/NuRaspundeOverlay"
 import { searchTraysGlobally } from "@/lib/supabase/traySearchOperations"
@@ -896,10 +896,7 @@ export default function CRMPage() {
   const hasCurierTrimisTag = (l: any) => (Array.isArray(l?.tags) ? l.tags : []).some((t: { name?: string }) => (t?.name || '').trim().toLowerCase() === 'curier trimis')
   const isOfficeDirectStageName = (s: string) => /office\s*direct/.test(normStageName(s))
   const hasOfficeDirectTag = (l: any) => (Array.isArray(l?.tags) ? l.tags : []).some((t: { name?: string }) => (t?.name || '').trim().toLowerCase() === 'office direct')
-  const isCurierAjunsAziStageName = (s: string) => {
-    const n = normStageName(s)
-    return n.includes('curier') && n.includes('ajuns') && n.includes('azi')
-  }
+  const isCurierAjunsAziStageName = (s: string) => isLivrariOrCurierAjunsAziStage(s)
 
   // VÂNZĂRI: apeluri doar pentru ziua curentă (azi) – folosit pentru counters și filtre.
   // Array de dependențe cu lungime fixă (obligatoriu pentru useEffect) – nu condiționa și nu adăuga/elimina elemente.
@@ -1459,23 +1456,25 @@ export default function CRMPage() {
         return
       }
 
+      const newStageNorm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
       const targetStage = currentPipeline.stages?.find((s: any) => s.name === newStage)
+        ?? currentPipeline.stages?.find((s: any) => newStageNorm(s?.name) === newStageNorm(newStage))
       if (!targetStage) {
         toast({ title: "Eroare", description: "Stage-ul nu a fost gasit", variant: "destructive" })
         return
       }
 
-      // muta fiecare lead (caută după id sau leadId ca să acoperim toate tipurile de carduri)
-      const movePromises = leadIds.map(async (leadId): Promise<boolean> => {
-        const lead = leads.find((l: any) => l.id === leadId || l.leadId === leadId)
+      // muta fiecare card (leadIds sunt id-uri de carduri: l.id din board)
+      const movePromises = leadIds.map(async (cardId): Promise<boolean> => {
+        const lead = leads.find((l: any) => l.id === cardId)
         if (!lead) return false
 
         const prevStage = lead.stage ?? "—"
         const itemId = lead.id
 
         try {
-          // foloseste handleLeadMove pentru a muta lead-ul (trebuie id-ul cardului din board)
-          await handleLeadMove(itemId, newStage)
+          // foloseste handleLeadMove cu id-ul cardului și numele stage-ului (exact din pipeline)
+          await handleLeadMove(itemId, targetStage.name)
 
           const leadIdForLog = (lead as any).leadId ?? lead.id
           logLeadEvent(
@@ -2321,7 +2320,7 @@ export default function CRMPage() {
                     return s.includes('de trimis') || s.includes('ridic')
                   } : undefined}
                   onNuRaspundeClearedForReceptie={pipelineSlug?.toLowerCase() === 'receptie' ? moveServiceFileToDeFacturat : undefined}
-                  onBulkMoveCurierAjunsAziToAvemComanda={activePipelineName?.toLowerCase().includes('vanzari') ? handleBulkMoveCurierAjunsAziToAvemComanda : undefined}
+                  onBulkMoveCurierAjunsAziToAvemComanda={toSlugNormalized(activePipelineName || '').includes('vanzari') ? handleBulkMoveCurierAjunsAziToAvemComanda : undefined}
                 />
                 
                 {/* Panel de detalii: rămâne deschis până la Close/Escape (nu se închide la click în afară) */}

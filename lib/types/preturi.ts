@@ -40,6 +40,11 @@ export interface PreturiProps {
   onAfterSave?: () => void
   /** Închide panoul / overlay (ex. din overlay-ul „Distribuie instrumentele”). */
   onClose?: () => void
+  /** Pentru fișe/tăvițe: afișează butonul Urgentare în secțiunea Recepție Comandă. */
+  showUrgentareButton?: boolean
+  isUrgentare?: boolean
+  isUrgentaring?: boolean
+  onUrgentareClick?: () => void
 }
 
 /** Facturare → Ridic Personal; Facturare+AWB → De Trimis. */

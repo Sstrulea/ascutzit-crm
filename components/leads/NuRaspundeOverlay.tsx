@@ -21,12 +21,14 @@ import {
   Percent,
   MessageSquare,
   Printer,
+  Pin,
+  ArrowUpCircle,
 } from 'lucide-react'
 import { getServiceFile, listTraysForServiceFile } from '@/lib/supabase/serviceFileOperations'
-import { moveItemToStage } from '@/lib/supabase/pipelineOperations'
+import { moveItemToStage, getPipelineIdForItem } from '@/lib/supabase/pipelineOperations'
 import { fetchStagesForPipeline } from '@/lib/supabase/kanban/fetchers'
-import { matchesStagePattern } from '@/lib/supabase/kanban/constants'
-import { getOrCreateNuRaspundeTag, toggleLeadTag } from '@/lib/supabase/tagOperations'
+import { matchesStagePattern, findStageByPattern } from '@/lib/supabase/kanban/constants'
+import { getOrCreateNuRaspundeTag, toggleLeadTag, getOrCreatePinnedTag, getOrCreateUrgentareTag, addLeadTagIfNotPresent } from '@/lib/supabase/tagOperations'
 import { listServices } from '@/lib/supabase/serviceOperations'
 import { listQuoteItems } from '@/lib/utils/preturi-helpers'
 import { useToast } from '@/hooks/use-toast'
@@ -80,19 +82,34 @@ export function NuRaspundeOverlay({
   const [allSheetsTotal, setAllSheetsTotal] = useState(0)
   const [services, setServices] = useState<any[]>([])
   const [instruments, setInstruments] = useState<Array<{ id: string; name: string; weight: number; department_id: string | null; pipeline?: string | null }>>([])
-  const [convMessages, setConvMessages] = useState<Array<{ id: string; content: string | null; message_type: string | null; created_at: string }>>([])
+  const [convMessages, setConvMessages] = useState<Array<{ id: string; content: string | null; message_type: string | null; created_at: string; sender_id?: string }>>([])
+  const [senderNamesByUserId, setSenderNamesByUserId] = useState<Record<string, string>>({})
   const [techniciansByTrayId, setTechniciansByTrayId] = useState<Map<string, string>>(new Map())
   const [printSection, setPrintSection] = useState<'fisa' | 'tavite' | null>(null)
+  const [isPinning, setIsPinning] = useState(false)
+  const [isPinned, setIsPinned] = useState(false)
+  const [retrimiteLoading, setRetrimiteLoading] = useState(false)
+  const [isUrgentaring, setIsUrgentaring] = useState(false)
   const kanbanLeadRef = useRef(kanbanLead)
   kanbanLeadRef.current = kanbanLead
 
   const fisaId = serviceFile?.id ?? (kanbanLead?.type === 'service_file' ? (kanbanLead as any)?.id : null)
   const leadId = leadFull?.id ?? (kanbanLead as any)?.leadId ?? (kanbanLead as any)?.lead_id ?? (kanbanLead?.type === 'service_file' ? null : (kanbanLead as any)?.id)
 
+  const tags = Array.isArray((kanbanLead as any)?.tags) ? (kanbanLead as any).tags : []
+  const isUrgentare = tags.some((t: any) => t?.name === 'Urgentare')
+
+  useEffect(() => {
+    const pinned = tags.some((t: any) => t?.name === 'PINNED')
+    setIsPinned(pinned)
+  }, [kanbanLead?.tags])
+
   const loadData = useCallback(async () => {
     const kl = kanbanLeadRef.current
     if (!open || !kl) return
     setLoading(true)
+    setConvMessages([])
+    setSenderNamesByUserId({})
     try {
       const isFisa = (kl as any)?.type === 'service_file'
       const fid = isFisa ? (kl as any)?.id : null
@@ -118,7 +135,7 @@ export function NuRaspundeOverlay({
       const fetchConvMessages = async (leadIdParam: string) => {
         const { data: conv } = await supabase.from('conversations').select('id').eq('related_id', leadIdParam).eq('type', 'lead').maybeSingle()
         if (!conv?.id) return []
-        const { data: msgs } = await supabase.from('messages').select('id, content, message_type, created_at').eq('conversation_id', conv.id).order('created_at', { ascending: true })
+        const { data: msgs } = await supabase.from('messages').select('id, content, message_type, created_at, sender_id').eq('conversation_id', conv.id).order('created_at', { ascending: true })
         return (msgs || []).filter((m: any) => (m.message_type || '').toLowerCase() !== 'system')
       }
 
@@ -140,6 +157,16 @@ export function NuRaspundeOverlay({
       setServices(servicesRes || [])
       setInstruments((instrumentsRes as any)?.data ?? [])
       setConvMessages(messagesList)
+
+      const senderIds = [...new Set((messagesList as any[]).map((m: any) => m.sender_id).filter(Boolean))]
+      if (senderIds.length > 0) {
+        const { data: members } = await supabase.from('app_members').select('user_id, name').in('user_id', senderIds)
+        const map: Record<string, string> = {}
+        ;(members || []).forEach((m: any) => { map[m.user_id] = (m.name || '').trim() || `User ${String(m.user_id).slice(0, 8)}` })
+        setSenderNamesByUserId(map)
+      } else {
+        setSenderNamesByUserId({})
+      }
 
       if (!finalFisaId) {
         setQuotes([])
@@ -237,6 +264,8 @@ export function NuRaspundeOverlay({
       setQuotes([])
       setSheetsData([])
       setAllSheetsTotal(0)
+      setConvMessages([])
+      setSenderNamesByUserId({})
     } finally {
       setLoading(false)
     }
@@ -309,6 +338,90 @@ export function NuRaspundeOverlay({
     }
     await clearNuRaspundeAndMove(deFacturat)
   }, [getReceptieStages, clearNuRaspundeAndMove, toast])
+
+  const DEPARTMENT_NAMES = ['Saloane', 'Frizerii', 'Horeca', 'Reparatii']
+
+  const handlePinToggle = useCallback(async () => {
+    if (!leadId) return
+    setIsPinning(true)
+    try {
+      const pinnedTag = await getOrCreatePinnedTag()
+      await toggleLeadTag(leadId, pinnedTag.id)
+      setIsPinned((p) => !p)
+      toast({
+        title: !isPinned ? 'Fișă fixată' : 'Fișă desfixată',
+        description: !isPinned ? 'Fișa va apărea prima în stage' : 'Fișa a fost desfixată',
+      })
+      onRefresh?.()
+    } finally {
+      setIsPinning(false)
+    }
+  }, [leadId, isPinned, onRefresh, toast])
+
+  const handleRetrimiteInDepartamentSiColetAjuns = useCallback(async () => {
+    if (!fisaId || !leadId) return
+    const receptie = (pipelinesWithStages || []).find((p: any) => norm(p.name || '').includes('receptie'))
+    if (!receptie?.id) {
+      toast({ title: 'Eroare', description: 'Pipeline Recepție negăsit', variant: 'destructive' })
+      return
+    }
+    const receptieStages = receptie.stages || []
+    const coletAjunsStage = findStageByPattern(receptieStages, 'COLET_AJUNS')
+    if (!coletAjunsStage) {
+      toast({ title: 'Eroare', description: 'Stage „Colet ajuns” negăsit în Recepție', variant: 'destructive' })
+      return
+    }
+    setRetrimiteLoading(true)
+    try {
+      const { updateServiceFile } = await import('@/lib/supabase/serviceFileOperations')
+      await updateServiceFile(fisaId, { nu_raspunde_callback_at: null, colet_ajuns: true })
+      const nuRaspundeTag = await getOrCreateNuRaspundeTag()
+      await toggleLeadTag(leadId, nuRaspundeTag.id)
+      const trayIds = (quotes || []).map((q: any) => q.id).filter(Boolean)
+      for (const trayId of trayIds) {
+        const { data: pipelineId } = await getPipelineIdForItem('tray', trayId)
+        if (!pipelineId) continue
+        const pipeline = (pipelinesWithStages || []).find((p: any) => p.id === pipelineId)
+        if (!pipeline || !DEPARTMENT_NAMES.includes(pipeline.name)) continue
+        let stages = Array.isArray(pipeline.stages) ? pipeline.stages : []
+        if (stages.length === 0) {
+          const { data: fetchedStages } = await fetchStagesForPipeline(pipelineId)
+          stages = fetchedStages || []
+        }
+        const nouaStage = findStageByPattern(stages, 'NOUA')
+        if (!nouaStage) continue
+        const { error } = await moveItemToStage('tray', trayId, pipelineId, nouaStage.id)
+        if (error) console.warn('[NuRaspundeOverlay] move tray to Noua:', error)
+      }
+      const pinnedTag = await getOrCreatePinnedTag()
+      await addLeadTagIfNotPresent(leadId, pinnedTag.id)
+      const { error: moveErr } = await moveItemToStage('service_file', fisaId, receptie.id, coletAjunsStage.id)
+      if (moveErr) throw moveErr
+      toast.success('Tăvițele au fost retrimise în departament (Noua), tag Fixed aplicat, fișa mutată în Colet ajuns.')
+      onRefresh?.()
+      onOpenChange(false)
+    } catch (e: any) {
+      toast({ title: 'Eroare', description: e?.message ?? 'Nu s-a putut retrimite', variant: 'destructive' })
+    } finally {
+      setRetrimiteLoading(false)
+    }
+  }, [fisaId, leadId, quotes, pipelinesWithStages, onRefresh, onOpenChange, toast])
+
+  const handleUrgentareToggle = useCallback(async () => {
+    if (!leadId) return
+    setIsUrgentaring(true)
+    try {
+      const urgentareTag = await getOrCreateUrgentareTag()
+      await toggleLeadTag(leadId, urgentareTag.id)
+      onRefresh?.()
+      toast({
+        title: isUrgentare ? 'Urgentare anulată' : 'Urgentare activată',
+        description: isUrgentare ? 'Fișa nu mai apare prima în listă.' : 'Fișa va apărea prima în listă.',
+      })
+    } finally {
+      setIsUrgentaring(false)
+    }
+  }, [leadId, isUrgentare, onRefresh, toast])
 
   const clientName = leadFull?.full_name ?? leadFull?.name ?? (leadFull as any)?.company_name ?? '—'
   const clientPhone = leadFull?.phone_number ?? leadFull?.phone ?? '—'
@@ -420,6 +533,39 @@ export function NuRaspundeOverlay({
                   Deschide detalii complete
                 </Button>
               )}
+              <Button
+                data-button-id="receptieNuRaspundePinButton"
+                variant="outline"
+                onClick={handlePinToggle}
+                disabled={!leadId || isPinning}
+                className="gap-2 text-base min-h-11"
+                title={isPinned ? 'Desfixează fișa' : 'Fixează fișa (apare prima în stage)'}
+              >
+                {isPinning ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <Pin className={`h-5 w-5 shrink-0 ${isPinned ? 'fill-current' : ''}`} />}
+                {isPinned ? 'Desfixează' : 'Fixează'}
+              </Button>
+              <Button
+                data-button-id="receptieNuRaspundeRetrimiteDepartamentButton"
+                variant="outline"
+                onClick={handleRetrimiteInDepartamentSiColetAjuns}
+                disabled={!fisaId || !leadId || retrimiteLoading}
+                className="gap-2 text-base min-h-11 border-emerald-600/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                title="Retrimite tăvițele în departament (stage Noua) cu tag Fixed, fișa în Colet ajuns"
+              >
+                {retrimiteLoading ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <RotateCcw className="h-5 w-5 shrink-0" />}
+                Retrimite în departament
+              </Button>
+              <Button
+                data-button-id="receptieNuRaspundeUrgentareButton"
+                variant="outline"
+                onClick={handleUrgentareToggle}
+                disabled={!leadId || isUrgentaring}
+                className={`gap-2 text-base min-h-11 ${isUrgentare ? 'border-orange-500/50 text-orange-700 dark:text-orange-400 bg-orange-500/10' : ''}`}
+                title={isUrgentare ? 'Anulează urgentare' : 'Urgentare (apare primul în listă)'}
+              >
+                {isUrgentaring ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <ArrowUpCircle className={`h-5 w-5 shrink-0 ${isUrgentare ? 'fill-current' : ''}`} />}
+                {isUrgentare ? 'Anulează urgentare' : 'Urgentare'}
+              </Button>
             </div>
 
             {/* Opțiuni fișă */}
@@ -562,8 +708,10 @@ export function NuRaspundeOverlay({
                       const type = (msg.message_type || '').toLowerCase()
                       const content = msg.content?.trim()
                       const label = type === 'file' ? '[Fișier]' : type === 'image' ? '[Imagine]' : content || '[Mesaj gol]'
+                      const senderName = msg.sender_id ? (senderNamesByUserId[msg.sender_id] || `User ${String(msg.sender_id).slice(0, 8)}`) : null
                       return (
                         <div key={msg.id} className="flex flex-col gap-0.5 py-2 border-b border-border/50 last:border-0">
+                          {senderName && <span className="text-xs font-medium text-muted-foreground">{senderName}</span>}
                           <p className="break-words text-red-600 dark:text-red-400 font-bold">{label}</p>
                           <span className="text-xs text-muted-foreground">{new Date(msg.created_at).toLocaleString('ro-RO')}</span>
                         </div>

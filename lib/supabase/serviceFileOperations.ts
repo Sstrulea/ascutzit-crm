@@ -43,6 +43,7 @@ export type ServiceFile = {
   curier_trimis: boolean // Checkbox pentru "Curier Trimis"
   curier_scheduled_at: string | null // Data și ora programată pentru ridicarea curierului
   colet_neridicat: boolean // Marcat ca colet neridicat; afișat în stage COLET NERIDICAT până la Trimite Tăvițele / status comanda
+  colet_ajuns?: boolean // Marcat „Trimis” / colet ajuns; strategia Recepție păstrează fișa în stage Colet ajuns
   nu_raspunde_callback_at: string | null // Data și ora programată pentru a suna din nou clientul
   no_deal: boolean       // Checkbox pentru "No Deal" în Vânzări
   urgent: boolean        // Flag urgent pentru toate tăvițele din fișă
@@ -343,7 +344,7 @@ export async function listServiceFilesForLead(leadId: string): Promise<{ data: S
  */
 export async function updateServiceFile(
   serviceFileId: string,
-  updates: Partial<Pick<ServiceFile, 'number' | 'date' | 'status' | 'notes' | 'details' | 'office_direct' | 'office_direct_at' | 'curier_trimis' | 'curier_scheduled_at' | 'colet_neridicat' | 'nu_raspunde_callback_at' | 'no_deal' | 'urgent' | 'retur' | 'cash' | 'card' | 'global_discount_pct' | 'is_locked'>>
+  updates: Partial<Pick<ServiceFile, 'number' | 'date' | 'status' | 'notes' | 'details' | 'office_direct' | 'office_direct_at' | 'curier_trimis' | 'curier_scheduled_at' | 'colet_neridicat' | 'colet_ajuns' | 'nu_raspunde_callback_at' | 'no_deal' | 'urgent' | 'retur' | 'cash' | 'card' | 'global_discount_pct' | 'is_locked'>>
 ): Promise<{ data: ServiceFile | null; error: any }> {
   try {
     // IMPORTANT: Nu mai citim details dacă nu este în updates pentru a evita erorile 400
@@ -400,7 +401,7 @@ export type UpdateServiceFileWithHistoryActor = {
   currentUserEmail?: string | null
 }
 
-type ServiceFileUpdateKeys = 'number' | 'date' | 'status' | 'notes' | 'details' | 'office_direct' | 'office_direct_at' | 'curier_trimis' | 'curier_scheduled_at' | 'colet_neridicat' | 'nu_raspunde_callback_at' | 'no_deal' | 'urgent' | 'retur' | 'cash' | 'card' | 'global_discount_pct' | 'is_locked'
+type ServiceFileUpdateKeys = 'number' | 'date' | 'status' | 'notes' | 'details' | 'office_direct' | 'office_direct_at' | 'curier_trimis' | 'curier_scheduled_at' | 'colet_neridicat' | 'colet_ajuns' | 'nu_raspunde_callback_at' | 'no_deal' | 'urgent' | 'retur' | 'cash' | 'card' | 'global_discount_pct' | 'is_locked'
 
 /**
  * Actualizează o fișă de serviciu și înregistrează în items_events fiecare câmp modificat (istoric).

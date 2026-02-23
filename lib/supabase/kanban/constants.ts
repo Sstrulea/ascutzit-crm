@@ -32,6 +32,28 @@ export const STAGE_PATTERNS = {
   ARHIVAT: ['arhivat', 'archived', 'arhiv', 'arhivată'],
 } as const
 
+/** Normalize stage name for matching (lowercase, no diacritics). */
+function normStageName(s: string): string {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+}
+
+/**
+ * Livrari = redenumirea stage-ului "Curier Ajuns Azi". Ambele au aceleași funcții (buton În Avem Comandă, filtre, etc.).
+ * Returnează true pentru: LIVRARI, Livrari, Curier Ajuns Azi, orice variantă cu curier+ajuns+azi.
+ */
+export function isLivrariOrCurierAjunsAziStage(stageName: string): boolean {
+  const n = normStageName(stageName)
+  return n.includes('livrari') || (n.includes('curier') && n.includes('ajuns') && n.includes('azi'))
+}
+
+/**
+ * Stage Livrari sau Curier Ajuns (cu sau fără "azi") – folosit pentru buton Livrare pe card.
+ */
+export function isLivrariOrCurierAjunsStage(stageName: string): boolean {
+  const n = normStageName(stageName)
+  return n.includes('livrari') || (n.includes('curier') && n.includes('ajuns'))
+}
+
 // Cache configuration
 export const CACHE_TTL = 60000 // 1 minute
 
