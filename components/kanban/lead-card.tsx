@@ -297,14 +297,6 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
     (isVanzariPipeline || isParteneriPipeline) &&
     (itemType === 'lead' || itemType === 'service_file') &&
     (isStageAllowedForClaim || isParteneriPipeline)
-  ++++++++ REPLACE
-
-  ------- SEARCH
-                    {(isOwner || isAdmin) && showClaimButton && (
-                      <Popover open={assignPopoverOpen} onOpenChange={setAssignPopoverOpen}>
-                    {(isOwner || isAdmin || (pipelineName?.toLowerCase().includes('parteneri'))) && showClaimButton && (
-                      <Popover open={assignPopoverOpen} onOpenChange={setAssignPopoverOpen}>
-  ++++++++ REPLACE
 
   const actorOption = useMemo(() => ({
     currentUserId: currentUser?.id ?? undefined,
