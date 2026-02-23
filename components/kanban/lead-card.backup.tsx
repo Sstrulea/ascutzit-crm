@@ -1,0 +1,38 @@
+"use client"
+
+import type React from "react"
+
+import { useState, useEffect, useMemo, useRef } from "react"
+import { MoreHorizontal, Mail, Calendar, Clock, User, Phone, Pin, Trash2, CheckCircle2, Circle, Building2, Sparkles, Scissors, Wrench, Building, PhoneOff, PhoneCall, PhoneMissed, XCircle, Info, Package, Pencil, Tag, MessageCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
+import { formatTraySizeDisplay } from "@/lib/utils/trayDisplay"
+import type { Lead } from "@/app/(crm)/dashboard/page"
+import type { TagColor } from "@/lib/supabase/tagOperations"
+import { getOrCreatePinnedTag, getOrCreateNuRaspundeTag, getOrCreateSunaTag, getOrCreateCurierTrimisTag, getOrCreateOfficeDirectTag, getOrCreateReturTag, getOrCreateUrgentTag, toggleLeadTag, addLeadTagIfNotPresent, listTags } from "@/lib/supabase/tagOperations"
+import { isTagHiddenFromUI } from "@/hooks/leadDetails/useLeadDetailsTags"
+import { deleteLead, updateLead, logLeadEvent } from "@/lib/supabase/leadOperations"
+import { setLeadNoDeal, setLeadCurierTrimis, setLeadOfficeDirect } from "@/lib/vanzari/leadOperations"
+import { deleteServiceFile, deleteTray, updateServiceFileWithHistory } from "@/lib/supabase/serviceFileOperations"
+import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
+import { CallbackDialog } from "@/components/leads/vanzari/CallbackDialog"
+import { NuRaspundeDialog } from "@/components/leads/vanzari/NuRaspundeDialog"
+import { useRole } from "@/lib/contexts/AuthContext"
+import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns"
+import { ro } from "date-fns/locale"
+import { useToast } from "@/hooks/use-toast"
+import { formatExactDuration } from "@/lib/utils/service-time"
+
+/** BACKUP FILE - Created on 2026-02-12 17:54 */
+/** This is a backup of the original lead-card.tsx file */
+/** To restore: replace lead-card.tsx with the content of this file */

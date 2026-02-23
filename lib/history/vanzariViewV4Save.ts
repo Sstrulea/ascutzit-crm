@@ -1,0 +1,362 @@
+'use client'
+
+/**
+ * Persistă datele din VanzariViewV4 (instruments, servicii, piese, tăvițe) în baza de date.
+ * Creează/actualizează tăvițe și tray_items pentru fișa de serviciu dată.
+ */
+
+import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
+import {
+  createTray,
+  createTrayItem,
+  listTraysForServiceFile,
+  listTrayItemsForTray,
+} from '@/lib/supabase/serviceFileOperations'
+
+const supabase = supabaseBrowser()
+
+function parseSerialNumbers(serialNumber: string | undefined): string[] {
+  if (!serialNumber?.trim()) return []
+  return serialNumber
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function serialsFromInstrumentOrList(inst: V4Instrument | undefined, forSerialNumbers?: string[]): string | null {
+  if (forSerialNumbers && forSerialNumbers.length > 0) return forSerialNumbers.join(', ')
+  if (inst?.serialNumber) {
+    const list = parseSerialNumbers(inst.serialNumber)
+    return list.length > 0 ? list.join(', ') : null
+  }
+  return null
+}
+
+/** Construiește brandSerialGroups pentru createTrayItem (pentru salvare garantie și eventual S/N). */
+function buildBrandSerialGroupsForGarantie(
+  inst: V4Instrument | undefined,
+  forSerialNumbers?: string[]
+): Array<{ brand: string | null; serialNumbers: string[]; garantie?: boolean }> {
+  const serials = forSerialNumbers?.length
+    ? forSerialNumbers
+    : parseSerialNumbers(inst?.serialNumber ?? '')
+  const garantie = inst?.garantie ?? false
+  if (!garantie && serials.length === 0) return []
+  return [{ brand: '—', serialNumbers: serials, garantie }]
+}
+
+export interface V4Instrument {
+  localId: string
+  instrumentId: string
+  name: string
+  quantity: number
+  serialNumber?: string
+  discount?: number
+  garantie?: boolean
+}
+
+export interface V4SelectedService {
+  instrumentLocalId: string
+  serviceId: string
+  serviceName: string
+  basePrice: number
+  quantity: number
+  discount: number
+  unrepairedCount?: number
+  trayId?: string
+  forSerialNumbers?: string[]
+}
+
+export interface V4Part {
+  id: string
+  instrumentLocalId: string
+  name: string
+  unitPrice: number
+  quantity: number
+  trayId?: string
+  forSerialNumbers?: string[]
+}
+
+export interface V4LocalTray {
+  id: string
+  number: string
+  size?: string
+}
+
+export interface V4SaveData {
+  instruments: V4Instrument[]
+  services: V4SelectedService[]
+  parts: V4Part[]
+  trays: V4LocalTray[]
+  /** Tăviță atribuită per instrument (localId -> trayId), inclusiv pentru instrumente fără servicii/piese. */
+  instrumentTrayId?: Record<string, string | undefined>
+}
+
+export interface V4SaveContext {
+  /** Instrumente cu department_id (pentru tray_items) */
+  instrumentsWithDept: Array<{ id: string; name: string; department_id: string | null }>
+  /** Dacă un instrument nu are department_id, se folosește acest id (ex. departament Reparatii). Obligatoriu pentru a respecta NOT NULL pe tray_items.department_id. */
+  defaultDepartmentId?: string | null
+  /** Catalog servicii (pentru validare) */
+  servicesCatalog?: Array<{ id: string; name: string; price: number }>
+  urgent?: boolean
+}
+
+/**
+ * Salvează datele VanzariViewV4 în DB: tăvițe + tray_items.
+ * - Șterge tray_items existente pentru toate tăvițele fișei, apoi creează tăvițe din data.trays și inserează tray_items pentru fiecare serviciu/piesă.
+ */
+export async function saveVanzariViewV4ToDb(
+  fisaId: string,
+  data: V4SaveData,
+  context: V4SaveContext
+): Promise<{ error: Error | null }> {
+  try {
+    const { trays: localTrays, instruments: instrumentsRaw, services, parts } = data
+    const { instrumentsWithDept, defaultDepartmentId } = context
+
+    // Normalizare: view-ul poate trimite "id" (catalog), V4SaveData așteaptă "instrumentId"
+    const instruments: V4Instrument[] = instrumentsRaw.map((inst: any) => ({
+      ...inst,
+      instrumentId: inst.instrumentId ?? inst.id ?? '',
+    }))
+
+    // Dacă există instrumente/servicii/piese dar nici o tăviță, creăm o tăviță implicită (număr gol)
+    const traysToUse =
+      localTrays.length > 0
+        ? localTrays
+        : instruments.length > 0 || services.length > 0 || parts.length > 0
+          ? [{ id: '__default__', number: '', size: 'm' as const }]
+          : []
+
+    // 1. Încarcă tăvițele existente pentru fișă
+    const { data: existingTrays, error: listErr } = await listTraysForServiceFile(fisaId)
+    if (listErr) throw listErr
+    const existing = existingTrays || []
+
+    // 2. Șterge toate tray_items (și brand_serials) pentru aceste tăvițe
+    for (const tray of existing) {
+      const { data: items } = await listTrayItemsForTray(tray.id)
+      const itemIds = (items || []).map((i: any) => i.id)
+      if (itemIds.length > 0) {
+        await supabase.from('tray_item_brands').delete().in('tray_item_id', itemIds)
+      }
+      await supabase.from('tray_items').delete().eq('tray_id', tray.id)
+    }
+
+    // 3. Șterge tăvițe care nu mai sunt în data.trays (match by number)
+    const wantedKeys = new Set(traysToUse.map((t) => t.number?.trim() ?? ''))
+    for (const t of existing) {
+      const key = t.number?.trim() ?? ''
+      if (!wantedKeys.has(key)) {
+        await supabase.from('pipeline_items').delete().eq('type', 'tray').eq('item_id', t.id)
+        await supabase.from('tray_images').delete().eq('tray_id', t.id)
+        await supabase.from('trays').delete().eq('id', t.id)
+      }
+    }
+
+    // 4. Creează sau obține tăviță pentru fiecare LocalTray; construiește map localId -> dbTrayId
+    // IMPORTANT: Pentru tăvițe cu number gol (''), verificăm mai întâi dacă există deja una pentru această fișă
+    // pentru a evita crearea de duplicate (race condition când se creează în paralel)
+    const localTrayIdToDbTrayId = new Map<string, string>()
+    
+    // Verifică dacă există deja o tăviță goală pentru această fișă (pentru a evita duplicate)
+    const emptyTrayNumber = ''
+    let existingEmptyTray: { id: string } | null = null
+    
+    // Verifică dacă există tăvițe cu number gol în traysToUse
+    const hasEmptyTrays = traysToUse.some(lt => !lt.number || lt.number.trim() === '')
+    
+    if (hasEmptyTrays) {
+      // Caută o tăviță existentă cu number gol pentru această fișă
+      const { data: emptyTrays } = await supabase
+        .from('trays')
+        .select('id')
+        .eq('service_file_id', fisaId)
+        .eq('number', emptyTrayNumber)
+        .limit(1)
+      
+      if (emptyTrays && emptyTrays.length > 0) {
+        existingEmptyTray = emptyTrays[0] as { id: string }
+      }
+    }
+    
+    // Creează tăvițele (secvențial pentru tăvițe goale pentru a evita race condition)
+    for (const lt of traysToUse) {
+      const trayNumber = lt.number.trim() || ''
+      
+      // IMPORTANT: Pentru tăvițe goale, folosim întotdeauna aceeași tăviță existentă sau creăm doar una
+      if (trayNumber === '') {
+        // Dacă există deja o tăviță goală, folosește-o pentru toate tăvițele goale
+        if (existingEmptyTray) {
+          localTrayIdToDbTrayId.set(lt.id, existingEmptyTray.id)
+          continue
+        }
+        
+        // Altfel, creează o singură tăviță goală (createTray verifică unicitatea)
+        const { data: dbTray, error: createErr } = await createTray({
+          service_file_id: fisaId,
+          number: trayNumber,
+          status: 'in_receptie',
+        })
+        
+        if (createErr) throw createErr
+        if (!dbTray?.id) throw new Error('createTray nu a returnat id')
+        
+        // Salvează tăvița goală creată pentru următoarele tăvițe goale
+        existingEmptyTray = { id: dbTray.id }
+        localTrayIdToDbTrayId.set(lt.id, dbTray.id)
+        continue
+      }
+      
+      // Pentru tăvițe cu număr, creează normal (createTray verifică unicitatea)
+      const { data: dbTray, error: createErr } = await createTray({
+        service_file_id: fisaId,
+        number: trayNumber,
+        status: 'in_receptie',
+      })
+      
+      if (createErr) throw createErr
+      if (!dbTray?.id) throw new Error('createTray nu a returnat id')
+      
+      localTrayIdToDbTrayId.set(lt.id, dbTray.id)
+    }
+
+    // Helper: tray_id pentru un instrument (primul serviciu/piesă al instrumentului are trayId)
+    const getTrayIdForInstrument = (instrumentLocalId: string): string | null => {
+      const svc = services.find((s) => s.instrumentLocalId === instrumentLocalId)
+      if (svc?.trayId) return localTrayIdToDbTrayId.get(svc.trayId) ?? null
+      const part = parts.find((p) => p.instrumentLocalId === instrumentLocalId)
+      if (part?.trayId) return localTrayIdToDbTrayId.get(part.trayId) ?? null
+      const firstTrayId = traysToUse[0]?.id
+      return firstTrayId ? localTrayIdToDbTrayId.get(firstTrayId) ?? null : null
+    }
+
+    const getDepartmentId = (instrumentId: string): string => {
+      const inst = instrumentsWithDept.find((i) => i.id === instrumentId)
+      const id = inst?.department_id ?? defaultDepartmentId ?? null
+      if (!id) {
+        const name = inst?.name ?? instrumentId
+        throw new Error(`Instrumentul "${name}" nu are departament setat. Setează departamentul în Catalog → Instrumente sau adaugă un departament.`)
+      }
+      return id
+    }
+
+    // 5. Inserează tray_items pentru servicii
+    for (const svc of services) {
+      const inst = instruments.find((i) => i.localId === svc.instrumentLocalId)
+      if (!inst || !inst.instrumentId) continue
+      const trayId = svc.trayId ? localTrayIdToDbTrayId.get(svc.trayId) : getTrayIdForInstrument(svc.instrumentLocalId)
+      if (!trayId) continue
+      const departmentId = getDepartmentId(inst.instrumentId)
+      const notes = {
+        name_snapshot: svc.serviceName,
+        item_type: 'service',
+        price: svc.basePrice,
+        discount_pct: svc.discount,
+        qty: svc.quantity,
+        unrepairedCount: svc.unrepairedCount ?? 0,
+        forSerialNumbers: svc.forSerialNumbers ?? [],
+        instrument_discount_pct: inst.discount ?? 0,
+        garantie: inst.garantie ?? false,
+      }
+      const serialsSummary = serialsFromInstrumentOrList(inst, svc.forSerialNumbers)
+      const brandGroups = buildBrandSerialGroupsForGarantie(inst, svc.forSerialNumbers)
+      const { error: itemErr } = await createTrayItem({
+        tray_id: trayId,
+        instrument_id: inst.instrumentId,
+        service_id: svc.serviceId,
+        part_id: null,
+        department_id: departmentId,
+        qty: svc.quantity,
+        unrepaired_qty: svc.unrepairedCount ?? 0,
+        notes: JSON.stringify(notes),
+        pipeline: null,
+        serials: serialsSummary ?? undefined,
+        brandSerialGroups: brandGroups.length > 0 ? brandGroups : undefined,
+      })
+      if (itemErr) throw itemErr
+    }
+
+    // 6. Inserează tray_items pentru piese (part_id null, nume/preț în notes)
+    for (const part of parts) {
+      const inst = instruments.find((i) => i.localId === part.instrumentLocalId)
+      if (!inst || !inst.instrumentId) continue
+      const trayId = part.trayId ? localTrayIdToDbTrayId.get(part.trayId) : getTrayIdForInstrument(part.instrumentLocalId)
+      if (!trayId) continue
+      const departmentId = getDepartmentId(inst.instrumentId)
+      const notes = {
+        name_snapshot: part.name,
+        item_type: 'part',
+        price: part.unitPrice,
+        qty: part.quantity,
+        forSerialNumbers: part.forSerialNumbers ?? [],
+        instrument_discount_pct: inst.discount ?? 0,
+        garantie: inst.garantie ?? false,
+      }
+      const serialsSummary = serialsFromInstrumentOrList(inst, part.forSerialNumbers)
+      const brandGroups = buildBrandSerialGroupsForGarantie(inst, part.forSerialNumbers)
+      const { error: itemErr } = await createTrayItem({
+        tray_id: trayId,
+        instrument_id: inst.instrumentId,
+        service_id: null,
+        part_id: null,
+        department_id: departmentId,
+        qty: part.quantity,
+        notes: JSON.stringify(notes),
+        pipeline: null,
+        serials: serialsSummary ?? undefined,
+        brandSerialGroups: brandGroups.length > 0 ? brandGroups : undefined,
+      })
+      if (itemErr) throw itemErr
+    }
+
+    // 7. Instrumente doar în tăviță (fără serviciu/piesă): creează un tray_item per instrument fără servicii/piese (folosește tăvița asignată sau prima tăviță)
+    const instrumentTrayIdMap = data.instrumentTrayId ?? {}
+    const hasServiceOrPart = new Set(
+      [...services.map((s) => s.instrumentLocalId), ...parts.map((p) => p.instrumentLocalId)]
+    )
+    const defaultLocalTrayId = traysToUse[0]?.id ?? null
+    for (const inst of instruments) {
+      if (!inst.instrumentId || hasServiceOrPart.has(inst.localId)) continue
+      const localTrayId = instrumentTrayIdMap[inst.localId] ?? defaultLocalTrayId
+      if (!localTrayId) continue
+      const trayId = localTrayIdToDbTrayId.get(localTrayId)
+      if (!trayId) continue
+      const departmentId = getDepartmentId(inst.instrumentId)
+      const notes = {
+        name_snapshot: inst.name,
+        item_type: 'instrument_only',
+        qty: inst.quantity,
+        instrument_discount_pct: inst.discount ?? 0,
+        garantie: inst.garantie ?? false,
+      }
+      const serialsSummary = serialsFromInstrumentOrList(inst)
+      const brandGroups = buildBrandSerialGroupsForGarantie(inst)
+      const { error: itemErr } = await createTrayItem({
+        tray_id: trayId,
+        instrument_id: inst.instrumentId,
+        service_id: null,
+        part_id: null,
+        department_id: departmentId,
+        qty: inst.quantity,
+        notes: JSON.stringify(notes),
+        pipeline: null,
+        serials: serialsSummary ?? undefined,
+        brandSerialGroups: brandGroups.length > 0 ? brandGroups : undefined,
+      })
+      if (itemErr) throw itemErr
+    }
+
+    return { error: null }
+  } catch (e: any) {
+    console.error('[saveVanzariViewV4ToDb]', e)
+    const message =
+      e instanceof Error
+        ? e.message
+        : typeof e === 'object' && e !== null
+          ? (e.message ?? e.error_description ?? e.details ?? JSON.stringify(e))
+          : String(e)
+    return { error: e instanceof Error ? e : new Error(message || 'Eroare la salvarea în baza de date') }
+  }
+}
