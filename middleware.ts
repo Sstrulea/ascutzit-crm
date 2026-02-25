@@ -1,11 +1,11 @@
 /**
- * Middleware pentru autentificare.
+ * Authentication middleware.
  *
- * Pentru rutele protejate: apelăm getSession() ca să reîmprospătăm cookie-urile
- * de sesiune Supabase înainte de render. Fără asta, după login redirect, cookie-urile
- * pot să nu fie citite corect de client și user rămâne null → redirect la sign-in.
+ * For protected routes: call getSession() to refresh Supabase session cookies
+ * before render. Without this, after login redirect, cookies may not be read
+ * correctly by client and user remains null → redirect to sign-in.
  *
- * Redirect-ul efectiv la sign-in se face în app/(crm)/layout.tsx din useAuth().
+ * The actual redirect to sign-in is done in app/(crm)/layout.tsx from useAuth().
  */
 
 import { createServerClient } from '@supabase/ssr'
@@ -45,8 +45,8 @@ export async function middleware(req: NextRequest) {
     },
   })
 
-  // Reîmprospătează sesiunea – actualizează cookie-urile în response.
-  // Timeout 3s ca să nu blocheze răspunsul dacă Supabase e lent.
+  // Refresh session – update cookies in response.
+  // Timeout 3s to avoid blocking response if Supabase is slow.
   await Promise.race([
     supabase.auth.getSession(),
     new Promise((r) => setTimeout(r, 3000)),

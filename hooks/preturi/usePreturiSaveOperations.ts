@@ -253,12 +253,12 @@ export function usePreturiSaveOperations(props: UsePreturiSaveOperationsProps) {
           }
         }
 
-        // Actualizare lead curier_trimis_at/office_direct_at ca să intre la Statistici apeluri (Curier trimis / Office direct)
+        // Actualizare lead: curier_trimis_at/office_direct_at = momentul când vânzătorul a făcut livrarea (pentru statistici), nu data programată curier
         if (leadId) {
           const nowIso = new Date().toISOString()
           const leadUpdates: Record<string, unknown> = officeDirect
             ? { office_direct_at: nowIso, office_direct_user_id: user?.id ?? null, curier_trimis_at: null, curier_trimis_user_id: null }
-            : { curier_trimis_at: curierScheduledAt || nowIso, curier_trimis_user_id: user?.id ?? null, office_direct_at: null, office_direct_user_id: null }
+            : { curier_trimis_at: nowIso, curier_trimis_user_id: user?.id ?? null, office_direct_at: null, office_direct_user_id: null }
           if (user?.id) (leadUpdates as any).claimed_by = user.id
           try {
             const { error: leadErr } = await updateLead(leadId, leadUpdates)

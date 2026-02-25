@@ -267,7 +267,7 @@ export function TrayImagesSection({
                             e.stopPropagation()
                             onImageDelete(image.id, image.file_path)
                           }}
-                          className="absolute top-2 right-2 p-2 bg-destructive/90 hover:bg-destructive text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity touch-manipulation shadow"
+                          className="absolute top-2 right-2 p-2 bg-destructive/90 hover:bg-destructive text-white rounded-lg opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity touch-manipulation shadow"
                           title="Șterge imagine"
                         >
                           <XIcon className="h-3.5 w-3.5" />

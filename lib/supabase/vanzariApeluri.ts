@@ -342,12 +342,25 @@ function monthBoundsFor(year: number, month: number): { start: Date; end: Date }
   return { start, end }
 }
 
+/** Timezone pentru ziua de raport (România). Asigură că „25 feb” = 25 feb în România, indiferent de server. */
+const STATS_TIMEZONE = 'Europe/Bucharest'
+
+/**
+ * Limitele zilei (00:00:00 - 23:59:59) pentru o dată dată, în timezone Europe/Bucharest.
+ * Rezolvă problema unde acțiunile de „ieri” apăreau pentru „azi” (server în UTC vs. utilizatori în România).
+ */
 function dayBoundsFor(date: Date): { start: Date; end: Date } {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  const start = d
-  const end = new Date(d)
-  end.setHours(23, 59, 59, 999)
+  const dateStr = date.toLocaleDateString('sv-SE', { timeZone: STATS_TIMEZONE })
+  const [y, m, day] = dateStr.split('-').map(Number)
+  const noonUtc = new Date(Date.UTC(y, m - 1, day, 12, 0, 0, 0))
+  const bucharestHour = parseInt(
+    new Intl.DateTimeFormat('en', { timeZone: STATS_TIMEZONE, hour: 'numeric', hour12: false }).format(noonUtc),
+    10
+  )
+  const offsetHours = bucharestHour - 12
+  const offsetMs = offsetHours * 3600 * 1000
+  const start = new Date(Date.UTC(y, m - 1, day, 0, 0, 0, 0) - offsetMs)
+  const end = new Date(Date.UTC(y, m - 1, day, 23, 59, 59, 999) - offsetMs)
   return { start, end }
 }
 
@@ -780,6 +793,8 @@ export async function fetchLeadsByTypeForUser(
 /**
  * Numără Curier trimis și Office direct în interval.
  * Pentru userId: doar lead-uri atribuite vânzătorului.
+ * Include și vanzari_apeluri: când un lead e mutat ulterior în No Deal/Callback, pe lead se șterge
+ * curier_trimis_at, dar înregistrarea din vanzari_apeluri rămâne – luăm max(leads, apeluri) ca să nu pierdem numărul.
  */
 export async function fetchCurierTrimisOfficeDirectCounts(
   start: Date,
@@ -788,27 +803,68 @@ export async function fetchCurierTrimisOfficeDirectCounts(
 ): Promise<{ curier_trimis: number; office_direct: number }> {
   const startIso = start.toISOString()
   const endIso = end.toISOString()
-  let ctCount = 0
-  let odCount = 0
-  let qCt = (supabase as any)
-    .from('leads')
-    .select('id', { count: 'exact', head: true })
-    .gte('curier_trimis_at', startIso)
-    .lte('curier_trimis_at', endIso)
-  if (userId) qCt = qCt.or(`curier_trimis_user_id.eq.${userId},and(curier_trimis_user_id.is.null,claimed_by.eq.${userId})`)
-  const { count: ct } = await qCt
-  ctCount = ct ?? 0
+  let ctFromLeads = 0
+  let odFromLeads = 0
 
-  let qOd = (supabase as any)
-    .from('leads')
-    .select('id', { count: 'exact', head: true })
-    .gte('office_direct_at', startIso)
-    .lte('office_direct_at', endIso)
-  if (userId) qOd = qOd.or(`office_direct_user_id.eq.${userId},and(office_direct_user_id.is.null,claimed_by.eq.${userId})`)
-  const { count: od } = await qOd
-  odCount = od ?? 0
+  if (userId) {
+    const [r1, r2] = await Promise.all([
+      (supabase as any).from('leads').select('id', { count: 'exact', head: true }).gte('curier_trimis_at', startIso).lte('curier_trimis_at', endIso).eq('curier_trimis_user_id', userId),
+      (supabase as any).from('leads').select('id', { count: 'exact', head: true }).gte('curier_trimis_at', startIso).lte('curier_trimis_at', endIso).is('curier_trimis_user_id', null).eq('claimed_by', userId),
+    ])
+    ctFromLeads = ((r1 as { count?: number })?.count ?? 0) + ((r2 as { count?: number })?.count ?? 0)
+    const [o1, o2] = await Promise.all([
+      (supabase as any).from('leads').select('id', { count: 'exact', head: true }).gte('office_direct_at', startIso).lte('office_direct_at', endIso).eq('office_direct_user_id', userId),
+      (supabase as any).from('leads').select('id', { count: 'exact', head: true }).gte('office_direct_at', startIso).lte('office_direct_at', endIso).is('office_direct_user_id', null).eq('claimed_by', userId),
+    ])
+    odFromLeads = ((o1 as { count?: number })?.count ?? 0) + ((o2 as { count?: number })?.count ?? 0)
+  } else {
+    const { count: ct } = await (supabase as any)
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .gte('curier_trimis_at', startIso)
+      .lte('curier_trimis_at', endIso)
+    ctFromLeads = ct ?? 0
+    const { count: od } = await (supabase as any)
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .gte('office_direct_at', startIso)
+      .lte('office_direct_at', endIso)
+    odFromLeads = od ?? 0
+  }
 
-  return { curier_trimis: ctCount, office_direct: odCount }
+  // Supliment din vanzari_apeluri: mutările în Curier trimis/Office direct rămân înregistrate chiar dacă
+  // pe lead s-a șters curier_trimis_at (ex. la No Deal sau eliminare badge) – astfel Alina își păstrează 9.
+  let ctFromApeluri = 0
+  let odFromApeluri = 0
+  const pid = await getVanzariPipelineId()
+  if (pid) {
+    const { data: stages } = await fetchStagesForPipeline(pid)
+    const ctStageId = (stages || []).find((s: { name?: string }) => {
+      const n = (s.name || '').toLowerCase()
+      return n.includes('curier') && n.includes('trimis')
+    })?.id
+    const odStageId = (stages || []).find((s: { name?: string }) => {
+      const n = (s.name || '').toLowerCase()
+      return n.includes('office') && n.includes('direct')
+    })?.id
+    if (ctStageId) {
+      let q = (supabase as any).from('vanzari_apeluri').select('id', { count: 'exact', head: true }).eq('pipeline_id', pid).eq('to_stage_id', ctStageId).gte('apel_at', startIso).lte('apel_at', endIso)
+      if (userId) q = q.eq('moved_by', userId)
+      const { count } = await q
+      ctFromApeluri = count ?? 0
+    }
+    if (odStageId) {
+      let q = (supabase as any).from('vanzari_apeluri').select('id', { count: 'exact', head: true }).eq('pipeline_id', pid).eq('to_stage_id', odStageId).gte('apel_at', startIso).lte('apel_at', endIso)
+      if (userId) q = q.eq('moved_by', userId)
+      const { count } = await q
+      odFromApeluri = count ?? 0
+    }
+  }
+
+  return {
+    curier_trimis: Math.max(ctFromLeads, ctFromApeluri),
+    office_direct: Math.max(odFromLeads, odFromApeluri),
+  }
 }
 
 /**
@@ -854,27 +910,21 @@ async function fetchComandaLeadIdsFromLeads(
   const endIso = end.toISOString()
   const ids = new Set<string>()
 
-  // Curier Trimis: curier_trimis_at în range AND (curier_trimis_user_id = user OR claimed_by = user)
-  const { data: ct } = await (supabase as any)
-    .from('leads')
-    .select('id')
-    .gte('curier_trimis_at', startIso)
-    .lte('curier_trimis_at', endIso)
-    .or(`curier_trimis_user_id.eq.${userId},and(curier_trimis_user_id.is.null,claimed_by.eq.${userId})`)
-  for (const r of ct || []) {
-    if (r?.id) ids.add(r.id)
-  }
+  // Curier Trimis: două query-uri (curier_trimis_user_id = user șI curier_trimis_user_id null + claimed_by = user)
+  const [ct1, ct2] = await Promise.all([
+    (supabase as any).from('leads').select('id').gte('curier_trimis_at', startIso).lte('curier_trimis_at', endIso).eq('curier_trimis_user_id', userId),
+    (supabase as any).from('leads').select('id').gte('curier_trimis_at', startIso).lte('curier_trimis_at', endIso).is('curier_trimis_user_id', null).eq('claimed_by', userId),
+  ])
+  for (const r of (ct1?.data || []) as { id?: string }[]) { if (r?.id) ids.add(r.id) }
+  for (const r of (ct2?.data || []) as { id?: string }[]) { if (r?.id) ids.add(r.id) }
 
-  // Office Direct: office_direct_at în range AND (office_direct_user_id = user OR claimed_by = user)
-  const { data: od } = await (supabase as any)
-    .from('leads')
-    .select('id')
-    .gte('office_direct_at', startIso)
-    .lte('office_direct_at', endIso)
-    .or(`office_direct_user_id.eq.${userId},and(office_direct_user_id.is.null,claimed_by.eq.${userId})`)
-  for (const r of od || []) {
-    if (r?.id) ids.add(r.id)
-  }
+  // Office Direct: la fel
+  const [od1, od2] = await Promise.all([
+    (supabase as any).from('leads').select('id').gte('office_direct_at', startIso).lte('office_direct_at', endIso).eq('office_direct_user_id', userId),
+    (supabase as any).from('leads').select('id').gte('office_direct_at', startIso).lte('office_direct_at', endIso).is('office_direct_user_id', null).eq('claimed_by', userId),
+  ])
+  for (const r of (od1?.data || []) as { id?: string }[]) { if (r?.id) ids.add(r.id) }
+  for (const r of (od2?.data || []) as { id?: string }[]) { if (r?.id) ids.add(r.id) }
 
   return ids
 }

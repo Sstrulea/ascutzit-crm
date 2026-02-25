@@ -15,7 +15,7 @@ import { format } from "date-fns"
 import { ro } from "date-fns/locale/ro"
 import { updateLeadWithHistory } from "@/lib/supabase/leadOperations"
 import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
-import { useRole, useAuth } from "@/lib/contexts/AuthContext"
+import { useAuth } from "@/lib/contexts/AuthContext"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { extractNameAndPhoneFromDetails } from "@/lib/utils/leadDisplay"
@@ -165,11 +165,10 @@ export function LeadContactInfo({
   isReceptiePipeline = false,
   embedded = false,
 }: LeadContactInfoProps) {
-  const { isAdmin, isOwner, isMember } = useRole()
   const { user } = useAuth?.() ?? {}
 
-  // Permite editarea în Vânzări sau Recepție pentru owner, admin sau member
-  const canEdit = (isVanzariPipeline || isReceptiePipeline) && (isOwner || isAdmin || isMember)
+  // Oricine poate edita informațiile de contact (nume, telefon, email, adresă etc.) în Vânzări sau Recepție
+  const canEdit = isVanzariPipeline || isReceptiePipeline
   const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editData, setEditData] = useState<Record<string, string>>({})

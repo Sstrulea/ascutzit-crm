@@ -43,7 +43,7 @@ function ItemTag({ type }: { type?: string | null }) {
   return <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">{label}</span>
 }
 
-/** Evenimente pentru care afișăm statusul tăviței (split / reunire); restul nu afișează status. */
+/** Events for which we display the tray status (split / merge); others do not display status. */
 const TRAY_EVENT_TYPES_SHOW_STATUS = ["tray_items_split_to_technician", "tray_items_merged_to_technician", "tray_split_to_real"]
 
 function formatTrayLine(tray: any, showStatus: boolean): string {
@@ -57,7 +57,7 @@ function renderServiceSheetDetails(payload: any) {
   const diff = payload?.diff
   if (!diff) return null
 
-  // Bloc pentru items adăugate și șterse (fără diferențe detaliate)
+  // Block for added and removed items (without detailed differences)
   const SimpleBlock = ({ title, items, color, bgColor }: { title: string; items?: any[]; color: string; bgColor: string }) =>
     items && items.length ? (
       <div className={`rounded-md ${bgColor} p-3 border border-border/50`}>
@@ -81,7 +81,7 @@ function renderServiceSheetDetails(payload: any) {
                   {x.tray && (
                     <div>Tăvița: <span className="font-medium">{x.tray.number}</span></div>
                   )}
-                  {/* Detalii suplimentare pentru items adăugate */}
+                  {/* Additional details for added items */}
                   {x.qty !== undefined && (
                     <div>Cantitate: <span className="font-medium">{x.qty}</span></div>
                   )}
@@ -111,7 +111,7 @@ function renderServiceSheetDetails(payload: any) {
       </div>
     ) : null
 
-  // Bloc pentru items actualizate cu diferențe detaliate
+  // Block for updated items with detailed differences
   const UpdatedBlock = ({ items }: { items?: any[] }) =>
     items && items.length ? (
       <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 p-3 border border-blue-200 dark:border-blue-800">
@@ -129,7 +129,7 @@ function renderServiceSheetDetails(payload: any) {
                 </div>
               </div>
               
-              {/* Afișează diferențele detaliate */}
+              {/* Display detailed differences */}
               {x.changes && Object.keys(x.changes).length > 0 && (
                 <div className="ml-6 space-y-1 bg-white dark:bg-slate-900 rounded-md p-2 border border-blue-100 dark:border-blue-900">
                   <div className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 uppercase mb-1">Modificări:</div>
@@ -148,7 +148,7 @@ function renderServiceSheetDetails(payload: any) {
                 </div>
               )}
               
-              {/* Fallback: dacă nu există changes dar avem previous, afișează diferențele */}
+              {/* Fallback: if no changes but we have previous, display differences */}
               {(!x.changes || Object.keys(x.changes).length === 0) && x.previous && (
                 <div className="ml-6 space-y-1 bg-white dark:bg-slate-900 rounded-md p-2 border border-blue-100 dark:border-blue-900">
                   <div className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 uppercase mb-1">Valori anterioare:</div>
@@ -198,7 +198,7 @@ function renderServiceSheetDetails(payload: any) {
 
   return (
     <div className="space-y-3">
-      {/* Rezumat: ce s-a introdus (servicii, piese, linii urgente) */}
+      {/* Summary: what was entered (services, parts, urgent lines) */}
       {counts && (
         <div className="rounded-md bg-slate-50 dark:bg-slate-950/30 p-3 border border-slate-200 dark:border-slate-800">
           <div className="text-xs font-semibold mb-2 text-slate-600 dark:text-slate-400">Ce s-a introdus</div>
@@ -215,7 +215,7 @@ function renderServiceSheetDetails(payload: any) {
         </div>
       )}
 
-      {/* Reduceri aplicate */}
+      {/* Applied discounts */}
       {hasDiscounts && (
         <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 p-3 border border-emerald-200 dark:border-emerald-800">
           <div className="text-xs font-semibold mb-2 text-emerald-600 dark:text-emerald-400">Reduceri aplicate</div>
@@ -230,7 +230,7 @@ function renderServiceSheetDetails(payload: any) {
         </div>
       )}
 
-      {/* Instrumente în tăviță (tăvițe / ce e atribuit) */}
+      {/* Instruments in tray (trays / assigned items) */}
       {payload?.instruments && payload.instruments.length > 0 && (
         <div className="rounded-md bg-purple-50 dark:bg-purple-950/30 p-3 border border-purple-200 dark:border-purple-800">
           <div className="text-xs font-semibold mb-2 text-purple-600 dark:text-purple-400">Instrumente în tăviță</div>
@@ -532,12 +532,12 @@ function renderTrayItemUpdatedDetails(payload: any) {
   )
 }
 
-/** Formatează o valoare pentru afișare (gol → "—"). */
+/** Format a value for display (empty → "—"). */
 function formatChangeValue(v: unknown): string {
   return v != null && v !== '' ? String(v).trim() : '—'
 }
 
-/** O linie per modificare: "Câmp: valoare_veche --- > valoare_nouă" (ora și utilizatorul sunt în card). */
+/** One line per change: "Field: old_value ---> new_value" (time and user are in the card). */
 function renderFieldUpdatedDetails(
   payload: any,
   title: string,
@@ -557,7 +557,7 @@ function renderFieldUpdatedDetails(
             <div key={idx} className="text-xs text-foreground">
               <span className="font-medium">{label}:</span>{' '}
               <span className="line-through text-muted-foreground">{prev}</span>
-              <span className="mx-1 text-muted-foreground">--- &gt;</span>
+              <span className="mx-1 text-muted-foreground">--- {'>'}</span>
               <span className="font-medium text-foreground"> {next}</span>
             </div>
           )
@@ -567,12 +567,12 @@ function renderFieldUpdatedDetails(
   )
 }
 
-/** Modificări date client – versiune precedentă și actuală pe o linie (ex: Nume: Marinela --- > Ion). */
+/** Client data updates – previous and current versions on one line (e.g., Name: Marinela ---> Ion). */
 function renderLeadFieldUpdatedDetails(payload: any) {
   return renderFieldUpdatedDetails(payload, "Date client / detalii actualizate")
 }
 
-/** Modificări fișă de serviciu – versiune precedentă și actuală (ex: Status: noua --- > comanda). */
+/** Service file updates – previous and current versions (e.g., Status: noua ---> comanda). */
 function renderServiceFileFieldUpdatedDetails(payload: any) {
   return renderFieldUpdatedDetails(
     payload,
@@ -927,7 +927,7 @@ async function fetchTrayIdsForServiceFile(serviceFileId: string): Promise<string
   return (data || []).map((t: any) => t.id)
 }
 
-/** Toate fișele de serviciu ale lead-ului (pentru istoric global). */
+/** All service files of the lead (for global history). */
 async function fetchServiceFileIdsForLead(leadId: string): Promise<string[]> {
   const { data } = await supabase
     .from("service_files")
@@ -936,7 +936,7 @@ async function fetchServiceFileIdsForLead(leadId: string): Promise<string[]> {
   return (data || []).map((sf: any) => sf.id)
 }
 
-/** Lead ID din tăviță (tray → service_file → lead_id). Pentru istoric global când avem doar trayId (ex. view Departament). */
+/** Lead ID from tray (tray → service_file → lead_id). For global history when we only have trayId (e.g., Department view). */
 async function fetchLeadIdFromTray(trayId: string): Promise<string | null> {
   const { data: tray } = await supabase.from("trays").select("service_file_id").eq("id", trayId).single()
   if (!tray?.service_file_id) return null
@@ -967,19 +967,19 @@ export default function LeadHistory({
     let channel: any = null
 
     // ═══════════════════════════════════════════════════════════════════════════════
-    // ISTORIC GLOBAL: același istoric (lead + toate fișele + toate tăvițele) în toate
-    // pipeline-urile și view-urile. Rezolvăm leadId din tray dacă lipsește (ex. view Departament).
+    // GLOBAL HISTORY: same history (lead + all files + all trays) across all
+    // pipelines and views. Resolve leadId from tray if missing (e.g., Department view).
     // ═══════════════════════════════════════════════════════════════════════════════
 
     const run = async () => {
-      // Rezolvă leadId: direct sau din tăviță (tray → service_file → lead_id)
+      // Resolve leadId: directly or from tray (tray → service_file → lead_id)
       let effectiveLeadId: string | null = leadId || null
       if (!effectiveLeadId && trayId) {
         effectiveLeadId = await fetchLeadIdFromTray(trayId)
         if (cancelled) return
       }
 
-      // Istoric global: lead + toate fișele de serviciu ale lead-ului + toate tăvițele acestora
+      // Global history: lead + all service files of the lead + all their trays
       if (effectiveLeadId) {
         const serviceFileIds = await fetchServiceFileIdsForLead(effectiveLeadId)
         if (cancelled) return
@@ -1035,7 +1035,7 @@ export default function LeadHistory({
         return
       }
 
-      // Fără lead: doar evenimente tăviță (ex. view Departament fără lead rezolvat)
+      // No lead: only tray events (e.g., Department view without resolved lead)
       if (trayId) {
         const { data, error: err } = await supabase
           .from("items_events")
@@ -1076,10 +1076,10 @@ export default function LeadHistory({
     }
   }, [leadId, serviceFileId, trayId, isVanzariPipeline, isReceptiePipeline, isDepartmentPipeline])
 
-  // Mutăm toate hook-urile înainte de return-urile condiționale
-  // pentru a respecta regula hooks-urilor React
+  // Move all hooks before conditional returns
+  // to respect React hooks rule
   
-  // Grupează evenimentele după dată
+  // Group events by date
   const groupedItems = useMemo(() => {
     if (!items || items.length === 0) return {}
     const groups: Record<string, LeadEvent[]> = {}
@@ -1094,7 +1094,7 @@ export default function LeadHistory({
     return groups
   }, [items])
 
-  // Afișează primele 50 implicit, sau toate dacă showAll este true
+  // Display first 50 by default, or all if showAll is true
   const displayItems = useMemo(() => {
     if (!items || items.length === 0) return []
     return showAll ? items : items.slice(0, 50)
@@ -1102,7 +1102,7 @@ export default function LeadHistory({
   
   const hasMore = items ? items.length > 50 : false
 
-  // Grupează și displayItems
+  // Also group displayItems
   const groupedDisplayItems = useMemo(() => {
     if (!displayItems || displayItems.length === 0) return {}
     const groups: Record<string, LeadEvent[]> = {}
@@ -1121,7 +1121,7 @@ export default function LeadHistory({
     return Object.keys(groupedDisplayItems).sort((a, b) => b.localeCompare(a))
   }, [groupedDisplayItems])
 
-  // Return-uri condiționale după toate hook-urile
+  // Conditional returns after all hooks
   if (loading) return <div className="p-4 text-sm text-muted-foreground">Se încarcă istoricul…</div>
   if (error) return <div className="p-4 text-sm text-destructive">{error}</div>
   if (!items || items.length === 0) return <div className="p-4 text-sm text-muted-foreground">Nu există evenimente încă.</div>
@@ -1176,7 +1176,7 @@ export default function LeadHistory({
                     className="group relative rounded-lg border bg-card hover:border-primary/50 hover:shadow-md transition-all duration-200 p-4"
                   >
                     <div className="flex items-start gap-3">
-                      {/* Icon și linie verticală */}
+                      {/* Icon and vertical line */}
                       <div className="flex flex-col items-center pt-0.5">
                         <div className="rounded-full bg-muted p-2 group-hover:bg-primary/10 transition-colors">
                           <EventIcon eventType={ev.event_type} />
@@ -1184,7 +1184,7 @@ export default function LeadHistory({
                         <div className="w-0.5 h-full bg-gradient-to-b from-muted to-transparent mt-2" />
                       </div>
                       
-                      {/* Conținut */}
+                      {/* Content */}
                       <div className="flex-1 min-w-0 space-y-2">
                         {/* Header */}
                         <div className="flex items-start justify-between gap-2">
@@ -1206,12 +1206,12 @@ export default function LeadHistory({
                           </div>
                         </div>
                         
-                        {/* Mesaj */}
+                        {/* Message */}
                         <div className="text-sm leading-relaxed text-foreground font-medium">
                           {ev.message}
                         </div>
                         
-                        {/* Detalii */}
+                        {/* Details */}
                         <div className="mt-3 space-y-2">
                           {ev.event_type === "service_sheet_save" && renderServiceSheetDetails(ev.payload as any)}
                           {ev.event_type === "service_file_created" && renderServiceFileCreatedDetails(ev.payload as any, ev.actor_name)}

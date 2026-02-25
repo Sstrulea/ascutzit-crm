@@ -6,6 +6,10 @@ const supabase = supabaseBrowser()
 export type TagColor = 'green' | 'yellow' | 'red' | 'orange' | 'blue'
 export type Tag = { id: string; name: string; color: TagColor }
 
+/**
+ * Normalizes tag name by removing diacritics and non-alphanumeric characters.
+ * Used for case-insensitive comparison (e.g., "Nu răspunde" = "Nu raspunde").
+ */
 function canonicalTagName(name: string): string {
   return String(name || '')
     .normalize('NFD')
@@ -14,7 +18,7 @@ function canonicalTagName(name: string): string {
     .replace(/[^a-z0-9]/g, '')
 }
 
-/** admin list (configurari) */
+/** Admin list (configurari) */
 export async function listTags(): Promise<Tag[]> {
   const { data, error } = await supabase
     .from('tags')
@@ -49,9 +53,9 @@ export async function toggleLeadTag(leadId: string, tagId: string) {
       .select('lead_id, tag_id')
       .single()
 
-    // Dacă primim eroare de tip duplicate key (23505), înseamnă că în paralel
-    // a fost deja inserată aceeași pereche (lead_id, tag_id). O putem ignora
-    // și considerăm că tag-ul este deja adăugat.
+    // If we receive a duplicate key error (23505), it means in parallel
+    // the same pair (lead_id, tag_id) was already inserted. We can ignore it
+    // and consider that the tag is already added.
     if (error && (error as any).code !== '23505') {
       throw error
     }
@@ -60,6 +64,11 @@ export async function toggleLeadTag(leadId: string, tagId: string) {
   }
 }
 
+/**
+ * Creates a new tag with the specified name and color.
+ * @param name - Tag name
+ * @param color - Tag color from predefined options
+ */
 export async function createTag(name: string, color: TagColor) {
   const { data, error } = await supabase
     .from('tags')
@@ -70,11 +79,20 @@ export async function createTag(name: string, color: TagColor) {
   return data as Tag
 }
 
+/**
+ * Deletes a tag by its ID.
+ * @param tagId - The ID of the tag to delete
+ */
 export async function deleteTag(tagId: string) {
   const { error } = await supabase.from('tags').delete().eq('id', tagId)
   if (error) throw error
 }
 
+/**
+ * Updates a tag's name or color.
+ * @param tagId - The ID of the tag to update
+ * @param patch - Partial update object with name or color
+ */
 export async function updateTag(tagId: string, patch: Partial<Pick<Tag,'name'|'color'>>) {
   const updateData: any = {}
   if (patch.name !== undefined) updateData.name = patch.name
@@ -90,9 +108,9 @@ export async function updateTag(tagId: string, patch: Partial<Pick<Tag,'name'|'c
   return data as Tag
 }
 
-/** Gaseste sau creeaza tag-ul PINNED */
+/** Finds or creates PINNED tag (used for pinning leads) */
 export async function getOrCreatePinnedTag(): Promise<Tag> {
-  // cauta tag-ul PINNED
+  // search for PINNED tag
   const { data: existingTag } = await supabase
     .from('tags')
     .select('id,name,color')
@@ -103,7 +121,7 @@ export async function getOrCreatePinnedTag(): Promise<Tag> {
     return existingTag as Tag
   }
   
-  // creeaza tag-ul PINNED daca nu exista
+  // create PINNED tag if it doesn't exist
   const { data: newTag, error } = await supabase
     .from('tags')
     .insert([{ name: 'PINNED', color: 'blue' }] as any)
@@ -114,7 +132,7 @@ export async function getOrCreatePinnedTag(): Promise<Tag> {
   return newTag as Tag
 }
 
-/** Găsește sau creează tag-ul Urgentare (poziționează cardul primul în listă – pentru fișe de serviciu și tăvițe). */
+/** Finds or creates "Urgentare" tag (positions card first in list – for service files and trays). */
 export async function getOrCreateUrgentareTag(): Promise<Tag> {
   const { data: existingTag } = await supabase
     .from('tags')
@@ -131,9 +149,9 @@ export async function getOrCreateUrgentareTag(): Promise<Tag> {
   return newTag as Tag
 }
 
-/** Găsește sau creează tag-ul "Nu raspunde" (pentru evidențiere card fișă). */
+/** Finds or creates "Nu raspunde" tag (for highlighting service file card). */
 export async function getOrCreateNuRaspundeTag(): Promise<Tag> {
-  // Pentru a evita duplicate ("Nu răspunde" vs "Nu raspunde"), listăm și canonicalizăm.
+  // To avoid duplicates ("Nu răspunde" vs "Nu raspunde"), list and canonicalize.
   let tags: Tag[] = []
   try {
     tags = await listTags()
@@ -145,7 +163,7 @@ export async function getOrCreateNuRaspundeTag(): Promise<Tag> {
   return await createTag('Nu raspunde', 'red')
 }
 
-/** Adaugă un tag pe lead dacă nu există deja (pentru Curier Trimis / Office direct – tag real persistent). */
+/** Adds a tag to a lead if it doesn't already exist (for Curier Trimis / Office direct – real persistent tag). */
 export async function addLeadTagIfNotPresent(leadId: string, tagId: string): Promise<void> {
   const { data: existing } = await supabase
     .from('lead_tags')
@@ -160,7 +178,7 @@ export async function addLeadTagIfNotPresent(leadId: string, tagId: string): Pro
   if (error && (error as any).code !== '23505') throw error
 }
 
-/** Scoate un tag de pe lead (dacă există). */
+/** Removes a tag from a lead (if it exists). */
 export async function removeLeadTag(leadId: string, tagId: string): Promise<void> {
   await supabase
     .from('lead_tags')
@@ -169,7 +187,7 @@ export async function removeLeadTag(leadId: string, tagId: string): Promise<void
     .eq('tag_id', tagId)
 }
 
-/** Găsește sau creează tag-ul "Curier Trimis" (tag real – persistă și după mutarea lead-ului). */
+/** Finds or creates "Curier Trimis" tag (real tag – persists even after moving the lead). */
 export async function getOrCreateCurierTrimisTag(): Promise<Tag> {
   const { data: existingTag } = await supabase
     .from('tags')
@@ -186,7 +204,7 @@ export async function getOrCreateCurierTrimisTag(): Promise<Tag> {
   return newTag as Tag
 }
 
-/** Găsește sau creează tag-ul "Office direct" (tag real – persistă și după mutarea lead-ului). */
+/** Finds or creates "Office direct" tag (real tag – persists even after moving the lead). */
 export async function getOrCreateOfficeDirectTag(): Promise<Tag> {
   const { data: existingTag } = await supabase
     .from('tags')
@@ -203,7 +221,7 @@ export async function getOrCreateOfficeDirectTag(): Promise<Tag> {
   return newTag as Tag
 }
 
-/** Găsește sau creează tag-ul "Suna!" (după expirarea termenului Call back / Nu răspunde – afișat pe card cu X pentru eliminare). */
+/** Finds or creates "Suna!" tag (after Call back / Nu răspunde expires – displayed on card with X for removal). */
 export async function getOrCreateSunaTag(): Promise<Tag> {
   const { data: existingTag } = await supabase
     .from('tags')
@@ -220,7 +238,7 @@ export async function getOrCreateSunaTag(): Promise<Tag> {
   return newTag as Tag
 }
 
-/** Găsește sau creează tag-ul "Urgent" (pentru livrări urgente; lead-ul îl poartă pe perioada fișei). */
+/** Finds or creates "Urgent" tag (for urgent deliveries; lead carries it during the service file period). */
 export async function getOrCreateUrgentTag(): Promise<Tag> {
   const { data: existingTag } = await supabase
     .from('tags')
@@ -237,9 +255,9 @@ export async function getOrCreateUrgentTag(): Promise<Tag> {
   return newTag as Tag
 }
 
-/** Găsește sau creează tag-ul "Retur" (pentru atribuire la butonul Close din detalii). */
+/** Finds or creates "Retur" tag (for assignment to Close button in details). */
 export async function getOrCreateReturTag(): Promise<Tag> {
-  // Caută tag-ul Retur (case-insensitive)
+  // Search for Retur tag (case-insensitive)
   const { data: existingTag } = await supabase
     .from('tags')
     .select('id,name,color')
@@ -250,7 +268,7 @@ export async function getOrCreateReturTag(): Promise<Tag> {
     return existingTag as Tag
   }
   
-  // Creează tag-ul Retur dacă nu există
+  // Create Retur tag if it doesn't exist
   const { data: newTag, error } = await supabase
     .from('tags')
     .insert([{ name: 'Retur', color: 'orange' }] as any)
@@ -261,7 +279,7 @@ export async function getOrCreateReturTag(): Promise<Tag> {
   return newTag as Tag
 }
 
-/** Găsește sau creează tag-ul "Nu A Venit" (pentru fișe în Office Direct – clientul nu a venit). */
+/** Finds or creates "Nu A Venit" tag (for service files in Office Direct – client didn't show up). */
 export async function getOrCreateNuAVenitTag(): Promise<Tag> {
   const { data: existingTag } = await supabase
     .from('tags')
@@ -278,9 +296,9 @@ export async function getOrCreateNuAVenitTag(): Promise<Tag> {
   return newTag as Tag
 }
 
-/** Găsește sau creează tag-ul "Garantie" (pentru afișare pe card când checkbox-ul garantie este activ). */
+/** Finds or creates "Garantie" tag (for display on card when warranty checkbox is active). */
 export async function getOrCreateGarantieTag(): Promise<Tag> {
-  // Caută tag-ul Garantie (case-insensitive)
+  // Search for Garantie tag (case-insensitive)
   const { data: existingTag } = await supabase
     .from('tags')
     .select('id,name,color')
@@ -291,7 +309,7 @@ export async function getOrCreateGarantieTag(): Promise<Tag> {
     return existingTag as Tag
   }
   
-  // Creează tag-ul Garantie dacă nu există
+  // Create Garantie tag if it doesn't exist
   const { data: newTag, error } = await supabase
     .from('tags')
     .insert([{ name: 'Garantie', color: 'blue' }] as any)

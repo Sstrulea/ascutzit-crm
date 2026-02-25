@@ -28,7 +28,7 @@ interface SidebarProps {
 
 const toSlug = (s: string) => String(s).toLowerCase().replace(/\s+/g, "-")
 
-// functie pentru a returna iconita potrivita pentru fiecare pipeline
+// Function to return the appropriate icon for each pipeline
 const getPipelineIcon = (pipelineName: string) => {
   const name = pipelineName.toLowerCase()
   
@@ -134,7 +134,7 @@ export function SidebarRedesigned({ canManagePipelines }: SidebarProps) {
       let allPipelines = data.map((p: any) => ({ id: p.id, name: p.name }))
       
       if (isOwner || isAdmin || isReceptie()) {
-        // toate
+        // Show all pipelines (no filtering)
       } else if (isVanzator()) {
         allPipelines = allPipelines.filter(p => hasAccess(p.id) && (p.name || '').toLowerCase().includes('vanzari'))
       } else {
@@ -231,7 +231,7 @@ export function SidebarRedesigned({ canManagePipelines }: SidebarProps) {
       )}
     >
       <div className={cn("flex flex-col h-full min-h-0 scrollbar-sidebar-hide", sidebarCollapsed ? "p-2" : "p-4")}>
-        {/* Header: logo și buton extindere – vertical când sidebar colapsat, orizontal când extins */}
+        {/* Header: logo and expand button - vertical when sidebar collapsed, horizontal when expanded */}
         <div className={cn(
           "flex mb-6 pb-4 border-b border-sidebar-border",
           sidebarCollapsed ? "flex-col items-center gap-2" : "flex-row items-center gap-3"
@@ -254,8 +254,8 @@ export function SidebarRedesigned({ canManagePipelines }: SidebarProps) {
             size="icon"
             className="shrink-0 text-sidebar-foreground hover:bg-sidebar-accent"
             onClick={() => setSidebarCollapsed((c) => !c)}
-            title={sidebarCollapsed ? "Largire sidebar" : "Restrângere sidebar"}
-            aria-label={sidebarCollapsed ? "Largire sidebar" : "Restrângere sidebar"}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {sidebarCollapsed ? (
               <PanelLeftOpen className="h-4 w-4" />

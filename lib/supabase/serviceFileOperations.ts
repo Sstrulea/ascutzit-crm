@@ -529,9 +529,27 @@ export async function createTray(data: {
   technician3_id?: string | null
 }): Promise<{ data: Tray | null; error: any }> {
   try {
-    // La split nu verificăm unicitate (number = 24Moein etc. e unic per split)
+    const numberTrimmed = data.number == null ? '' : String(data.number).trim()
+    const isEmptyNumber = numberTrimmed === ''
+
+    // Tăvițe goale (fără număr): permitem maxim una per fișă – reutilizăm pe cea existentă
     const skipUniqueness = data.status === 'Splited' || data.parent_tray_id != null
-    if (!skipUniqueness) {
+    if (!skipUniqueness && isEmptyNumber) {
+      const { data: traysForFisa } = await supabase
+        .from('trays')
+        .select('*')
+        .eq('service_file_id', data.service_file_id)
+        .not('status', 'in', '("2","3")')
+        .order('created_at', { ascending: true })
+      const existingEmpty = (traysForFisa || []).find(
+        (t: { number?: string | null }) => t.number == null || String(t.number).trim() === ''
+      )
+      if (existingEmpty) {
+        return { data: existingEmpty as Tray, error: null }
+      }
+    }
+
+    if (!skipUniqueness && !isEmptyNumber) {
       const { data: existing } = await supabase
         .from('trays')
         .select('*')
@@ -630,21 +648,58 @@ export async function getTray(trayId: string): Promise<{ data: Tray | null; erro
 }
 
 /**
- * Listează toate tăvițele asociate cu o fișă de serviciu specificată.
- * Tăvițele sunt returnate în ordine crescătoare după data creării (cele mai vechi primele).
- * Această funcție este folosită pentru a afișa toate tăvițele unei fișe în panoul de detalii.
- * 
- * @param serviceFileId - ID-ul fișei de serviciu pentru care se caută tăvițele
- * @returns Array cu toate tăvițele fișei sau array gol dacă nu există
+ * Șterge tăvițele goale redundante pentru o fișă (fără număr, fără itemi, fără imagini).
+ * Păstrează cel mult una (cea mai veche). Apelat la listTraysForServiceFile.
+ */
+export async function cleanupRedundantEmptyTraysForServiceFile(
+  serviceFileId: string,
+  supabaseClient?: SupabaseClient
+): Promise<{ deletedCount: number; error: any }> {
+  const db = supabaseClient ?? supabaseBrowser()
+  try {
+    const { data: trays, error: fetchErr } = await db
+      .from('trays')
+      .select('id, number, created_at')
+      .eq('service_file_id', serviceFileId)
+      .not('status', 'in', '("2","3")')
+      .order('created_at', { ascending: true })
+    if (fetchErr || !trays?.length) return { deletedCount: 0, error: fetchErr ?? null }
+    const emptyOnes = trays.filter(
+      (t: { number?: string | null }) => t.number == null || String(t.number).trim() === ''
+    )
+    if (emptyOnes.length <= 1) return { deletedCount: 0, error: null }
+    let deleted = 0
+    for (let i = 1; i < emptyOnes.length; i++) {
+      const t = emptyOnes[i]
+      const [itemsRes, imagesRes] = await Promise.all([
+        db.from('tray_items').select('id', { count: 'exact', head: true }).eq('tray_id', t.id),
+        db.from('tray_images').select('id', { count: 'exact', head: true }).eq('tray_id', t.id),
+      ])
+      const itemsCount = (itemsRes as { count?: number }).count ?? 0
+      const imagesCount = (imagesRes as { count?: number }).count ?? 0
+      if (itemsCount > 0 || imagesCount > 0) continue
+      const result = await deleteTray(t.id, db)
+      if (result.success) deleted++
+    }
+    return { deletedCount: deleted, error: null }
+  } catch (e: any) {
+    console.warn('[cleanupRedundantEmptyTraysForServiceFile]', e)
+    return { deletedCount: 0, error: e }
+  }
+}
+
+/**
+ * Listează toate tăvițele asociate cu o fișă de serviciu.
+ * La încărcare curăță tăvițele goale redundante (maxim una per fișă).
  */
 export async function listTraysForServiceFile(serviceFileId: string): Promise<{ data: Tray[]; error: any }> {
   try {
+    await cleanupRedundantEmptyTraysForServiceFile(serviceFileId)
     const { data, error } = await supabase
       .from('trays')
       .select('*')
       .eq('service_file_id', serviceFileId)
       // Exclude split parent trays (status '2' și '3' sunt tăvițe parinte split-ate)
-      // Afișează doar tăvițele reale sau split children
       .not('status', 'in', '("2","3")')
       .order('created_at', { ascending: true })
 
@@ -746,50 +801,106 @@ export async function updateTray(
  * Șterge o tăviță din baza de date (pipeline_items, tray_item_brands, tray_items, tray_images, trays).
  * ATENȚIE: Operația este ireversibilă.
  */
-export async function deleteTray(trayId: string): Promise<{ success: boolean; error: any }> {
+export async function deleteTray(trayId: string, supabaseClient?: SupabaseClient): Promise<{ success: boolean; error: any }> {
+  const db = supabaseClient ?? supabaseBrowser()
   try {
     // IMPORTANT: Ștergem DOAR tăvița și datele ei asociate.
     // NU ștergem fișa de serviciu sau lead-ul.
 
     // 1. Șterge pipeline_items pentru tăviță (pozița în kanban)
-    await supabase.from('pipeline_items').delete().eq('type', 'tray').eq('item_id', trayId)
+    await db.from('pipeline_items').delete().eq('type', 'tray').eq('item_id', trayId)
 
     // 2. Șterge work_sessions asociate (au FK ON DELETE CASCADE, dar le ștergem explicit pentru siguranță)
-    await supabase.from('work_sessions').delete().eq('tray_id', trayId)
+    await db.from('work_sessions').delete().eq('tray_id', trayId)
 
     // 3. Șterge stage_history pentru tăviță
-    await supabase.from('stage_history').delete().eq('tray_id', trayId)
+    await db.from('stage_history').delete().eq('tray_id', trayId)
 
     // 4. Șterge tray_item_brands (seriale) ale tăviței
-    const { data: trayItems } = await supabase.from('tray_items').select('id').eq('tray_id', trayId)
+    const { data: trayItems } = await db.from('tray_items').select('id').eq('tray_id', trayId)
     if (trayItems?.length) {
       const ids = trayItems.map((ti: any) => ti.id)
-      await supabase.from('tray_item_brands').delete().in('tray_item_id', ids)
+      await db.from('tray_item_brands').delete().in('tray_item_id', ids)
       // Șterge și tray_item_brand_serials dacă există
       try {
-        await supabase.from('tray_item_brand_serials').delete().in('tray_item_id', ids)
+        await db.from('tray_item_brand_serials').delete().in('tray_item_id', ids)
       } catch { /* ignore if table doesn't exist */ }
     }
 
     // 5. Șterge tray_items (servicii, piese, instrumente din tăviță)
-    await supabase.from('tray_items').delete().eq('tray_id', trayId)
+    await db.from('tray_items').delete().eq('tray_id', trayId)
 
     // 6. Șterge imaginile tăviței
-    await supabase.from('tray_images').delete().eq('tray_id', trayId)
+    await db.from('tray_images').delete().eq('tray_id', trayId)
 
     // 7. Șterge arhiva_tavite_unite dacă există
     try {
-      await supabase.from('arhiva_tavite_unite').delete().eq('parent_tray_id', trayId)
+      await db.from('arhiva_tavite_unite').delete().eq('parent_tray_id', trayId)
     } catch { /* ignore if not applicable */ }
 
     // 8. În final, șterge tăvița
-    const { error } = await supabase.from('trays').delete().eq('id', trayId)
+    const { error } = await db.from('trays').delete().eq('id', trayId)
     if (error) throw error
 
     return { success: true, error: null }
   } catch (error) {
     console.error('[deleteTray] Error:', error)
     return { success: false, error }
+  }
+}
+
+/**
+ * Șterge toate tăvițele „goale”: fără număr și mărime (câmpul `number` este NULL sau gol).
+ * Util pentru curățare când tăvițele goale blochează mutarea fișei la „De facturat”.
+ * Poate fi apelat cu un client Supabase opțional (ex. din API route cu service role).
+ *
+ * @param supabaseClient - Opțional; dacă nu e dat, folosește supabaseBrowser()
+ * @returns { success, deletedCount, error }
+ */
+/**
+ * Șterge doar tăvițele care sunt „goale” în toate sensurile:
+ * - fără număr (number null sau string gol)
+ * - fără niciun tray_item
+ * - fără imagini (tray_images)
+ * Nu șterge tăvițe care au conținut dar au rămas fără număr din greșeală.
+ */
+export async function deleteEmptyTrays(supabaseClient?: SupabaseClient): Promise<{
+  success: boolean
+  deletedCount: number
+  error: any
+}> {
+  const db = supabaseClient ?? supabaseBrowser()
+  try {
+    const { data: trays, error: fetchErr } = await db
+      .from('trays')
+      .select('id, number')
+    if (fetchErr) return { success: false, deletedCount: 0, error: fetchErr }
+    const noNumberTrays = (trays || []).filter(
+      (t: { id: string; number: string | null }) =>
+        t.number == null || String(t.number).trim() === ''
+    )
+    if (noNumberTrays.length === 0) {
+      return { success: true, deletedCount: 0, error: null }
+    }
+    let deleted = 0
+    for (const t of noNumberTrays) {
+      const [itemsRes, imagesRes] = await Promise.all([
+        db.from('tray_items').select('id', { count: 'exact', head: true }).eq('tray_id', t.id),
+        db.from('tray_images').select('id', { count: 'exact', head: true }).eq('tray_id', t.id),
+      ])
+      const itemsCount = (itemsRes as { count?: number }).count ?? 0
+      const imagesCount = (imagesRes as { count?: number }).count ?? 0
+      if (itemsCount > 0 || imagesCount > 0) {
+        continue
+      }
+      const result = await deleteTray(t.id, db)
+      if (result.success) deleted++
+      else return { success: false, deletedCount: deleted, error: result.error }
+    }
+    return { success: true, deletedCount: deleted, error: null }
+  } catch (e: any) {
+    console.error('[deleteEmptyTrays] Error:', e)
+    return { success: false, deletedCount: 0, error: e }
   }
 }
 

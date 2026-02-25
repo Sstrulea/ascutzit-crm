@@ -5,7 +5,7 @@
  * 
  * This file contains pipeline item mutation operations.
  * The getKanbanItems and related query functions have been refactored into
- * the modular kanban/ directory for better maintainability.
+ * modular kanban/ directory for better maintainability.
  * 
  * Architecture:
  * - This file: Mutation operations (add, move, remove items)
@@ -23,7 +23,7 @@ import { fetchStagesForPipeline } from './kanban/fetchers'
 import { matchesStagePattern } from './kanban/constants'
 
 // ==================== RE-EXPORTS FROM KANBAN MODULE ====================
-// For backward compatibility, re-export the query functions from the new module
+// For backward compatibility, re-export query functions from new module
 
 export { 
   getKanbanItems, 
@@ -41,16 +41,16 @@ export type { KanbanItem as KanbanItemType } from './kanban'
 // ==================== MUTATION OPERATIONS ====================
 
 /**
- * Adaugă sau actualizează un item într-un pipeline (funcție generică).
- * Această funcție este folosită intern pentru a adăuga orice tip de item (lead, service_file, tray)
- * într-un pipeline. Dacă item-ul există deja în pipeline, funcția actualizează doar stage-ul.
- * Dacă nu există, creează o nouă înregistrare în pipeline_items.
+ * Add or update an item in a pipeline (generic function).
+ * This function is used internally to add any type of item (lead, service_file, tray)
+ * to a pipeline. If the item already exists in the pipeline, only the stage is updated.
+ * If it doesn't exist, a new record is created in pipeline_items.
  * 
- * @param type - Tipul item-ului: 'lead', 'service_file' sau 'tray'
- * @param itemId - ID-ul item-ului de adăugat
- * @param pipelineId - ID-ul pipeline-ului în care se adaugă item-ul
- * @param stageId - ID-ul stage-ului în care se plasează item-ul
- * @returns Obiect cu data pipeline_item-ului creat/actualizat sau null și eroarea dacă există
+ * @param type - Item type: 'lead', 'service_file', or 'tray'
+ * @param itemId - ID of the item to add
+ * @param pipelineId - ID of the pipeline to add the item to
+ * @param stageId - ID of the stage to place the item in
+ * @returns Object with the created/updated pipeline_item data or null and error if any
  */
 async function addItemToPipeline(
   type: 'lead' | 'service_file' | 'tray',
@@ -90,7 +90,7 @@ async function addItemToPipeline(
       
       result = { data, error: null }
       
-      // Loghează mutarea între stage-uri pentru tăvițe (doar dacă stage-ul s-a schimbat)
+      // Log stage change for trays (only if stage actually changed)
       if (type === 'tray' && oldStageId !== stageId) {
         try {
           const logResult = await logTrayStageMove({
@@ -118,7 +118,7 @@ async function addItemToPipeline(
             fromStageId: oldStageId,
             toStageId: stageId,
           })
-          // Nu propagă eroarea, mutarea a fost făcută deja
+          // Don't propagate error, move was already done
         }
       }
       if (type === 'lead' && oldStageId !== stageId) {
@@ -145,7 +145,7 @@ async function addItemToPipeline(
       
       result = { data, error: null }
       
-      // Loghează adăugarea inițială pentru tăvițe
+      // Log initial addition for trays
       if (type === 'tray') {
         try {
           const logResult = await logTrayInitialStage({
@@ -154,20 +154,20 @@ async function addItemToPipeline(
             stageId,
           })
           if (logResult.error) {
-            // Extrage mesajul erorii într-un mod sigur
-            let errorMessage = 'Eroare necunoscută la logging'
+            // Safely extract error message
+            let errorMessage = 'Unknown logging error'
             let errorCode = null
             let errorDetails = null
             
             if (logResult.error instanceof Error) {
-              errorMessage = logResult.error.message || 'Eroare la logging (fără mesaj)'
+              errorMessage = logResult.error.message || 'Logging error (no message)'
             } else if (typeof logResult.error === 'object' && logResult.error !== null) {
               const err = logResult.error as any
-              errorMessage = err?.message || JSON.stringify(err) || 'Eroare la logging (obiect gol)'
+              errorMessage = err?.message || JSON.stringify(err) || 'Logging error (empty object)'
               errorCode = err?.code || null
               errorDetails = err?.details || null
             } else {
-              errorMessage = String(logResult.error) || 'Eroare la logging'
+              errorMessage = String(logResult.error) || 'Logging error'
             }
             
             console.error('[addItemToPipeline] Error logging initial stage:', {
@@ -183,20 +183,20 @@ async function addItemToPipeline(
             })
           }
         } catch (logError) {
-          // Extrage mesajul erorii într-un mod sigur
-          let errorMessage = 'Eroare necunoscută la logging'
+          // Safely extract error message
+          let errorMessage = 'Unknown logging error'
           let errorCode = null
           let errorDetails = null
           
           if (logError instanceof Error) {
-            errorMessage = logError.message || 'Eroare la logging (fără mesaj)'
+            errorMessage = logError.message || 'Logging error (no message)'
           } else if (typeof logError === 'object' && logError !== null) {
             const err = logError as any
-            errorMessage = err?.message || JSON.stringify(err) || 'Eroare la logging (obiect gol)'
+            errorMessage = err?.message || JSON.stringify(err) || 'Logging error (empty object)'
             errorCode = err?.code || null
             errorDetails = err?.details || null
           } else {
-            errorMessage = String(logError) || 'Eroare la logging'
+            errorMessage = String(logError) || 'Logging error'
           }
           
           console.error('[addItemToPipeline] Error logging initial stage (catch):', {
@@ -210,7 +210,7 @@ async function addItemToPipeline(
             stageId,
             fullError: logError,
           })
-          // Nu propagă eroarea, mutarea a fost făcută deja
+          // Don't propagate error, move was already done
         }
       }
     }
@@ -222,14 +222,14 @@ async function addItemToPipeline(
 }
 
 /**
- * Adaugă un lead într-un pipeline specificat.
- * Această funcție este un wrapper peste addItemToPipeline specializat pentru lead-uri.
- * Lead-ul este adăugat în pipeline_items și plasat în stage-ul specificat.
+ * Add a lead to a specific pipeline.
+ * This function is a wrapper around addItemToPipeline specialized for leads.
+ * The lead is added to pipeline_items and placed in the specified stage.
  * 
- * @param leadId - ID-ul lead-ului de adăugat
- * @param pipelineId - ID-ul pipeline-ului în care se adaugă lead-ul
- * @param stageId - ID-ul stage-ului în care se plasează lead-ul
- * @returns Obiect cu data pipeline_item-ului creat/actualizat sau null și eroarea dacă există
+ * @param leadId - ID of the lead to add
+ * @param pipelineId - ID of the pipeline to add the lead to
+ * @param stageId - ID of the stage to place the lead in
+ * @returns Object with the created/updated pipeline_item data or null and error if any
  */
 export async function addLeadToPipeline(
   leadId: string,
@@ -240,14 +240,14 @@ export async function addLeadToPipeline(
 }
 
 /**
- * Adaugă o fișă de serviciu într-un pipeline specificat.
- * Această funcție este un wrapper peste addItemToPipeline specializat pentru service files.
- * Fișa de serviciu este adăugată în pipeline_items și plasată în stage-ul specificat.
+ * Add a service file to a specific pipeline.
+ * This function is a wrapper around addItemToPipeline specialized for service files.
+ * The service file is added to pipeline_items and placed in the specified stage.
  * 
- * @param serviceFileId - ID-ul fișei de serviciu de adăugat
- * @param pipelineId - ID-ul pipeline-ului în care se adaugă fișa
- * @param stageId - ID-ul stage-ului în care se plasează fișa
- * @returns Obiect cu data pipeline_item-ului creat/actualizat sau null și eroarea dacă există
+ * @param serviceFileId - ID of the service file to add
+ * @param pipelineId - ID of the pipeline to add the file to
+ * @param stageId - ID of the stage to place the file in
+ * @returns Object with the created/updated pipeline_item data or null and error if any
  */
 export async function addServiceFileToPipeline(
   serviceFileId: string,
@@ -258,14 +258,14 @@ export async function addServiceFileToPipeline(
 }
 
 /**
- * Adaugă o tăviță într-un pipeline specificat.
- * Această funcție este un wrapper peste addItemToPipeline specializat pentru tăvițe.
- * Tăvița este adăugată în pipeline_items și plasată în stage-ul specificat.
+ * Add a tray to a specific pipeline.
+ * This function is a wrapper around addItemToPipeline specialized for trays.
+ * The tray is added to pipeline_items and placed in the specified stage.
  * 
- * @param trayId - ID-ul tăviței de adăugat
- * @param pipelineId - ID-ul pipeline-ului în care se adaugă tăvița
- * @param stageId - ID-ul stage-ului în care se plasează tăvița
- * @returns Obiect cu data pipeline_item-ului creat/actualizat sau null și eroarea dacă există
+ * @param trayId - ID of the tray to add
+ * @param pipelineId - ID of the pipeline to add the tray to
+ * @param stageId - ID of the stage to place the tray in
+ * @returns Object with the created/updated pipeline_item data or null and error if any
  */
 export async function addTrayToPipeline(
   trayId: string,
@@ -276,21 +276,21 @@ export async function addTrayToPipeline(
 }
 
 /**
- * Mută un item într-un alt stage din același pipeline.
- * Această funcție actualizează stage-ul unui item care este deja în pipeline.
- * Item-ul rămâne în același pipeline, doar stage-ul se schimbă.
- * Funcția verifică mai întâi dacă item-ul există în pipeline-ul specificat.
+ * Move an item to a different stage in the same pipeline.
+ * This function updates the stage of an item that is already in a pipeline.
+ * The item remains in the same pipeline, only the stage changes.
+ * The function first checks if the item exists in the specified pipeline.
  * 
- * @param type - Tipul item-ului: 'lead', 'service_file' sau 'tray'
- * @param itemId - ID-ul item-ului de mutat
- * @param pipelineId - ID-ul pipeline-ului în care se află item-ul
- * @param newStageId - ID-ul noului stage în care se mută item-ul
- * @param fromStageId - ID-ul stage-ului de origine (opțional, pentru validare)
- * @returns Obiect cu data pipeline_item-ului actualizat sau null și eroarea dacă există
+ * @param type - Item type: 'lead', 'service_file', or 'tray'
+ * @param itemId - ID of the item to move
+ * @param pipelineId - ID of the pipeline the item is in
+ * @param newStageId - ID of the new stage to move the item to
+ * @param fromStageId - ID of the source stage (optional, for validation)
+ * @returns Object with the updated pipeline_item data or null and error if any
  */
 /**
- * Mutare într-un singur call: RPC move_item_to_stage face SELECT + UPDATE + log tray/lead în DB.
- * Pentru type='tray', technicianId opțional permite log per tehnician în stage_history (timp în așteptare la reuniere).
+ * Single call move: RPC move_item_to_stage does SELECT + UPDATE + log tray/lead in DB.
+ * For type='tray', optional technicianId allows per-technician log in stage_history (waiting time at reunion).
  */
 export async function moveItemToStage(
   type: 'lead' | 'service_file' | 'tray',
@@ -302,8 +302,8 @@ export async function moveItemToStage(
 ): Promise<{ data: any | null; error: any }> {
   try {
     const supabase = supabaseBrowser()
-    // IMPORTANT: Trimitem MEREU toți 5 parametrii (inclusiv p_technician_id: null)
-    // pentru a evita ambiguitatea PostgreSQL între funcția cu 4 și cea cu 5 parametri.
+    // IMPORTANT: Always send all 5 parameters (including p_technician_id: null)
+    // to avoid PostgreSQL ambiguity between the 4-parameter and 5-parameter functions.
     const params: Record<string, unknown> = {
       p_type: type,
       p_item_id: itemId,
@@ -326,11 +326,11 @@ export async function moveItemToStage(
       return { data: null, error }
     }
 
-    // Reuniune automată: dacă tăvița mutată e din split și toate surorile sunt în Finalizare, reunește
+    // Auto-merge: if moved tray is from split and all sisters are in Finalizare, merge them
     if (type === 'tray') {
       mergeSplitTraysIfAllFinalized(itemId, pipelineId).then((res) => {
         if (res.data?.merged) {
-          // Reuniune făcută; UI-ul poate reface fetch (realtime sau refresh)
+          // Merge done; UI can re-fetch (realtime or refresh)
         }
       }).catch(() => { /* ignore */ })
     }
@@ -343,15 +343,15 @@ export async function moveItemToStage(
 }
 
 /**
- * Obține toate item-urile dintr-un pipeline (opțional filtrate).
- * Această funcție permite obținerea tuturor item-urilor dintr-un pipeline, cu opțiuni
- * de filtrare după stage sau tip de item. Rezultatele sunt sortate descrescător după
- * data creării (cele mai noi primele).
+ * Get all items from a pipeline (optionally filtered).
+ * This function allows getting all items from a pipeline, with options
+ * to filter by stage or item type. Results are sorted descending by
+ * creation date (newest first).
  * 
- * @param pipelineId - ID-ul pipeline-ului pentru care se caută item-urile
- * @param stageId - ID-ul stage-ului pentru filtrare (opțional)
- * @param type - Tipul item-ului pentru filtrare: 'lead', 'service_file' sau 'tray' (opțional)
- * @returns Obiect cu array-ul de pipeline_items sau array gol și eroarea dacă există
+ * @param pipelineId - ID of the pipeline to get items from
+ * @param stageId - ID of the stage to filter by (optional)
+ * @param type - Item type to filter by: 'lead', 'service_file', or 'tray' (optional)
+ * @returns Object with the pipeline_items array or empty array and error if any
  */
 export async function getPipelineItems(
   pipelineId: string,
@@ -386,12 +386,12 @@ export async function getPipelineItems(
 }
 
 /**
- * Găsește ID-ul pipeline-ului în care se află un item (fără a filtra după pipeline).
- * Util la mutare când cardul are pipelineId vechi/stale și RPC returnează "not found in the specified pipeline".
+ * Find the pipeline ID where an item is located (without filtering by pipeline).
+ * Useful when moving when the card has an old/stale pipelineId and RPC returns "not found in specified pipeline".
  *
- * @param type - Tipul item-ului: 'lead', 'service_file' sau 'tray'
- * @param itemId - ID-ul item-ului
- * @returns pipeline_id dacă există un rând în pipeline_items, altfel null
+ * @param type - Item type: 'lead', 'service_file', or 'tray'
+ * @param itemId - ID of the item
+ * @returns pipeline_id if a row exists in pipeline_items, otherwise null
  */
 export async function getPipelineIdForItem(
   type: 'lead' | 'service_file' | 'tray',
@@ -414,15 +414,15 @@ export async function getPipelineIdForItem(
 }
 
 /**
- * Obține pipeline_item-ul pentru un item specific.
- * Această funcție caută înregistrarea din pipeline_items care asociază un item
- * (lead, service_file sau tray) cu un pipeline specific. Este folosită pentru a
- * verifica dacă un item este deja într-un pipeline și în ce stage se află.
+ * Get the pipeline_item for a specific item.
+ * This function looks for the record in pipeline_items that associates an item
+ * (lead, service_file, or tray) with a specific pipeline. It's used to
+ * check if an item is already in a pipeline and what stage it's in.
  * 
- * @param type - Tipul item-ului: 'lead', 'service_file' sau 'tray'
- * @param itemId - ID-ul item-ului pentru care se caută pipeline_item-ul
- * @param pipelineId - ID-ul pipeline-ului în care se caută
- * @returns Obiect cu data pipeline_item-ului sau null dacă nu există și eroarea dacă există
+ * @param type - Item type: 'lead', 'service_file', or 'tray'
+ * @param itemId - ID of the item to look for the pipeline_item
+ * @param pipelineId - ID of the pipeline to search in
+ * @returns Object with the pipeline_item data or null if not found and error if any
  */
 export async function getPipelineItemForItem(
   type: 'lead' | 'service_file' | 'tray',
@@ -448,15 +448,15 @@ export async function getPipelineItemForItem(
 }
 
 /**
- * Elimină un item dintr-un pipeline.
- * Această funcție șterge înregistrarea din pipeline_items, ceea ce înseamnă că
- * item-ul nu va mai apărea în acel pipeline. Item-ul în sine (lead, service_file sau tray)
- * nu este șters, doar asocierea cu pipeline-ul este eliminată.
+ * Remove an item from a pipeline.
+ * This function deletes the record from pipeline_items, which means the
+ * item will no longer appear in that pipeline. The item itself (lead, service_file, or tray)
+ * is not deleted, only the association with the pipeline is removed.
  * 
- * @param type - Tipul item-ului: 'lead', 'service_file' sau 'tray'
- * @param itemId - ID-ul item-ului de eliminat din pipeline
- * @param pipelineId - ID-ul pipeline-ului din care se elimină item-ul
- * @returns Obiect cu success: true dacă eliminarea a reușit, false altfel, și eroarea dacă există
+ * @param type - Item type: 'lead', 'service_file', or 'tray'
+ * @param itemId - ID of the item to remove from pipeline
+ * @param pipelineId - ID of the pipeline to remove the item from
+ * @returns Object with success: true if removal succeeded, false otherwise, and error if any
  */
 export async function removeItemFromPipeline(
   type: 'lead' | 'service_file' | 'tray',
@@ -481,13 +481,13 @@ export async function removeItemFromPipeline(
 }
 
 /**
- * Obține primul stage activ dintr-un pipeline (funcție helper).
- * Această funcție este folosită intern pentru a găsi stage-ul inițial când un item
- * este adăugat într-un pipeline fără a specifica un stage. Returnează stage-ul cu
- * cea mai mică poziție (primul din workflow).
+ * Get the first active stage from a pipeline (helper function).
+ * This function is used internally to find the initial stage when an item
+ * is added to a pipeline without specifying a stage. Returns the stage with
+ * the lowest position (first in workflow).
  * 
- * @param pipelineId - ID-ul pipeline-ului pentru care se caută primul stage activ
- * @returns Obiect cu id-ul primului stage activ sau null dacă nu există stage-uri active
+ * @param pipelineId - ID of the pipeline to find the first active stage for
+ * @returns Object with the id of the first active stage or null if no active stages exist
  */
 async function getFirstActiveStage(pipelineId: string): Promise<{ id: string } | null> {
   const supabase = supabaseBrowser()
@@ -507,8 +507,8 @@ async function getFirstActiveStage(pipelineId: string): Promise<{ id: string } |
 }
 
 /**
- * Returnează ID-ul stage-ului "Retur" dintr-un pipeline, dacă există.
- * Exportat pentru utilizare la trimiterea tăvițelor în departament (tag Retur → stage Retur).
+ * Return the ID of the "Retur" stage from a pipeline, if it exists.
+ * Exported for use when sending trays to department (Retur tag → Retur stage).
  */
 export async function getReturStageId(pipelineId: string): Promise<string | null> {
   const { data: stages, error } = await fetchStagesForPipeline(pipelineId)
@@ -520,7 +520,7 @@ export async function getReturStageId(pipelineId: string): Promise<string | null
 }
 
 /**
- * Returnează lead_id asociat tăviței (prin service_file), sau null.
+ * Return the lead_id associated with a tray (through service_file), or null.
  */
 async function getTrayLeadId(trayId: string): Promise<string | null> {
   const supabase = supabaseBrowser()
@@ -540,8 +540,8 @@ async function getTrayLeadId(trayId: string): Promise<string | null> {
 }
 
 /**
- * Verifică dacă lead-ul are tag-ul "Retur" (nume ilike 'retur').
- * Exportat pentru utilizare la trimiterea tăvițelor în departament.
+ * Check if the lead has the "Retur" tag (name ilike 'retur').
+ * Exported for use when sending trays to department.
  */
 export async function leadHasReturTag(leadId: string): Promise<boolean> {
   const supabase = supabaseBrowser()
@@ -570,20 +570,20 @@ type MoveResult = {
 }
 
 /**
- * Mută un lead într-un pipeline nou.
- * Această funcție mută un lead dintr-un pipeline în altul, sau îl adaugă într-un pipeline
- * dacă nu era deja într-unul. Dacă nu se specifică un stage țintă, lead-ul este plasat
- * automat în primul stage activ al pipeline-ului țintă. Funcția returnează un rezultat
- * structurat cu ok: true/false și detalii despre mutare sau eroare.
+ * Move a lead to a new pipeline.
+ * This function moves a lead from one pipeline to another, or adds it to a pipeline
+ * if it wasn't already in one. If no target stage is specified, the lead is placed
+ * automatically in the first active stage of the target pipeline. The function returns a
+ * structured result with ok: true/false and details about the move or error.
  * 
- * @param leadId - ID-ul lead-ului de mutat
- * @param targetPipelineId - ID-ul pipeline-ului țintă
- * @param targetStageId - ID-ul stage-ului țintă (opțional, se folosește primul stage activ dacă nu se specifică)
- * @param notes - Note opționale despre mutare (pentru istoric)
- * @returns Rezultat structurat cu:
- *   - ok: true dacă mutarea a reușit, false altfel
- *   - data: Array cu pipeline_item_id și new_stage_id (dacă ok: true)
- *   - code și message: Cod și mesaj de eroare (dacă ok: false)
+ * @param leadId - ID of the lead to move
+ * @param targetPipelineId - ID of the target pipeline
+ * @param targetStageId - ID of the target stage (optional, uses first active stage if not specified)
+ * @param notes - Optional notes about the move (for history)
+ * @returns Structured result with:
+ *   - ok: true if move succeeded, false otherwise
+ *   - data: Array with pipeline_item_id and new_stage_id (if ok: true)
+ *   - code and message: Error code and message (if ok: false)
  */
 export async function moveLeadToPipeline(
   leadId: string,
@@ -634,7 +634,7 @@ export async function moveLeadToPipeline(
 const normPipelineStage = (s: string) =>
   (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 
-/** Opțional: fișe și pipeline/stages pre-fetched pentru a evita N requesturi la batch. */
+/** Optional: pre-fetched service files and pipeline/stages to avoid N requests per batch. */
 export type TryMoveArhivatOptions = {
   serviceFiles?: Array<{ id: string; status: string }>
   vanzariPipelineId?: string
@@ -642,8 +642,8 @@ export type TryMoveArhivatOptions = {
 }
 
 /**
- * Dacă lead-ul are DOAR fișe cu status "facturata", îl mută în Arhivat (Vânzări).
- * Poate primi opțional serviceFiles / vanzariPipelineId / arhivatStageId pentru batch (0 requesturi per lead).
+ * If the lead has ONLY files with status "facturata" (invoiced), move it to Arhivat (Sales).
+ * Can optionally receive serviceFiles / vanzariPipelineId / arhivatStageId for batch (0 requests per lead).
  */
 export async function tryMoveLeadToArhivatIfAllFacturate(
   leadId: string,
@@ -720,8 +720,8 @@ export async function tryMoveLeadToArhivatIfAllFacturate(
 }
 
 /**
- * Batch: 1 query service_files pentru toți leadIds, apoi mută în Arhivat doar pe cei care au toate fișele facturate.
- * Reduce sute de requesturi la 1 (service_files) + 1 (pipelines) + 1 (stages) + M (move/add per lead mutat).
+ * Batch: 1 service_files query for all leadIds, then move to Arhivat only those with all files invoiced.
+ * Reduces hundreds of requests to 1 (service_files) + 1 (pipelines) + 1 (stages) + M (move/add per moved lead).
  */
 export async function tryMoveLeadsToArhivatIfAllFacturateBatch(leadIds: string[]): Promise<{ movedCount: number }> {
   if (leadIds.length === 0) return { movedCount: 0 }
@@ -781,20 +781,20 @@ export async function tryMoveLeadsToArhivatIfAllFacturateBatch(leadIds: string[]
 }
 
 /**
- * Mută o fișă de serviciu într-un pipeline nou.
- * Această funcție mută o fișă de serviciu dintr-un pipeline în altul, sau o adaugă într-un
- * pipeline dacă nu era deja într-unul. Dacă nu se specifică un stage țintă, fișa este plasată
- * automat în primul stage activ al pipeline-ului țintă. Funcția returnează un rezultat
- * structurat cu ok: true/false și detalii despre mutare sau eroare.
+ * Move a service file to a new pipeline.
+ * This function moves a service file from one pipeline to another, or adds it to a
+ * pipeline if it wasn't already in one. If no target stage is specified, the file
+ * is placed automatically in the first active stage of the target pipeline. The function
+ * returns a structured result with ok: true/false and details about the move or error.
  *
- * @param serviceFileId - ID-ul fișei de serviciu de mutat
- * @param targetPipelineId - ID-ul pipeline-ului țintă
- * @param targetStageId - ID-ul stage-ului țintă (opțional, se folosește primul stage activ dacă nu se specifică)
- * @param notes - Note opționale despre mutare (pentru istoric)
- * @returns Rezultat structurat cu:
- *   - ok: true dacă mutarea a reușit, false altfel
- *   - data: Array cu pipeline_item_id și new_stage_id (dacă ok: true)
- *   - code și message: Cod și mesaj de eroare (dacă ok: false)
+ * @param serviceFileId - ID of the service file to move
+ * @param targetPipelineId - ID of the target pipeline
+ * @param targetStageId - ID of the target stage (optional, uses first active stage if not specified)
+ * @param notes - Optional notes about the move (for history)
+ * @returns Structured result with:
+ *   - ok: true if move succeeded, false otherwise
+ *   - data: Array with pipeline_item_id and new_stage_id (if ok: true)
+ *   - code and message: Error code and message (if ok: false)
  */
 export async function moveServiceFileToPipeline(
   serviceFileId: string,
@@ -843,20 +843,20 @@ export async function moveServiceFileToPipeline(
 }
 
 /**
- * Mută o tăviță într-un pipeline nou.
- * Această funcție mută o tăviță dintr-un pipeline în altul, sau o adaugă într-un pipeline
- * dacă nu era deja într-unul. Dacă nu se specifică un stage țintă, tăvița este plasată
- * automat în primul stage activ al pipeline-ului țintă. Funcția returnează un rezultat
- * structurat cu ok: true/false și detalii despre mutare sau eroare.
+ * Move a tray to a new pipeline.
+ * This function moves a tray from one pipeline to another, or adds it to a pipeline
+ * if it wasn't already in one. If no target stage is specified, the tray is placed
+ * automatically in the first active stage of the target pipeline. The function returns a
+ * structured result with ok: true/false and details about the move or error.
  * 
- * @param trayId - ID-ul tăviței de mutat
- * @param targetPipelineId - ID-ul pipeline-ului țintă
- * @param targetStageId - ID-ul stage-ului țintă (opțional, se folosește primul stage activ dacă nu se specifică)
- * @param notes - Note opționale despre mutare (pentru istoric)
- * @returns Rezultat structurat cu:
- *   - ok: true dacă mutarea a reușit, false altfel
- *   - data: Array cu pipeline_item_id și new_stage_id (dacă ok: true)
- *   - code și message: Cod și mesaj de eroare (dacă ok: false)
+ * @param trayId - ID of the tray to move
+ * @param targetPipelineId - ID of the target pipeline
+ * @param targetStageId - ID of the target stage (optional, uses first active stage if not specified)
+ * @param notes - Optional notes about the move (for history)
+ * @returns Structured result with:
+ *   - ok: true if move succeeded, false otherwise
+ *   - data: Array with pipeline_item_id and new_stage_id (if ok: true)
+ *   - code and message: Error code and message (if ok: false)
  */
 export async function moveTrayToPipeline(
   trayId: string,
@@ -867,7 +867,7 @@ export async function moveTrayToPipeline(
   try {
     const supabase = supabaseBrowser()
     
-    // Găsește pipeline-ul curent al tăviței (dacă există)
+    // Find the tray's current pipeline (if it exists)
     const { data: currentPipelineItem } = await supabase
       .from('pipeline_items')
       .select('pipeline_id, stage_id')
@@ -900,8 +900,8 @@ export async function moveTrayToPipeline(
       }
     }
 
-    // Mută tăvița în noul pipeline
-    // Notă: addTrayToPipeline va loga adăugarea inițială dacă tăvița nu era în pipeline
+    // Move tray to new pipeline
+    // Note: addTrayToPipeline will log initial addition if tray wasn't in pipeline
     const result = await addTrayToPipeline(trayId, targetPipelineId, stageId)
 
     if (result.error) {
@@ -912,8 +912,8 @@ export async function moveTrayToPipeline(
       }
     }
 
-    // Loghează mutarea între pipeline-uri (doar dacă tăvița era într-un alt pipeline)
-    // Notă: logTrayPipelineMove loghează doar adăugarea în noul pipeline, deci nu există duplicate
+    // Log move between pipelines (only if tray was in a different pipeline)
+    // Note: logTrayPipelineMove only logs addition to new pipeline, so no duplicates exist
     if (fromPipelineId && fromPipelineId !== targetPipelineId) {
       try {
         const logResult = await logTrayPipelineMove({
@@ -922,7 +922,7 @@ export async function moveTrayToPipeline(
           fromStageId,
           toPipelineId: targetPipelineId,
           toStageId: stageId,
-          notes: notes || `Tăvița a fost mutată din pipeline ${fromPipelineId} în ${targetPipelineId}`,
+          notes: notes || `Tray moved from pipeline ${fromPipelineId} to ${targetPipelineId}`,
         })
         if (logResult.error) {
           console.error('[moveTrayToPipeline] Error logging pipeline move:', {
@@ -943,7 +943,7 @@ export async function moveTrayToPipeline(
           toPipelineId: targetPipelineId,
           toStageId: stageId,
         })
-        // Nu propagă eroarea, mutarea a fost făcută deja
+        // Don't propagate error, move was already done
       }
     }
 
@@ -964,11 +964,11 @@ export async function moveTrayToPipeline(
 }
 
 /**
- * Mişte lead-urile care au cel puţin o fişă de serviciu în stagiul "Lead-uri Vechi" din pipeline-ul "Vânzări".
- * Această funcție identifică toate lead-urile care au cel puţin o fişă de serviciu asociată,
- * și le mişte automat în stagiul "Lead-uri Vechi" din pipeline-ul de vânzări.
+ * Move leads that have at least one service file to the "Lead-uri Vechi" (Old Leads) stage in the "Vânzări" pipeline.
+ * This function identifies all leads that have at least one associated service file,
+ * and automatically moves them to the "Lead-uri Vechi" stage in the sales pipeline.
  * 
- * @returns Obiect cu rezultat: { success: boolean, movedLeadsCount: number, error?: any }
+ * @returns Object with result: { success: boolean, movedLeadsCount: number, error?: any }
  */
 export async function moveLeadsWithServiceFilesToOldStage(): Promise<{
   success: boolean
@@ -978,7 +978,7 @@ export async function moveLeadsWithServiceFilesToOldStage(): Promise<{
   try {
     const supabase = supabaseBrowser()
     
-    // 1. Găsește pipeline-ul "Vânzări"
+    // 1. Find the "Vânzări" (Sales) pipeline
     const { data: pipelines, error: pipelineError } = await supabase
       .from('pipelines')
       .select('id, name, stages(id, name)')
@@ -993,7 +993,7 @@ export async function moveLeadsWithServiceFilesToOldStage(): Promise<{
       throw new Error('Pipeline "Vânzări" not found')
     }
     
-    // 2. Găsește stagiul "Lead-uri Vechi" în pipeline-ul Vânzări
+    // 2. Find the "Lead-uri Vechi" (Old Leads) stage in the Sales pipeline
     const oldLeadsStage = (vanzariPipeline.stages as any[])?.find((s: any) =>
       s.name?.toLowerCase().includes('vechi') || s.name?.toLowerCase().includes('old')
     )
@@ -1002,8 +1002,8 @@ export async function moveLeadsWithServiceFilesToOldStage(): Promise<{
       throw new Error('Stage "Lead-uri Vechi" not found in Vânzări pipeline')
     }
     
-    // 3. Găsește toate lead-urile care au cel puţin o fişă de serviciu
-    // SELECT lead_id din service_files, apoi DISTINCT pentru a obţine lead-urile unice
+    // 3. Find all leads that have at least one service file
+    // SELECT lead_id from service_files, then DISTINCT to get unique leads
     const { data: serviceFileLeads, error: sfError } = await supabase
       .from('service_files')
       .select('lead_id')
@@ -1012,7 +1012,7 @@ export async function moveLeadsWithServiceFilesToOldStage(): Promise<{
       throw new Error(`Error fetching service files: ${sfError.message}`)
     }
     
-    // Obţine lista unică de lead IDs
+    // Get unique list of lead IDs
     const leadIdsWithServiceFiles = [...new Set(
       (serviceFileLeads as any[])
         ?.map((sf: any) => sf.lead_id)
@@ -1025,7 +1025,7 @@ export async function moveLeadsWithServiceFilesToOldStage(): Promise<{
 
     const nowIso = new Date().toISOString()
 
-    // 4. Un singur select batch: toate pipeline_items (lead, Vânzări) pentru leadIdsWithServiceFiles
+    // 4. Single batch select: all pipeline_items (lead, Sales) for leadIdsWithServiceFiles
     const { data: existingItems, error: selectError } = await supabase
       .from('pipeline_items')
       .select('id, item_id')
