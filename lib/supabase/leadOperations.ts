@@ -12,14 +12,14 @@ export type { MoveItemResult }
 export type MoveResult = MoveItemResult
 
 /**
- * Funcție helper pentru atribuirea automată a tag-urilor de departament unui lead.
- * Această funcție analizează numele pipeline-ului și atribuie automat tag-ul corespunzător
- * departamentului (Horeca, Saloane, Frizerii, Reparatii). Dacă tag-ul nu există, îl creează.
- * Un lead poate avea doar un singur tag de departament, deci funcția elimină automat
- * celelalte tag-uri de departament înainte de a atribui noul tag.
- * 
- * @param leadId - ID-ul lead-ului căruia i se atribuie tag-ul
- * @param pipelineName - Numele pipeline-ului din care se deduce departamentul
+ * Helper function for automatically assigning department tags to a lead.
+ * This function analyzes the pipeline name and automatically assigns the corresponding
+ * department tag (Horeca, Saloane, Frizerii, Reparatii). If the tag doesn't exist, it creates it.
+ * A lead can only have one department tag, so the function automatically removes
+ * other department tags before assigning the new tag.
+ *
+ * @param leadId - The ID of the lead to assign the tag to
+ * @param pipelineName - The pipeline name from which the department is deduced
  */
 async function assignDepartmentTagToLead(leadId: string, pipelineName: string) {
   const departmentTags = [
@@ -29,7 +29,7 @@ async function assignDepartmentTagToLead(leadId: string, pipelineName: string) {
     { name: 'Reparatii', color: 'blue' as const },
   ]
 
-  // Determină tag-ul de departament bazat pe numele pipeline-ului
+  // Determine the department tag based on the pipeline name
   const pipelineNameUpper = pipelineName.toUpperCase()
   let departmentTagName: string | null = null
   if (pipelineNameUpper.includes('HORECA')) {
@@ -44,7 +44,7 @@ async function assignDepartmentTagToLead(leadId: string, pipelineName: string) {
 
   if (!departmentTagName) return
 
-  // gaseste sau creeaza tag-ul
+  // Find or create the tag
   const { data: existingTag } = await supabase
     .from('tags')
     .select('id')
@@ -68,7 +68,7 @@ async function assignDepartmentTagToLead(leadId: string, pipelineName: string) {
     tagId = newTag.id
   }
 
-  // verifica daca tag-ul este deja atribuit
+  // Check if the tag is already assigned
   const { data: existingAssignment } = await supabase
     .from('lead_tags')
     .select('lead_id')
@@ -76,14 +76,14 @@ async function assignDepartmentTagToLead(leadId: string, pipelineName: string) {
     .eq('tag_id', tagId)
     .maybeSingle()
 
-  // atribuie tag-ul daca nu este deja atribuit
+  // Assign the tag if not already assigned
   if (!existingAssignment) {
     await supabase
       .from('lead_tags')
       .insert([{ lead_id: leadId, tag_id: tagId }] as any)
   }
 
-  // elimina celelalte tag-uri de departament (un lead poate avea doar un tag de departament)
+  // Remove other department tags (a lead can only have one department tag)
   const otherDepartmentTags = departmentTags.filter(t => t.name !== departmentTagName)
   const otherTagNames = otherDepartmentTags.map(t => t.name)
   
@@ -104,17 +104,17 @@ async function assignDepartmentTagToLead(leadId: string, pipelineName: string) {
 
 
 /**
- * Obține lista de opțiuni de pipeline-uri disponibile.
- * Folosește o funcție RPC (Remote Procedure Call) din Supabase pentru a obține
- * pipeline-urile active cu numărul de stage-uri active pentru fiecare.
- * Această funcție este folosită în dropdown-uri și selecții de pipeline-uri.
- * 
- * @returns Array cu opțiunile de pipeline-uri, fiecare conținând:
- *   - id: ID-ul pipeline-ului
- *   - name: Numele pipeline-ului
- *   - is_active: Dacă pipeline-ul este activ
- *   - active_stages: Numărul de stage-uri active din pipeline
- * @throws Eroare dacă apelul RPC eșuează
+ * Gets the list of available pipeline options.
+ * Uses a Supabase RPC (Remote Procedure Call) function to get
+ * the active pipelines with the number of active stages for each.
+ * This function is used in dropdowns and pipeline selections.
+ *
+ * @returns Array of pipeline options, each containing:
+ *   - id: The pipeline ID
+ *   - name: The pipeline name
+ *   - is_active: Whether the pipeline is active
+ *   - active_stages: Number of active stages in the pipeline
+ * @throws Error if the RPC call fails
  */
 const PIPELINE_OPTIONS_CACHE_MS = 5 * 60 * 1000 // 5 min
 const PIPELINES_STAGES_STORAGE_KEY = 'crm:pipelinesWithStages:v1'
@@ -154,9 +154,9 @@ export async function getPipelineOptions(forceRefresh = false): Promise<Pipeline
 const PIPELINES_STAGES_TTL_MS = 5 * 60 * 1000 // 5 min
 
 /**
- * Obține toate pipeline-urile active cu stage-urile lor asociate.
- * Cache în sessionStorage (TTL 5 min) – persistă la refresh.
- * invalidatePipelineOptionsCache() șterge și acest cache.
+ * Gets all active pipelines with their associated stages.
+ * Cached in sessionStorage (TTL 5 min) - persists on refresh.
+ * invalidatePipelineOptionsCache() also clears this cache.
  */
 export async function getPipelinesWithStages() {
   try {
@@ -206,15 +206,15 @@ export async function getPipelinesWithStages() {
 }
 
 /**
- * Creează un nou lead în baza de date.
- * Un lead reprezintă un potențial client care a completat un formular sau a fost
- * adăugat manual în sistem. Lead-ul conține informații de contact (nume, email, telefon)
- * și detalii despre sursa lead-ului (campanie, anunț, formular, etc.).
- * 
- * @param leadData - Datele lead-ului de creat (orice câmpuri din tabelul leads)
- * @returns Obiect cu:
- *   - data: Lead-ul creat sau null dacă apare o eroare
- *   - error: null dacă reușește, sau eroarea dacă apare o problemă
+ * Creates a new lead in the database.
+ * A lead represents a potential customer who has filled out a form or has been
+ * manually added to the system. The lead contains contact information (name, email, phone)
+ * and details about the lead source (campaign, ad, form, etc.).
+ *
+ * @param leadData - The lead data to create (any fields from the leads table)
+ * @returns Object with:
+ *   - data: The created lead or null if an error occurs
+ *   - error: null if successful, or the error if a problem occurs
  */
 export async function createLead(leadData: any) {
   try {
@@ -226,12 +226,12 @@ export async function createLead(leadData: any) {
 
     if (error) throw error
 
-    // Înregistrare în istoric: lead creat (pentru afișare data creării și în Istoric)
+    // Register in history: lead created (for displaying creation date and in History)
     if (data?.id) {
       await logItemEvent(
         'lead',
         data.id,
-        `Lead creat${data.full_name ? `: ${data.full_name}` : ''}`,
+        `Lead created${data.full_name ? `: ${data.full_name}` : ''}`,
         'lead_created',
         { lead_id: data.id, full_name: data.full_name ?? null, created_at: data.created_at ?? new Date().toISOString() }
       ).catch((err) => console.error('[createLead] logItemEvent:', err))
@@ -244,18 +244,18 @@ export async function createLead(leadData: any) {
 }
 
 /**
- * Creează un lead și îl adaugă automat într-un pipeline specificat.
- * Această funcție combină crearea lead-ului cu adăugarea sa într-un pipeline,
- * asigurând că lead-ul este imediat disponibil în workflow-ul corespunzător.
- * După creare, atribuie automat tag-ul de departament bazat pe numele pipeline-ului.
- * 
- * @param leadData - Datele lead-ului de creat
- * @param pipelineId - ID-ul pipeline-ului în care se adaugă lead-ul
- * @param stageId - ID-ul stage-ului inițial în care se plasează lead-ul
- * @param options - Opțional: currentUserId din useAuth() – evită getSession() (Faza 3.4)
- * @returns Obiect cu:
- *   - data: Obiect cu lead-ul creat și assignment-ul în pipeline, sau null dacă apare o eroare
- *   - error: null dacă reușește, sau eroarea dacă apare o problemă
+ * Creates a lead and automatically adds it to a specified pipeline.
+ * This function combines creating the lead with adding it to a pipeline,
+ * ensuring the lead is immediately available in the appropriate workflow.
+ * After creation, it automatically assigns the department tag based on the pipeline name.
+ *
+ * @param leadData - The lead data to create
+ * @param pipelineId - The ID of the pipeline to add the lead to
+ * @param stageId - The ID of the initial stage to place the lead in
+ * @param options - Optional: currentUserId from useAuth() – avoids getSession() (Phase 3.4)
+ * @returns Object with:
+ *   - data: Object with the created lead and the pipeline assignment, or null if an error occurs
+ *   - error: null if successful, or the error if a problem occurs
  */
 export async function createLeadWithPipeline(
   leadData: any,
@@ -274,29 +274,29 @@ export async function createLeadWithPipeline(
 
     if (leadError) throw leadError
 
-    // Înregistrare în istoric: lead creat (pentru afișare data creării și în tab Istoric)
+    // Register in history: lead created (for displaying creation date and in History tab)
     const actorOption = options?.currentUserId
       ? { currentUserId: options.currentUserId, currentUserName: undefined, currentUserEmail: undefined }
       : undefined
     await logItemEvent(
       'lead',
       lead.id,
-      `Lead creat${lead.full_name ? `: ${lead.full_name}` : ''}`,
+      `Lead created${lead.full_name ? `: ${lead.full_name}` : ''}`,
       'lead_created',
       { lead_id: lead.id, full_name: lead.full_name ?? null, created_at: lead.created_at ?? new Date().toISOString(), pipeline_id: pipelineId, stage_id: stageId },
       undefined,
       actorOption
     ).catch((err) => console.error('[createLeadWithPipeline] logItemEvent:', err))
 
-    // Adaugă lead-ul în pipeline
+    // Add lead to pipeline
     const moveResult = await moveLeadToPipelineFn(lead.id, pipelineId, stageId)
 
     if (!moveResult.ok || !moveResult.data || moveResult.data.length === 0) {
-      const errorMessage = moveResult.ok === false ? moveResult.message : 'Nu s-a putut adăuga lead-ul în pipeline'
+      const errorMessage = moveResult.ok === false ? moveResult.message : 'Could not add lead to pipeline'
       throw new Error(errorMessage)
     }
 
-    // Atribuie automat tag-ul de departament după criere
+    // Automatically assign department tag after creation
     const { data: pipeline } = await supabase
       .from('pipelines')
       .select('name')
@@ -307,11 +307,11 @@ export async function createLeadWithPipeline(
       await assignDepartmentTagToLead(lead.id, pipeline.name)
     }
 
-    // ✅ TRIGGER: Crează conversație PUBLICĂ pentru lead cand se creează lead-ul
+    // ✅ TRIGGER: Create PUBLIC conversation for lead when the lead is created
     try {
       console.log('🔍 Creating conversation for newly created lead:', lead.id)
       
-      // Faza 3.4: currentUserId din apelant (useAuth) – evită getSession()
+      // Phase 3.4: currentUserId from caller (useAuth) – avoids getSession()
       let currentUserId = options?.currentUserId
       if (currentUserId == null) {
         const { data: { session } } = await supabase.auth.getSession()
@@ -320,7 +320,7 @@ export async function createLeadWithPipeline(
       if (!currentUserId) {
         console.warn('⚠️ No authenticated user found - cannot create conversation')
       } else {
-        // Verifică dacă conversația deja există (safety check)
+        // Check if conversation already exists (safety check)
         const { data: existingConv, error: searchError } = await supabase
           .from('conversations')
           .select('id')
@@ -331,7 +331,7 @@ export async function createLeadWithPipeline(
         if (searchError && searchError.code !== 'PGRST116') {
           console.warn('⚠️ Error searching for conversation:', searchError)
         } else if (!existingConv) {
-          // Conversația nu există, crează-o
+          // Conversation doesn't exist, create it
           console.log('➕ Creating new conversation for lead:', lead.id)
           const { data: newConv, error: insertError } = await supabase
             .from('conversations')
@@ -354,7 +354,7 @@ export async function createLeadWithPipeline(
       }
     } catch (convError) {
       console.error('⚠️ Error in conversation creation process:', convError)
-      // Nu oprim procesul dacă crearea conversației eșuează
+      // Don't stop the process if conversation creation fails
     }
 
     return {
@@ -370,16 +370,16 @@ export async function createLeadWithPipeline(
 }
 
 /**
- * Mută un lead într-un pipeline specificat (folosește noua arhitectură cu pipeline_items).
- * Această funcție mută un lead dintr-un pipeline în altul, sau îl adaugă într-un pipeline
- * dacă nu era deja într-unul. Lead-ul este plasat automat în primul stage activ al pipeline-ului
- * țintă dacă nu se specifică un stage. După mutare, atribuie automat tag-ul de departament
- * bazat pe numele noului pipeline.
- * 
- * @param leadId - ID-ul lead-ului de mutat
- * @param targetPipelineId - ID-ul pipeline-ului țintă
- * @param notes - Note opționale despre mutare (pentru istoric)
- * @returns Rezultatul mutării cu ok: true/false, data cu pipeline_item_id și new_stage_id, sau eroare
+ * Moves a lead to a specified pipeline (uses the new pipeline_items architecture).
+ * This function moves a lead from one pipeline to another, or adds it to a pipeline
+ * if it wasn't already in one. The lead is automatically placed in the first active stage
+ * of the target pipeline if no stage is specified. After moving, it automatically assigns
+ * the department tag based on the new pipeline name.
+ *
+ * @param leadId - The ID of the lead to move
+ * @param targetPipelineId - The ID of the target pipeline
+ * @param notes - Optional notes about the move (for history)
+ * @returns Move result with ok: true/false, data with pipeline_item_id and new_stage_id, or error
  */
 export async function moveLeadToPipeline(
   leadId: string,
@@ -388,7 +388,7 @@ export async function moveLeadToPipeline(
 ): Promise<MoveResult> {
   const result = await moveLeadToPipelineFn(leadId, targetPipelineId, undefined, notes)
 
-  // Atribuie automat tag-ul de departament după mutare
+  // Automatically assign department tag after move
   if (result.ok && result.data && result.data.length > 0) {
     const { data: pipeline } = await supabase
       .from('pipelines')
@@ -405,22 +405,22 @@ export async function moveLeadToPipeline(
 }
 
 /**
- * Mută un lead într-un pipeline identificat după nume (nu după ID).
- * Această funcție este o variantă convenabilă care permite mutarea unui lead folosind
- * numele pipeline-ului în loc de ID. Funcția caută pipeline-ul activ cu numele specificat
- * și apoi apelează moveLeadToPipeline cu ID-ul găsit.
- * 
- * @param leadId - ID-ul lead-ului de mutat
- * @param targetPipelineName - Numele pipeline-ului țintă (trebuie să fie exact)
- * @param notes - Note opționale despre mutare (pentru istoric)
- * @returns Rezultatul mutării cu ok: true/false, data cu pipeline_item_id și new_stage_id, sau eroare
+ * Moves a lead to a pipeline identified by name (not by ID).
+ * This function is a convenient variant that allows moving a lead using
+ * the pipeline name instead of ID. The function searches for the active pipeline
+ * with the specified name and then calls moveLeadToPipeline with the found ID.
+ *
+ * @param leadId - The ID of the lead to move
+ * @param targetPipelineName - The target pipeline name (must be exact)
+ * @param notes - Optional notes about the move (for history)
+ * @returns Move result with ok: true/false, data with pipeline_item_id and new_stage_id, or error
  */
 export async function moveLeadToPipelineByName(
   leadId: string,
   targetPipelineName: string,
   notes?: string
 ): Promise<MoveResult> {
-  // Găsește pipeline-ul după nume (doar active)
+  // Find pipeline by name (only active)
   const { data: pipeline, error: pErr } = await supabase
     .from('pipelines')
     .select('id')
@@ -436,48 +436,48 @@ export async function moveLeadToPipelineByName(
 }
 
 
-/** Etichete pentru afișare în istoric la modificări date client / detalii. */
+/** Labels for display in history on client data / details changes. */
 export const LEAD_FIELD_LABELS: Record<string, string> = {
-  full_name: 'Nume',
-  phone_number: 'Telefon',
+  full_name: 'Name',
+  phone_number: 'Phone',
   email: 'Email',
-  company_name: 'Companie',
-  company_address: 'Adresă companie',
-  address: 'Adresă',
-  strada: 'Stradă',
-  city: 'Oraș',
-  zip: 'Cod poștal',
-  judet: 'Județ',
-  contact_person: 'Persoana de contact',
-  contact_phone: 'Telefon contact',
-  billing_nume_prenume: 'Facturare: Nume și prenume',
-  billing_nume_companie: 'Facturare: Companie',
-  billing_cui: 'Facturare: CUI',
-  billing_strada: 'Facturare: Stradă',
-  billing_oras: 'Facturare: Oraș',
-  billing_judet: 'Facturare: Județ',
-  billing_cod_postal: 'Facturare: Cod poștal',
-  details: 'Detalii comunicate de client',
-  tray_details: 'Detalii tăviță',
-  callback_date: 'Data callback',
-  nu_raspunde_callback_at: 'Nu răspunde (callback at)',
-  nu_raspunde: 'Nu răspunde',
+  company_name: 'Company',
+  company_address: 'Company address',
+  address: 'Address',
+  strada: 'Street',
+  city: 'City',
+  zip: 'Postal code',
+  judet: 'County',
+  contact_person: 'Contact person',
+  contact_phone: 'Contact phone',
+  billing_nume_prenume: 'Billing: First and last name',
+  billing_nume_companie: 'Billing: Company',
+  billing_cui: 'Billing: CUI',
+  billing_strada: 'Billing: Street',
+  billing_oras: 'Billing: City',
+  billing_judet: 'Billing: County',
+  billing_cod_postal: 'Billing: Postal code',
+  details: 'Details communicated by client',
+  tray_details: 'Tray details',
+  callback_date: 'Callback date',
+  nu_raspunde_callback_at: 'No response (callback at)',
+  nu_raspunde: 'No response',
   no_deal: 'No Deal',
-  campaign_name: 'Campanie',
-  ad_name: 'Anunț',
-  form_name: 'Formular',
+  campaign_name: 'Campaign',
+  ad_name: 'Ad',
+  form_name: 'Form',
 }
 
 /**
- * Actualizează un lead existent în baza de date.
- * Permite modificarea oricăror câmpuri ale lead-ului: nume, email, telefon, detalii despre
- * campanie, anunț, formular, etc. Funcția este folosită pentru editarea informațiilor unui client.
- * 
- * @param leadId - ID-ul lead-ului de actualizat
- * @param updates - Obiect cu câmpurile de actualizat (orice câmpuri din tabelul leads)
- * @returns Obiect cu:
- *   - data: Lead-ul actualizat sau null dacă apare o eroare
- *   - error: null dacă reușește, sau eroarea dacă apare o problemă
+ * Updates an existing lead in the database.
+ * Allows modifying any lead fields: name, email, phone, details about
+ * campaign, ad, form, etc. The function is used for editing customer information.
+ *
+ * @param leadId - The ID of the lead to update
+ * @param updates - Object with the fields to update (any fields from the leads table)
+ * @returns Object with:
+ *   - data: The updated lead or null if an error occurs
+ *   - error: null if successful, or the error if a problem occurs
  */
 export async function updateLead(leadId: string, updates: any) {
   try {
@@ -496,8 +496,8 @@ export async function updateLead(leadId: string, updates: any) {
 }
 
 /**
- * Preia un lead – setează claimed_by pe userId curent.
- * Dacă force=false și lead-ul e deja preluat de altcineva, returnează eroare.
+ * Claims a lead – sets claimed_by to current userId.
+ * If force=false and the lead is already claimed by someone else, returns an error.
  */
 export async function claimLead(
   leadId: string,
@@ -512,7 +512,7 @@ export async function claimLead(
         .eq('id', leadId)
         .single()
       if (existing?.claimed_by && existing.claimed_by !== userId) {
-        return { data: null, error: { message: 'Lead-ul este deja preluat de altcineva.' } }
+        return { data: null, error: { message: 'Lead is already claimed by someone else.' } }
       }
     }
     const { data, error } = await supabase
@@ -529,7 +529,7 @@ export async function claimLead(
 }
 
 /**
- * Eliberează un lead – setează claimed_by pe null.
+ * Releases a lead – sets claimed_by to null.
  */
 export async function unclaimLead(leadId: string): Promise<{ data: any; error: any }> {
   try {
@@ -553,9 +553,9 @@ export type UpdateLeadWithHistoryActor = {
 }
 
 /**
- * Actualizează lead-ul și loghează în items_events fiecare câmp modificat cu
- * versiunea precedentă și cea prezentă (pentru audit / istoric admin).
- * Folosiți această funcție în loc de updateLead când doriți păstrarea istoricului modificărilor.
+ * Updates the lead and logs each modified field in items_events with
+ * the previous and current version (for audit / admin history).
+ * Use this function instead of updateLead when you want to maintain a change history.
  */
 export async function updateLeadWithHistory(
   leadId: string,
@@ -600,11 +600,11 @@ export async function updateLeadWithHistory(
 
     if (changes.length > 0) {
       const fmt = (v: any) => (v != null && v !== '' ? String(v).trim() : '—')
-      const oneLine = (c: (typeof changes)[0]) => `${c.field_label}: ${fmt(c.previous_value)} --- > ${fmt(c.new_value)}`
+      const oneLine = (c: (typeof changes)[0]) => `${c.field_label}: ${fmt(c.previous_value)} --> ${fmt(c.new_value)}`
       const message =
         changes.length === 1
           ? oneLine(changes[0])
-          : `${oneLine(changes[0])} și alte ${changes.length - 1} câmpuri`
+          : `${oneLine(changes[0])} and ${changes.length - 1} other fields`
       await logItemEvent(
         'lead',
         leadId,
@@ -623,26 +623,26 @@ export async function updateLeadWithHistory(
 }
 
 /**
- * Șterge un lead din baza de date și toate datele asociate.
- * ATENȚIE: Ștergerea unui lead este ireversibilă și va șterge toate datele asociate:
- * fișe de serviciu, tăvițe, item-uri, evenimente, tag-uri, etc.
- * Folosiți cu precauție, deoarece operația este permanentă.
- * 
- * Ordinea de ștergere:
- * 1. Șterge toate fișele de serviciu (care vor șterge automat tăvițele și tray_items prin cascade)
- * 2. Șterge pipeline_items pentru lead și service_files
- * 3. Șterge lead_tags
- * 4. Șterge stage_history
- * 5. Șterge lead-ul
- * 
- * @param leadId - ID-ul lead-ului de șters
- * @returns Obiect cu:
- *   - success: true dacă ștergerea a reușit, false altfel
- *   - error: null dacă reușește, sau eroarea dacă apare o problemă
+ * Deletes a lead from the database and all associated data.
+ * WARNING: Deleting a lead is irreversible and will delete all associated data:
+ * service files, trays, items, events, tags, etc.
+ * Use with caution, as the operation is permanent.
+ *
+ * Deletion order:
+ * 1. Delete all service files (which will automatically delete trays and tray_items via cascade)
+ * 2. Delete pipeline_items for lead and service_files
+ * 3. Delete lead_tags
+ * 4. Delete stage_history
+ * 5. Delete the lead
+ *
+ * @param leadId - The ID of the lead to delete
+ * @returns Object with:
+ *   - success: true if deletion succeeds, false otherwise
+ *   - error: null if successful, or the error if a problem occurs
  */
 export async function deleteLead(leadId: string) {
   try {
-    // 1. Obține toate fișele de serviciu pentru acest lead
+    // 1. Get all service files for this lead
     const { data: serviceFiles, error: sfError } = await supabase
       .from('service_files')
       .select('id')
@@ -650,11 +650,11 @@ export async function deleteLead(leadId: string) {
 
     if (sfError) throw sfError
 
-    // 2. Șterge toate fișele de serviciu (cascade va șterge automat tăvițele și tray_items)
+    // 2. Delete all service files (cascade will automatically delete trays and tray_items)
     if (serviceFiles && serviceFiles.length > 0) {
       const serviceFileIds = serviceFiles.map(sf => sf.id)
       
-      // Șterge pipeline_items pentru service_files
+      // Delete pipeline_items for service_files
       const { error: piError } = await supabase
         .from('pipeline_items')
         .delete()
@@ -663,7 +663,7 @@ export async function deleteLead(leadId: string) {
 
       if (piError) throw piError
 
-      // Șterge fișele de serviciu (cascade va șterge trays și tray_items)
+      // Delete service files (cascade will delete trays and tray_items)
       const { error: deleteSfError } = await supabase
         .from('service_files')
         .delete()
@@ -672,7 +672,7 @@ export async function deleteLead(leadId: string) {
       if (deleteSfError) throw deleteSfError
     }
 
-    // 3. Șterge pipeline_items pentru lead
+    // 3. Delete pipeline_items for lead
     const { error: leadPiError } = await supabase
       .from('pipeline_items')
       .delete()
@@ -681,7 +681,7 @@ export async function deleteLead(leadId: string) {
 
     if (leadPiError) throw leadPiError
 
-    // 4. Șterge lead_tags
+    // 4. Delete lead_tags
     const { error: tagsError } = await supabase
       .from('lead_tags')
       .delete()
@@ -689,7 +689,7 @@ export async function deleteLead(leadId: string) {
 
     if (tagsError) throw tagsError
 
-    // 5. Șterge stage_history
+    // 5. Delete stage_history
     const { error: historyError } = await supabase
       .from('stage_history')
       .delete()
@@ -697,7 +697,7 @@ export async function deleteLead(leadId: string) {
 
     if (historyError) throw historyError
 
-    // 6. Șterge lead-ul
+    // 6. Delete the lead
     const { error } = await supabase
       .from('leads')
       .delete()
@@ -711,16 +711,16 @@ export async function deleteLead(leadId: string) {
 }
 
 /**
- * Caută lead-uri după un termen de căutare.
- * Funcția caută în trei câmpuri principale: nume complet, email și număr de telefon.
- * Căutarea este case-insensitive și folosește pattern matching (ilike) pentru a găsi
- * potriviri parțiale. Rezultatele includ toate lead-urile care conțin termenul de căutare
- * în oricare dintre cele trei câmpuri.
- * 
- * @param searchTerm - Termenul de căutare (se caută în nume, email, telefon)
- * @returns Obiect cu:
- *   - data: Array cu lead-urile găsite sau null dacă apare o eroare
- *   - error: null dacă reușește, sau eroarea dacă apare o problemă
+ * Searches leads by a search term.
+ * The function searches in three main fields: full name, email, and phone number.
+ * The search is case-insensitive and uses pattern matching (ilike) to find
+ * partial matches. Results include all leads that contain the search term
+ * in any of the three fields.
+ *
+ * @param searchTerm - The search term (searched in name, email, phone)
+ * @returns Object with:
+ *   - data: Array of found leads or null if an error occurs
+ *   - error: null if successful, or the error if a problem occurs
  */
 export async function searchLeads(searchTerm: string) {
   try {
@@ -737,15 +737,15 @@ export async function searchLeads(searchTerm: string) {
 }
 
 /**
- * Actualizează un pipeline și reordonează stage-urile sale.
- * Această funcție permite modificarea numelui unui pipeline și reordonarea stage-urilor
- * într-o singură operație atomică. Folosește o funcție RPC din Supabase pentru a asigura
- * consistența datelor. Stage-urile sunt reordonate în funcție de ordinea în array-ul furnizat.
- * 
- * @param pipelineId - ID-ul pipeline-ului de actualizat
- * @param pipelineName - Noul nume al pipeline-ului (sau null pentru a păstra numele actual)
- * @param stages - Array cu stage-urile în ordinea finală dorită (fiecare cu id și name)
- * @returns Obiect cu error: null dacă reușește, sau eroarea dacă apare o problemă
+ * Updates a pipeline and reorders its stages.
+ * This function allows modifying the name of a pipeline and reordering stages
+ * in a single atomic operation. Uses a Supabase RPC function to ensure
+ * data consistency. Stages are reordered according to the order in the provided array.
+ *
+ * @param pipelineId - The ID of the pipeline to update
+ * @param pipelineName - The new name of the pipeline (or null to keep the current name)
+ * @param stages - Array with stages in the final desired order (each with id and name)
+ * @returns Object with error: null if successful, or the error if a problem occurs
  */
 export async function updatePipelineAndStages(
   pipelineId: string,
@@ -764,10 +764,10 @@ export async function updatePipelineAndStages(
 // ==================== HELPER FUNCTIONS FOR DETAILED TRACKING ====================
 
 /**
- * Obține detalii complete despre o tăviță, inclusiv pipeline și stage curent.
- * 
- * @param trayId - ID-ul tăviței
- * @returns Detalii complete despre tăviță sau null dacă nu există
+ * Gets complete details about a tray, including current pipeline and stage.
+ *
+ * @param trayId - The tray ID
+ * @returns Complete tray details or null if it doesn't exist
  */
 export async function getTrayDetails(trayId: string): Promise<{
   id: string
@@ -784,7 +784,7 @@ export async function getTrayDetails(trayId: string): Promise<{
   try {
     const supabase = supabaseBrowser()
     
-    // Obține detaliile tăviței și pipeline/stage în paralel
+    // Get tray details and pipeline/stage in parallel
     const [trayResult, pipelineItemResult] = await Promise.all([
       supabase
         .from('trays')
@@ -816,7 +816,7 @@ export async function getTrayDetails(trayId: string): Promise<{
     
     return {
       id: tray.id,
-      number: tray.number || 'nesemnată',
+      number: tray.number || 'unsigned',
       status: tray.status || '',
       service_file_id: tray.service_file_id,
       pipeline: pipelineItem?.pipeline ? {
@@ -835,12 +835,12 @@ export async function getTrayDetails(trayId: string): Promise<{
 }
 
 /**
- * Obține detalii complete despre un tehnician (user).
- * 
- * NOTĂ: Email-ul poate fi obținut doar pentru user-ul curent din cauza limitărilor RLS.
- * Pentru alți utilizatori, email-ul va fi null.
+ * Gets complete details about a technician (user).
+ *
+ * NOTE: The email can only be obtained for the current user due to RLS limitations.
+ * For other users, the email will be null.
  */
-/** Opțiuni pentru a evita apelul Auth când caller-ul furnizează deja user-ul curent (ex. din useAuth()). */
+/** Options to avoid Auth call when caller already provides the current user (e.g., from useAuth()). */
 export type CurrentUserOption = { id: string; email?: string | null }
 
 export async function getTechnicianDetails(
@@ -857,7 +857,7 @@ export async function getTechnicianDetails(
     const supabase = supabaseBrowser()
     let email: string | null = null
 
-    // Faza 3: dacă caller-ul a furnizat user-ul curent și e același cu technicianId, nu mai apelăm Auth
+    // Phase 3: if caller provided current user and it's the same as technicianId, don't call Auth
     if (options?.currentUser?.id === technicianId) {
       email = options.currentUser.email ?? null
     } else {
@@ -867,21 +867,21 @@ export async function getTechnicianDetails(
       }
     }
     
-    // Încearcă să obțină din app_members
+    // Try to get from app_members
     const { data: member, error: memberError } = await supabase
       .from('app_members')
       .select('user_id, name')
       .eq('user_id', technicianId)
       .maybeSingle()
     
-    // Dacă nu găsește în app_members, folosește email-ul sau ID-ul
+    // If not found in app_members, use email or ID
     let name: string
     if (member) {
-      name = (member as any).name || (member as any).Name || email || `Tehnician ${technicianId.slice(0, 8)}`
+      name = (member as any).name || (member as any).Name || email || `Technician ${technicianId.slice(0, 8)}`
     } else if (email) {
-      name = email.split('@')[0] // Folosește partea dinainte de @ ca nume
+      name = email.split('@')[0] // Use part before @ as name
     } else {
-      name = `Tehnician ${technicianId.slice(0, 8)}`
+      name = `Technician ${technicianId.slice(0, 8)}`
     }
     
     return {
@@ -893,17 +893,17 @@ export async function getTechnicianDetails(
     console.error('[getTechnicianDetails] Error:', error)
     return {
       id: technicianId,
-      name: `Tehnician ${technicianId.slice(0, 8)}`,
+      name: `Technician ${technicianId.slice(0, 8)}`,
       email: null,
     }
   }
 }
 
 /**
- * Obține detalii complete despre un user (actor).
- * 
- * NOTĂ: Email-ul poate fi obținut doar pentru user-ul curent din cauza limitărilor RLS.
- * Pentru alți utilizatori, email-ul va fi null.
+ * Gets complete details about a user (actor).
+ *
+ * NOTE: The email can only be obtained for the current user due to RLS limitations.
+ * For other users, the email will be null.
  */
 export async function getUserDetails(
   userId: string | null,
@@ -919,29 +919,29 @@ export async function getUserDetails(
     const supabase = supabaseBrowser()
     let email: string | null = null
 
-    // Faza 3: dacă caller-ul a furnizat user-ul curent și e același cu userId, nu mai apelăm Auth
+    // Phase 3: if caller provided current user and it's the same as userId, don't call Auth
     if (options?.currentUser?.id === userId) {
       email = options.currentUser.email ?? null
     } else {
-      // getSession evită apel auth server (session.user e suficient pentru email)
+      // getSession avoids auth server call (session.user is enough for email)
       const { data: { session } } = await supabase.auth.getSession()
       const currentUser = session?.user
       email = currentUser?.id === userId ? currentUser.email || null : null
     }
     
-    // Încearcă să obțină din app_members
+    // Try to get from app_members
     const { data: member, error: memberError } = await supabase
       .from('app_members')
       .select('user_id, name')
       .eq('user_id', userId)
       .maybeSingle()
     
-    // Dacă nu găsește în app_members, folosește email-ul sau ID-ul
+    // If not found in app_members, use email or ID
     let name: string
     if (member) {
       name = (member as any).name || (member as any).Name || email || `User ${userId.slice(0, 8)}`
     } else if (email) {
-      name = email.split('@')[0] // Folosește partea dinainte de @ ca nume
+      name = email.split('@')[0] // Use part before @ as name
     } else {
       name = `User ${userId.slice(0, 8)}`
     }
@@ -962,7 +962,7 @@ export async function getUserDetails(
 }
 
 /**
- * Obține detalii despre pipeline și stage.
+ * Gets details about pipeline and stage.
  */
 export async function getPipelineStageDetails(
   pipelineId: string | null,
@@ -1008,10 +1008,10 @@ export async function getPipelineStageDetails(
 }
 
 /**
- * Obține pipeline și stage curent pentru o tăviță.
- * 
- * @param trayId - ID-ul tăviței
- * @returns Pipeline și stage curent sau null dacă tăvița nu este în niciun pipeline
+ * Gets current pipeline and stage for a tray.
+ *
+ * @param trayId - The tray ID
+ * @returns Current pipeline and stage or null if the tray is not in any pipeline
  */
 export async function getTrayPipelineStage(trayId: string): Promise<{
   pipeline: { id: string; name: string } | null
@@ -1064,21 +1064,21 @@ export async function getTrayPipelineStage(trayId: string): Promise<{
 // ==================== LOGGING FUNCTIONS ====================
 
 /**
- * Loghează un eveniment pentru un item (lead, service_file sau tray).
- * Această funcție creează o înregistrare în tabelul items_events pentru a urmări istoricul
- * acțiunilor și schimbărilor asupra unui item. Evenimentele pot fi mesaje, mutări de stage,
- * actualizări, etc. Funcția identifică automat utilizatorul curent și încearcă să obțină
- * numele acestuia din app_members sau user_metadata.
- * 
- * @param itemType - Tipul item-ului: 'lead', 'service_file' sau 'tray'
- * @param itemId - ID-ul item-ului pentru care se loghează evenimentul
- * @param message - Mesajul evenimentului (descrierea acțiunii)
- * @param eventType - Tipul evenimentului (ex: 'message', 'stage_change', 'update') - implicit 'message'
- * @param payload - Obiect JSON opțional cu date suplimentare despre eveniment
- * @param details - Detalii opționale pentru a extinde automat payload-ul (tray, technician, pipeline, stage, user)
- * @param actorOption - Faza 3: când caller-ul furnizează user-ul curent (ex. din useAuth()), evităm getUser()
- * @returns Datele evenimentului creat (id, type, item_id, event_type, message, actor_name, created_at)
- * @throws Eroare dacă crearea evenimentului eșuează
+ * Logs an event for an item (lead, service_file, or tray).
+ * This function creates a record in the items_events table to track the history
+ * of actions and changes on an item. Events can be messages, stage moves,
+ * updates, etc. The function automatically identifies the current user and tries to get
+ * their name from app_members or user_metadata.
+ *
+ * @param itemType - The type of item: 'lead', 'service_file', or 'tray'
+ * @param itemId - The ID of the item to log the event for
+ * @param message - The event message (description of the action)
+ * @param eventType - The event type (e.g., 'message', 'stage_change', 'update') - default 'message'
+ * @param payload - Optional JSON object with additional event data
+ * @param details - Optional details to automatically extend the payload (tray, technician, pipeline, stage, user)
+ * @param actorOption - Phase 3: when caller provides the current user (e.g., from useAuth()), we avoid getUser()
+ * @returns The created event data (id, type, item_id, event_type, message, actor_name, created_at)
+ * @throws Error if event creation fails
  */
 export async function logItemEvent(
   itemType: 'lead' | 'service_file' | 'tray',
@@ -1101,7 +1101,7 @@ export async function logItemEvent(
   let actorName: string | null = null
   let actorEmail: string | null = null
 
-  // Faza 3: dacă caller-ul a furnizat user-ul curent, nu mai apelăm Auth
+  // Phase 3: if caller provided current user, don't call Auth
   if (actorOption?.currentUserId) {
     actorId = actorOption.currentUserId
     actorName = actorOption.currentUserName ?? null
@@ -1128,10 +1128,10 @@ export async function logItemEvent(
     }
   }
 
-  // Extinde payload-ul cu informațiile din details
+  // Extend payload with information from details
   const extendedPayload = {
     ...payload,
-    // Adaugă detalii despre tăviță dacă sunt furnizate
+    // Add tray details if provided
     ...(details?.tray && {
       tray: {
         id: details.tray.id,
@@ -1140,7 +1140,7 @@ export async function logItemEvent(
         service_file_id: details.tray.service_file_id || null,
       },
     }),
-    // Adaugă detalii despre tehnician dacă sunt furnizate
+    // Add technician details if provided
     ...(details?.technician && {
       technician: {
         id: details.technician.id,
@@ -1148,7 +1148,7 @@ export async function logItemEvent(
         email: details.technician.email || null,
       },
     }),
-    // Adaugă detalii despre tehnicianul anterior dacă sunt furnizate
+    // Add previous technician details if provided
     ...(details?.previous_technician && {
       previous_technician: {
         id: details.previous_technician.id,
@@ -1156,21 +1156,21 @@ export async function logItemEvent(
         email: details.previous_technician.email || null,
       },
     }),
-    // Adaugă detalii despre pipeline dacă sunt furnizate
+    // Add pipeline details if provided
     ...(details?.pipeline && {
       pipeline: {
         id: details.pipeline.id,
         name: details.pipeline.name,
       },
     }),
-    // Adaugă detalii despre stage dacă sunt furnizate
+    // Add stage details if provided
     ...(details?.stage && {
       stage: {
         id: details.stage.id,
         name: details.stage.name,
       },
     }),
-    // Adaugă detalii despre user dacă sunt furnizate (sau folosește user-ul curent)
+    // Add user details if provided (or use current user)
     ...(details?.user ? {
       user: {
         id: details.user.id,
@@ -1180,7 +1180,7 @@ export async function logItemEvent(
     } : (actorId ? {
       user: {
         id: actorId,
-        name: actorName || 'user necunoscut',
+        name: actorName || 'unknown user',
         email: actorEmail || null,
       },
     } : {})),
@@ -1205,16 +1205,16 @@ export async function logItemEvent(
 }
 
 /**
- * Loghează un eveniment pentru un lead (wrapper peste logItemEvent).
- * Această funcție este un wrapper convenabil care apelează logItemEvent cu itemType='lead'.
- * Este folosită pentru a simplifica logarea evenimentelor specifice lead-urilor.
- * 
- * @param leadId - ID-ul lead-ului pentru care se loghează evenimentul
- * @param message - Mesajul evenimentului (descrierea acțiunii)
- * @param eventType - Tipul evenimentului (ex: 'message', 'stage_change', 'update') - implicit 'message'
- * @param payload - Obiect JSON opțional cu date suplimentare despre eveniment
- * @returns Datele evenimentului creat (id, type, item_id, event_type, message, actor_name, created_at)
- * @throws Eroare dacă crearea evenimentului eșuează
+ * Logs an event for a lead (wrapper over logItemEvent).
+ * This function is a convenient wrapper that calls logItemEvent with itemType='lead'.
+ * It is used to simplify logging lead-specific events.
+ *
+ * @param leadId - The ID of the lead to log the event for
+ * @param message - The event message (description of the action)
+ * @param eventType - The event type (e.g., 'message', 'stage_change', 'update') - default 'message'
+ * @param payload - Optional JSON object with additional event data
+ * @returns The created event data (id, type, item_id, event_type, message, actor_name, created_at)
+ * @throws Error if event creation fails
  */
 export async function logLeadEvent(
   leadId: string,
@@ -1226,14 +1226,14 @@ export async function logLeadEvent(
 }
 
 /**
- * Înregistrează în istoricul lead-ului că un buton a fost activat de utilizatorul curent.
- * Folosit pentru tracking: buton X activat de user Y la data/ora Z (actor_name, created_at din items_events).
+ * Registers in the lead history that a button was activated by the current user.
+ * Used for tracking: button X activated by user Y at date/time Z (actor_name, created_at from items_events).
  *
- * @param params.leadId - ID lead (prioritar)
- * @param params.serviceFileId - Dacă lipsește leadId, se rezolvă lead_id din service_files
- * @param params.buttonId - data-button-id (ex: vanzariCardDeliveryButton)
- * @param params.buttonLabel - Etichetă pentru mesaj (ex: "Livrare")
- * @param params.actorOption - User curent (evită getuser dacă e deja disponibil)
+ * @param params.leadId - Lead ID (priority)
+ * @param params.serviceFileId - If leadId is missing, resolve lead_id from service_files
+ * @param params.buttonId - data-button-id (e.g., vanzariCardDeliveryButton)
+ * @param params.buttonLabel - Label for message (e.g., "Livrare")
+ * @param params.actorOption - Current user (avoids getUser if already available)
  */
 export async function logButtonEvent(params: {
   leadId?: string | null
@@ -1254,7 +1254,7 @@ export async function logButtonEvent(params: {
   }
   if (!resolvedLeadId) return
   const label = buttonLabel ?? buttonId
-  const message = `Buton "${label}" activat`
+  const message = `Button "${label}" activated`
   await logItemEvent(
     'lead',
     resolvedLeadId,
@@ -1267,15 +1267,15 @@ export async function logButtonEvent(params: {
 }
 
 /**
- * Loghează modificări la detaliile comenzii (tray items): update qty/serviciu/discount/urgent,
- * add serviciu/piesă, delete item. Folosit pe mobil (LeadDetailsSheet), desktop (Preturi) și
- * pagina tehnician. Evenimentele apar în istoric indiferent de dispozitiv.
+ * Logs changes to order details (tray items): update qty/service/discount/urgent,
+ * add service/part, delete item. Used on mobile (LeadDetailsSheet), desktop (Preturi) and
+ * technician page. Events appear in history regardless of device.
  *
- * @param trayId - ID tăviță
- * @param message - Mesaj pentru istoric
+ * @param trayId - Tray ID
+ * @param message - Message for history
  * @param eventType - 'tray_item_updated' | 'tray_item_added' | 'tray_item_deleted'
  * @param payload - item_id, item_name, field, old_value, new_value, etc.
- * @param serviceFileId - Opțional; dacă există, se loghează și la service_file.
+ * @param serviceFileId - Optional; if exists, also logs to service_file.
  */
 export async function logTrayItemChange(params: {
   trayId: string
@@ -1283,7 +1283,7 @@ export async function logTrayItemChange(params: {
   eventType: 'tray_item_updated' | 'tray_item_added' | 'tray_item_deleted'
   payload: Record<string, any>
   serviceFileId?: string | null
-  /** Opțional: număr tăviță pentru afișare în istoric după arhivare (dacă lipsește, se încarcă din getTrayDetails) */
+  /** Optional: tray number for display in history after archiving (if missing, loads from getTrayDetails) */
   trayNumber?: string | null
 }) {
   const { trayId, message, eventType, payload, serviceFileId, trayNumber } = params
@@ -1307,7 +1307,7 @@ export async function logTrayItemChange(params: {
 }
 
 /**
- * Loghează în istoric adăugarea unei imagini la o tăviță (cine, când, ce fișier).
+ * Logs in history the addition of an image to a tray (who, when, what file).
  */
 export async function logTrayImageAdded(params: {
   trayId: string
@@ -1317,7 +1317,7 @@ export async function logTrayImageAdded(params: {
 }) {
   const { trayId, filename, imageId, serviceFileId } = params
   try {
-    const message = `Imagine adăugată: ${filename}`
+    const message = `Image added: ${filename}`
     const payload: Record<string, any> = { tray_id: trayId, filename }
     if (imageId) payload.image_id = imageId
     await logItemEvent('tray', trayId, message, 'tray_image_added', payload)
@@ -1333,7 +1333,7 @@ export async function logTrayImageAdded(params: {
 }
 
 /**
- * Loghează în istoric ștergerea unei imagini de la o tăviță (cine, când, ce fișier).
+ * Logs in history the deletion of an image from a tray (who, when, what file).
  */
 export async function logTrayImageDeleted(params: {
   trayId: string
@@ -1342,7 +1342,7 @@ export async function logTrayImageDeleted(params: {
 }) {
   const { trayId, filename, serviceFileId } = params
   try {
-    const message = `Imagine ștearsă: ${filename}`
+    const message = `Image deleted: ${filename}`
     const payload = { tray_id: trayId, filename }
     await logItemEvent('tray', trayId, message, 'tray_image_deleted', payload)
     if (serviceFileId) {
@@ -1355,5 +1355,3 @@ export async function logTrayImageDeleted(params: {
     console.warn('[logTrayImageDeleted]', e)
   }
 }
-
-

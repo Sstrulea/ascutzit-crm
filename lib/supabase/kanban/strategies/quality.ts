@@ -22,6 +22,7 @@ import {
   extractTechnicianMap,
   transformTrayToKanbanItem,
 } from '../transformers'
+import { matchesStagePattern } from '../constants'
 
 function isDepartmentPipelineName(name: string): boolean {
   const n = String(name || '').toLowerCase()
@@ -36,8 +37,7 @@ function isDepartmentPipelineName(name: string): boolean {
 }
 
 function isFinalizataStageName(name: string): boolean {
-  const n = String(name || '').toLowerCase()
-  return n.includes('finaliz')
+  return matchesStagePattern(name, 'FINALIZARE')
 }
 
 function isValidationStageName(name: string): boolean {

@@ -182,7 +182,7 @@ export function usePreturiDeliveryOperations({
           await addLeadTagIfNotPresent(leadId, tag.id)
           const nowIso = new Date().toISOString()
           await updateLead(leadId, {
-            curier_trimis_at: dateTime || nowIso,
+            curier_trimis_at: nowIso,
             curier_trimis_user_id: user?.id ?? null,
             office_direct_at: null,
             office_direct_user_id: null,

@@ -186,6 +186,9 @@ export async function setLeadNuRaspunde(
     const callbackAt = new Date();
     callbackAt.setHours(hours, minutes, 0, 0);
 
+    // La „Nu răspunde” din detalii lead se scad 2 ore din ora programată de utilizator
+    callbackAt.setHours(callbackAt.getHours() - 2, callbackAt.getMinutes(), 0, 0);
+
     // Dacă ora a trecut azi, pune mâine
     if (callbackAt < new Date()) {
       callbackAt.setDate(callbackAt.getDate() + 1);
@@ -344,17 +347,18 @@ export async function setLeadCurierTrimis(
     if (!user?.id) throw new Error('Not authenticated');
 
     const scheduledIso = scheduledDate.toISOString();
+    const nowIso = new Date().toISOString();
     const urgent = options?.urgent ?? false;
     const retur = options?.retur ?? false;
 
-    // 1. Update lead (inclusiv claimed_by = vânzătorul curent – atribuire automată)
+    // 1. Update lead: curier_trimis_at = momentul când vânzătorul a făcut livrarea (pentru statistici), nu data programată curier
     const { data: lead, error: leadError } = await supabase
       .from('leads')
       .update({
-        curier_trimis_at: scheduledIso,
+        curier_trimis_at: nowIso,
         curier_trimis_user_id: user.id,
         claimed_by: user.id,
-        updated_at: new Date().toISOString()
+        updated_at: nowIso
       })
       .eq('id', leadId)
       .select()

@@ -135,10 +135,29 @@ export async function saveVanzariViewV4ToDb(
 
     // 2. Șterge tray_items doar pentru tăvițe care sunt în payload (le resincronizăm).
     // Tăvițe existente care nu sunt în payload (ex. trimise în departament) nu le atingem.
-    const payloadTrayNumbers = new Set(traysToUse.map((t) => t.number?.trim() ?? ''))
+    // PROTECȚIE: Nu goli tray_items pentru o tăviță dacă payload-ul nu conține niciun serviciu/piesă
+    // pentru acea tăviță – evită pierderea accidentală când state-ul e incomplet (ex. după repartizare).
+    const payloadTrayNumbers = new Set(traysToUse.map((t) => (t.number?.trim() ?? '').toLowerCase()))
+    const payloadHasItemsForTray = (trayNumber: string): boolean => {
+      const key = (trayNumber?.trim() ?? '').toLowerCase()
+      return services.some((s) => {
+        const lt = traysToUse.find((x) => x.id === s.trayId)
+        return lt && (lt.number?.trim() ?? '').toLowerCase() === key
+      }) || parts.some((p) => {
+        const lt = traysToUse.find((x) => x.id === p.trayId)
+        return lt && (lt.number?.trim() ?? '').toLowerCase() === key
+      })
+    }
     for (const tray of existing) {
-      const key = tray.number?.trim() ?? ''
+      const key = (tray.number?.trim() ?? '').toLowerCase()
       if (!payloadTrayNumbers.has(key)) continue
+      if (!payloadHasItemsForTray(tray.number ?? '')) {
+        const { data: items } = await listTrayItemsForTray(tray.id)
+        if (items && items.length > 0) {
+          console.warn(`[saveVanzariViewV4ToDb] NU golesc tăvița "${tray.number}" (id: ${tray.id}) – payload fără itemi pentru ea, dar tăvița are ${items.length} itemi.`)
+          continue
+        }
+      }
       const { data: items } = await listTrayItemsForTray(tray.id)
       const itemIds = (items || []).map((i: any) => i.id)
       if (itemIds.length > 0) {
@@ -150,12 +169,18 @@ export async function saveVanzariViewV4ToDb(
     // 3. Șterge doar tăvițe care nu mai sunt în data.trays ȘI nu există deja în DB pentru această fișă.
     // IMPORTANT: Nu ștergem tăvițe existente doar pentru că lipsesc din payload (ex: tăviță trimisă
     // în departament poate să nu fie în state la salvare) – evită bugul „tăvița dispare după urgent”.
-    const wantedKeysFromPayload = new Set(traysToUse.map((t) => t.number?.trim() ?? ''))
-    const existingKeys = new Set(existing.map((t) => t.number?.trim() ?? ''))
+    // PROTECȚIE: Nu ștergem niciodată o tăviță care are tray_items (conținut) – evită pierderea accidentală.
+    const wantedKeysFromPayload = new Set(traysToUse.map((t) => (t.number?.trim() ?? '').toLowerCase()))
+    const existingKeys = new Set(existing.map((t) => (t.number?.trim() ?? '').toLowerCase()))
     const wantedKeys = new Set([...wantedKeysFromPayload, ...existingKeys])
     for (const t of existing) {
-      const key = t.number?.trim() ?? ''
+      const key = (t.number?.trim() ?? '').toLowerCase()
       if (!wantedKeys.has(key)) {
+        const { data: itemsCheck } = await supabase.from('tray_items').select('id').eq('tray_id', t.id).limit(1)
+        if (itemsCheck && itemsCheck.length > 0) {
+          console.warn(`[saveVanzariViewV4ToDb] NU ștergem tăvița "${t.number}" (id: ${t.id}) – are ${itemsCheck.length}+ itemi. Evită pierderea datelor.`)
+          continue
+        }
         await supabase.from('pipeline_items').delete().eq('type', 'tray').eq('item_id', t.id)
         await supabase.from('tray_images').delete().eq('tray_id', t.id)
         await supabase.from('trays').delete().eq('id', t.id)

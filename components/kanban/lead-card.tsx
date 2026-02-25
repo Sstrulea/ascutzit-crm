@@ -377,9 +377,10 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
           toast({ variant: "destructive", title: "Eroare", description: error?.message ?? "Nu s-a putut seta livrarea." })
           return
         }
+        const markedAtIso = new Date().toISOString()
         const leadUpdates = deliveryType === 'office_direct'
-          ? { office_direct_at: dateTimeIso, office_direct_user_id: currentUser?.id ?? null }
-          : { curier_trimis_at: dateTimeIso, curier_trimis_user_id: currentUser?.id ?? null }
+          ? { office_direct_at: markedAtIso, office_direct_user_id: currentUser?.id ?? null }
+          : { curier_trimis_at: markedAtIso, curier_trimis_user_id: currentUser?.id ?? null }
         if (currentUser?.id) (leadUpdates as any).claimed_by = currentUser.id
         await updateLead(leadIdForDb, leadUpdates)
         if (currentUser?.id) {

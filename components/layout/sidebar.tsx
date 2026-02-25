@@ -28,7 +28,7 @@ interface SidebarProps {
 
 const toSlug = (s: string) => String(s).toLowerCase().replace(/\s+/g, "-")
 
-// functie pentru a returna iconita potrivita pentru fiecare pipeline
+// Function to return the appropriate icon for each pipeline
 const getPipelineIcon = (pipelineName: string) => {
   const name = pipelineName.toLowerCase()
   

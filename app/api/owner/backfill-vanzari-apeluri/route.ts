@@ -69,12 +69,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 0b. Dacă ?atribuie=1&userId=xxx: găsește fișe în Curier Trimis/Office Direct cu lead.claimed_by=userId
-    //    și lead.curier_trimis_at null → setează curier_trimis_at=azi, curier_trimis_user_id=userId
+    //    și lead.curier_trimis_at null → setează curier_trimis_at/office_direct_at la MOMENTUL curent (now),
+    //    nu la „începutul zilei” server, ca să nu apară în Statistici pe ziua greșită (ex. azi când acțiunea e de ieri).
     if (doAtribuie && targetUserId) {
-      const todayStart = new Date()
-      todayStart.setHours(0, 0, 0, 0)
-      const todayEnd = new Date()
-      todayEnd.setHours(23, 59, 59, 999)
+      const nowIso = new Date().toISOString()
       const { data: pipeline } = await supabase.from('pipelines').select('id').or('name.ilike.%vanzari%,name.ilike.%vanzări%').limit(1).maybeSingle()
       if (pipeline?.id) {
         const { data: stages } = await supabase.from('stages').select('id, name').eq('pipeline_id', pipeline.id).is('is_active', true)
@@ -97,16 +95,16 @@ export async function POST(req: NextRequest) {
             const needsOD = !isCT && !(lead as any).office_direct_at
             if (needsCT) {
               const { error: uErr } = await supabase.from('leads').update({
-                curier_trimis_at: todayStart.toISOString(),
+                curier_trimis_at: nowIso,
                 curier_trimis_user_id: targetUserId,
-                updated_at: new Date().toISOString(),
+                updated_at: nowIso,
               }).eq('id', leadId)
               if (!uErr) attributed++
             } else if (needsOD) {
               const { error: uErr } = await supabase.from('leads').update({
-                office_direct_at: todayStart.toISOString(),
+                office_direct_at: nowIso,
                 office_direct_user_id: targetUserId,
-                updated_at: new Date().toISOString(),
+                updated_at: nowIso,
               }).eq('id', leadId)
               if (!uErr) attributed++
             }

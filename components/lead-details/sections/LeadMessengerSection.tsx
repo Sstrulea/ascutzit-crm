@@ -8,7 +8,7 @@ import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Send, Loader2, User, MessageSquare, FileText, Move, UserCheck, ArrowRight, Package, GitBranch, Clock, Save, History as HistoryIcon, ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Send, Loader2, User, MessageSquare, FileText, Move, UserCheck, ArrowRight, Package, GitBranch, Clock, Save, History as HistoryIcon, ChevronDown, ChevronUp, Pencil, Plus, Trash2, ImagePlus } from 'lucide-react'
 import { useAuth } from '@/lib/contexts/AuthContext'
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns'
 import { ro } from 'date-fns/locale/ro'
@@ -44,6 +44,8 @@ interface Message {
   created_at: string
   sender_name?: string
 }
+
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic']
 
 interface Event {
   id: string
@@ -601,9 +603,35 @@ export function LeadMessengerSection({
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [senderNamesCache, setSenderNamesCache] = useState<Record<string, string>>({})
   const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set())
+  const [attachedImages, setAttachedImages] = useState<Array<{ file: File; preview: string }>>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
   const isMounted = useRef(true)
+
+  const removeAttachedImage = useCallback((index: number) => {
+    setAttachedImages((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      const removed = prev[index]
+      if (removed?.preview?.startsWith?.('blob:')) URL.revokeObjectURL(removed.preview)
+      return next
+    })
+  }, [])
+
+  const handleFilesFromDevice = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+    const toAdd: Array<{ file: File; preview: string }> = []
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      const isImage = file.type?.startsWith?.('image/') || (ext && IMAGE_EXTENSIONS.includes(ext))
+      if (!isImage) continue
+      toAdd.push({ file, preview: URL.createObjectURL(file) })
+    }
+    if (toAdd.length) setAttachedImages((prev) => [...prev, ...toAdd])
+    e.target.value = ''
+  }, [])
 
   // Toggle expandare eveniment
   const toggleEventExpansion = useCallback((eventId: string) => {
@@ -800,11 +828,11 @@ export function LeadMessengerSection({
     }
   }, [newMessage])
 
-  // Trimite mesaj
+  // Trimite mesaj (text și/sau poze)
   const handleSendMessage = useCallback(async () => {
     const messageText = newMessage.trim()
-    
-    if (!messageText) return
+    const hasImages = attachedImages.length > 0
+    if (!messageText && !hasImages) return
     if (!user) {
       toast.error('Trebuie să fii autentificat pentru a trimite mesaje.')
       return
@@ -816,60 +844,80 @@ export function LeadMessengerSection({
     }
 
     setSending(true)
-    const tempId = `temp-${Date.now()}`
-    
-    // Optimistic update
-    const optimisticMessage: Message = {
-      id: tempId,
-      type: 'message',
-      conversation_id: conversationId,
-      sender_id: user.id,
-      content: messageText,
-      message_type: 'text',
-      created_at: new Date().toISOString(),
-      sender_name: user.user_metadata?.display_name || user.email?.split('@')[0] || 'Utilizator',
-    }
-    setMessages((prev) => [...prev, optimisticMessage])
+    const imagesToSend = [...attachedImages]
+    setAttachedImages([])
     setNewMessage('')
 
     try {
-      const { data: newMsg, error } = await supabase
-        .from('messages')
-        .insert({
+      // Trimite mai întâi imaginile
+      for (const img of imagesToSend) {
+        const ext = img.file.name.split('.').pop()?.toLowerCase() || 'jpg'
+        const safeExt = IMAGE_EXTENSIONS.includes(ext) ? ext : 'jpg'
+        const storagePath = `messenger/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${safeExt}`
+        const contentType = img.file.type?.startsWith?.('image/') ? img.file.type : (safeExt === 'png' ? 'image/png' : 'image/jpeg')
+        const { error: uploadError } = await supabase.storage
+          .from('tray_images')
+          .upload(storagePath, img.file, { contentType, upsert: false })
+        if (uploadError) {
+          toast.error('Eroare la încărcarea imaginii.')
+          if (img.preview?.startsWith?.('blob:')) URL.revokeObjectURL(img.preview)
+          continue
+        }
+        if (img.preview?.startsWith?.('blob:')) URL.revokeObjectURL(img.preview)
+        const imageUrl = supabase.storage.from('tray_images').getPublicUrl(storagePath).data.publicUrl
+        const { data: imgData, error: imgErr } = await supabase
+          .from('messages')
+          .insert({ conversation_id: conversationId, sender_id: user.id, content: imageUrl, message_type: 'image' })
+          .select()
+          .single()
+        if (!imgErr && imgData) {
+          setMessages((prev) => [...prev, { ...imgData, type: 'message' as const }])
+        }
+      }
+
+      // Apoi mesajul text (dacă există)
+      if (messageText) {
+        const tempId = `temp-${Date.now()}`
+        const optimisticMessage: Message = {
+          id: tempId,
+          type: 'message',
           conversation_id: conversationId,
           sender_id: user.id,
           content: messageText,
           message_type: 'text',
-        })
-        .select()
-        .single()
+          created_at: new Date().toISOString(),
+          sender_name: user.user_metadata?.display_name || user.email?.split('@')[0] || 'Utilizator',
+        }
+        setMessages((prev) => [...prev, optimisticMessage])
 
-      if (error) throw error
+        const { data: newMsg, error } = await supabase
+          .from('messages')
+          .insert({
+            conversation_id: conversationId,
+            sender_id: user.id,
+            content: messageText,
+            message_type: 'text',
+          })
+          .select()
+          .single()
 
-      // Înlocuiește mesajul optimist cu cel real
-      setMessages((prev) => prev.map(msg => 
-        msg.id === tempId ? { ...newMsg, type: 'message' as const } : msg
-      ))
-
-      // Notifică receptia despre mesajul nou
-      if (conversationId && user?.id && leadId) {
-        notifyReceptionAboutNewMessage({
-          conversationId,
-          leadId,
-          messagePreview: messageText?.trim() || 'Mesaj nou',
-          senderId: user.id,
-        }).catch(() => {})
+        if (error) throw error
+        setMessages((prev) => prev.map(msg => (msg.id === tempId ? { ...newMsg, type: 'message' as const } : msg)))
       }
+
+      if (conversationId && user?.id && leadId) {
+        const preview = messageText?.trim() || (imagesToSend.length ? 'Imagine trimisă' : 'Mesaj nou')
+        notifyReceptionAboutNewMessage({ conversationId, leadId, messagePreview: preview, senderId: user.id }).catch(() => {})
+      }
+      if (imagesToSend.length && messageText) toast.success('Mesaj și imagini trimise')
+      else if (imagesToSend.length) toast.success('Imagine trimisă')
     } catch (error: any) {
       console.error('Error sending message:', error)
       toast.error('Eroare la trimiterea mesajului')
-      // Elimină mesajul optimist
-      setMessages((prev) => prev.filter(msg => msg.id !== tempId))
-      setNewMessage(messageText) // Restaurează textul
     } finally {
       setSending(false)
     }
-  }, [newMessage, user, conversationId, sending, leadId])
+  }, [newMessage, attachedImages, user, conversationId, sending, leadId])
 
   if (!leadId) return null
 
@@ -964,9 +1012,15 @@ export function LeadMessengerSection({
                                     : 'bg-muted text-foreground rounded-bl-sm',
                                 )}
                               >
-                                <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                                  {msg.content}
-                                </div>
+                                {msg.message_type === 'image' ? (
+                                  <a href={msg.content} target="_blank" rel="noopener noreferrer" className="block">
+                                    <img src={msg.content} alt="" className="max-w-[240px] max-h-[280px] rounded object-cover" />
+                                  </a>
+                                ) : (
+                                  <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                                    {msg.content}
+                                  </div>
+                                )}
                                 <div
                                   className={cn(
                                     'flex items-center gap-1 mt-1.5 text-[10px]',
@@ -1071,9 +1125,45 @@ export function LeadMessengerSection({
         </div>
       </ScrollArea>
 
-      {/* Input pentru mesaje */}
+      {/* Input pentru mesaje + atașare poze */}
       <div className="p-4 border-t flex-shrink-0">
+        {attachedImages.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {attachedImages.map((img, idx) => (
+              <div key={idx} className="relative">
+                <img src={img.preview} alt="" className="w-14 h-14 rounded object-cover border" />
+                <button
+                  type="button"
+                  onClick={() => removeAttachedImage(idx)}
+                  className="absolute -top-1 -right-1 rounded-full bg-destructive text-destructive-foreground p-0.5"
+                  aria-label="Elimină imagine"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            multiple
+            onChange={handleFilesFromDevice}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="flex-shrink-0"
+            onClick={() => galleryInputRef.current?.click()}
+            disabled={sending || !conversationId}
+            aria-label="Atașează poză"
+          >
+            <ImagePlus className="h-4 w-4" />
+          </Button>
           <Textarea
             ref={textareaRef}
             value={newMessage}
@@ -1085,12 +1175,12 @@ export function LeadMessengerSection({
               }
             }}
             placeholder="Scrie un mesaj..."
-            className="min-h-[60px] max-h-[120px] resize-none"
+            className="min-h-[60px] max-h-[120px] resize-none flex-1"
             disabled={sending || !conversationId}
           />
           <Button
             onClick={handleSendMessage}
-            disabled={!newMessage.trim() || sending || !conversationId}
+            disabled={(!newMessage.trim() && attachedImages.length === 0) || sending || !conversationId}
             size="icon"
             className="flex-shrink-0"
           >

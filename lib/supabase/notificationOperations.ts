@@ -21,13 +21,13 @@ export interface Notification {
 }
 
 export type NotificationType = 
-  | 'tray_received'       // Tăviță primită pentru procesare
-  | 'tray_passed'         // ți-a fost pasată o tăviță de la alt tehnician
-  | 'tray_completed'      // Tăviță finalizată de tehnician
-  | 'tray_urgent'         // Tăviță urgentă
-  | 'service_assigned'    // Serviciu atribuit tehnicianului
-  | 'message_received'    // Mesaj nou în conversație
-  | 'system'              // Notificare de sistem
+  | 'tray_received'       // Tray received for processing
+  | 'tray_passed'         // A tray was passed to you from another technician
+  | 'tray_completed'      // Tray completed by technician
+  | 'tray_urgent'         // Urgent tray
+  | 'service_assigned'    // Service assigned to technician
+  | 'message_received'    // New message in conversation
+  | 'system'              // System notification
 
 export interface CreateNotificationParams {
   userId: string
@@ -42,12 +42,12 @@ export interface CreateNotificationParams {
 // =============================================================================
 
 /**
- * Creează o notificare pentru un utilizator
- * IMPORTANT: Folosește API route cu service role pentru a ocoli RLS
+ * Creates a notification for a user
+ * IMPORTANT: Uses API route with service role to bypass RLS
  */
 export async function createNotification(params: CreateNotificationParams): Promise<{ success: boolean; error?: string; notification?: Notification }> {
   try {
-    // Folosește API route cu service role pentru a ocoli RLS
+    // Use API route with service role to bypass RLS
     const response = await fetch('/api/notifications/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -80,15 +80,15 @@ export async function createNotification(params: CreateNotificationParams): Prom
 // =============================================================================
 
 /**
- * Notifică toți tehnicienii din departamentele relevante despre tăvițele noi
- * @param trays - Lista de tăvițe trimise
- * @param departmentTechnicianMap - Map de department_id -> technician_ids
+ * Notifies all technicians in relevant departments about new trays
+ * @param trays - List of sent trays
+ * @param departmentTechnicianMap - Map of department_id -> technician_ids
  */
 export async function notifyTechniciansAboutNewTrays(params: {
   trays: Array<{
     id: string
     number: string
-    pipelineId?: string  // Pipeline-ul în care a fost mutată tăvița
+    pipelineId?: string  // Pipeline where tray was moved
     pipelineName?: string
   }>
   serviceFileId: string
@@ -98,7 +98,7 @@ export async function notifyTechniciansAboutNewTrays(params: {
     const errors: string[] = []
     let notifiedCount = 0
     
-    // 1. Extrage pipeline_id-urile unice din tăvițe (pipeline-urile în care au fost mutate)
+    // 1. Extract unique pipeline_ids from trays (pipelines where they were moved)
     const pipelineIds = new Set<string>()
     
     for (const tray of params.trays) {
@@ -108,8 +108,8 @@ export async function notifyTechniciansAboutNewTrays(params: {
     }
     
     if (pipelineIds.size === 0) {
-      // Dacă nu avem pipeline_id-uri directe, încercăm să le găsim din database
-      // (tăvițele ar trebui să fie în pipeline_items după trimitere)
+      // If we don't have direct pipeline_ids, try to find them from database
+      // (trays should be in pipeline_items after sending)
       for (const tray of params.trays) {
         const { data: pipelineItem } = await supabase
           .from('pipeline_items')
@@ -125,58 +125,58 @@ export async function notifyTechniciansAboutNewTrays(params: {
     }
     
     if (pipelineIds.size === 0) {
-      console.warn('[notifyTechniciansAboutNewTrays] Nu s-au găsit pipeline-uri pentru tăvițe')
-      return { success: true, notifiedCount: 0, errors: ['Nu s-au găsit pipeline-uri pentru tăvițe'] }
+      console.warn('[notifyTechniciansAboutNewTrays] No pipelines found for trays')
+      return { success: true, notifiedCount: 0, errors: ['No pipelines found for trays'] }
     }
     
-    // 2. Obține membrii cu acces la aceste pipeline-uri din user_pipeline_permissions
+    // 2. Get members with access to these pipelines from user_pipeline_permissions
     const { data: permissions, error: permissionsError } = await supabase
       .from('user_pipeline_permissions')
       .select('user_id, pipeline_id')
       .in('pipeline_id', Array.from(pipelineIds))
     
     if (permissionsError) {
-      console.error('[notifyTechniciansAboutNewTrays] Eroare la citirea permisiunilor:', permissionsError)
-      return { success: false, notifiedCount: 0, errors: [`Eroare permisiuni: ${permissionsError.message}`] }
+      console.error('[notifyTechniciansAboutNewTrays] Error reading permissions:', permissionsError)
+      return { success: false, notifiedCount: 0, errors: [`Permissions error: ${permissionsError.message}`] }
     }
     
     if (!permissions || permissions.length === 0) {
-      console.warn('[notifyTechniciansAboutNewTrays] Nu s-au găsit utilizatori cu permisiuni pentru pipeline-uri:', Array.from(pipelineIds))
-      return { success: true, notifiedCount: 0, errors: ['Nu s-au găsit utilizatori cu acces la aceste pipeline-uri'] }
+      console.warn('[notifyTechniciansAboutNewTrays] No users with permissions found for pipelines:', Array.from(pipelineIds))
+      return { success: true, notifiedCount: 0, errors: ['No users with access to these pipelines'] }
     }
     
-    // 3. Grupează utilizatorii după pipeline-uri și creează notificări
+    // 3. Group users by pipelines and create notifications
     const userPipelineMap = new Map<string, Set<string>>() // userId -> Set<pipelineId>
     const pipelineNamesMap = new Map<string, string>() // pipelineId -> pipelineName
     
-    // Obține numele pipeline-urilor pentru mesaje
+    // Get pipeline names for messages
     const { data: pipelines } = await supabase
       .from('pipelines')
       .select('id, name')
       .in('id', Array.from(pipelineIds))
     
-    pipelines?.forEach(p => {
+    pipelines?.forEach((p: { id: string; name: string }) => {
       pipelineNamesMap.set(p.id, p.name)
     })
     
-    // Construiește map-ul utilizator -> pipeline-uri
-    permissions.forEach(p => {
+    // Build user -> pipeline map
+    permissions.forEach((p: { user_id: string; pipeline_id: string }) => {
       if (!userPipelineMap.has(p.user_id)) {
         userPipelineMap.set(p.user_id, new Set())
       }
       userPipelineMap.get(p.user_id)!.add(p.pipeline_id)
     })
     
-    // 4. Creează notificări pentru fiecare utilizator
+    // 4. Create notifications for each user
     for (const [userId, userPipelines] of userPipelineMap.entries()) {
-      // Determină ce tăvițe sunt relevante pentru acest utilizator
+      // Determine which trays are relevant for this user
       const relevantTrays: string[] = []
       
       for (const tray of params.trays) {
-        // Verifică dacă tăvița este în unul din pipeline-urile utilizatorului
+        // Check if tray is in one of user's pipelines
         let trayPipelineId = tray.pipelineId
         
-        // Dacă nu avem pipelineId direct, îl căutăm din database
+        // If we don't have pipelineId directly, search it from database
         if (!trayPipelineId) {
           const { data: pipelineItem } = await supabase
             .from('pipeline_items')
@@ -188,18 +188,18 @@ export async function notifyTechniciansAboutNewTrays(params: {
           trayPipelineId = pipelineItem?.pipeline_id
         }
         
-        // Dacă tăvița este în unul din pipeline-urile utilizatorului, o includem
+        // If tray is in one of user's pipelines, include it
         if (trayPipelineId && userPipelines.has(trayPipelineId)) {
           relevantTrays.push(tray.number || tray.id)
         }
       }
       
       if (relevantTrays.length === 0) {
-        console.log(`[notifyTechniciansAboutNewTrays] Utilizator ${userId} nu are tăvițe relevante`)
+        console.log(`[notifyTechniciansAboutNewTrays] User ${userId} has no relevant trays`)
         continue
       }
       
-      // Construiește mesajul cu numele pipeline-urilor
+      // Build message with pipeline names
       const userPipelineNames = Array.from(userPipelines)
         .map(pId => pipelineNamesMap.get(pId) || pId)
         .filter(Boolean)
@@ -208,8 +208,8 @@ export async function notifyTechniciansAboutNewTrays(params: {
       const result = await createNotification({
         userId,
         type: 'tray_received',
-        title: '🔔 Tăvițe noi pentru procesare',
-        message: `Ai primit ${relevantTrays.length} tăviț${relevantTrays.length === 1 ? 'ă' : 'e'} noi pentru procesare${params.clientName ? ` de la ${params.clientName}` : ''}: ${relevantTrays.join(', ')}${userPipelineNames ? ` (Pipeline: ${userPipelineNames})` : ''}`,
+        title: '🔔 New trays for processing',
+        message: `You received ${relevantTrays.length} new tray${relevantTrays.length === 1 ? '' : 's'} for processing${params.clientName ? ` from ${params.clientName}` : ''}: ${relevantTrays.join(', ')}${userPipelineNames ? ` (Pipeline: ${userPipelineNames})` : ''}`,
         data: {
           trayNumbers: relevantTrays,
           serviceFileId: params.serviceFileId,
@@ -221,14 +221,14 @@ export async function notifyTechniciansAboutNewTrays(params: {
       
       if (result.success) {
         notifiedCount++
-        console.log(`[notifyTechniciansAboutNewTrays] Notificare creată pentru user ${userId}: ${relevantTrays.length} tăvițe`)
+        console.log(`[notifyTechniciansAboutNewTrays] Notification created for user ${userId}: ${relevantTrays.length} trays`)
       } else {
-        errors.push(`Eroare notificare user ${userId}: ${result.error}`)
-        console.error(`[notifyTechniciansAboutNewTrays] Eroare la crearea notificării pentru ${userId}:`, result.error)
+        errors.push(`Notification error user ${userId}: ${result.error}`)
+        console.error(`[notifyTechniciansAboutNewTrays] Error creating notification for ${userId}:`, result.error)
       }
     }
     
-    console.log(`[notifyTechniciansAboutNewTrays] Rezultat final: ${notifiedCount} notificări create, ${errors.length} erori`)
+    console.log(`[notifyTechniciansAboutNewTrays] Final result: ${notifiedCount} notifications created, ${errors.length} errors`)
     return { success: true, notifiedCount, errors }
   } catch (err: any) {
     console.error('[notifyTechniciansAboutNewTrays] Exception:', err.message, err.stack)
@@ -237,12 +237,12 @@ export async function notifyTechniciansAboutNewTrays(params: {
 }
 
 // =============================================================================
-// NOTIFY RECEPTIE (RECEPTION) ABOUT NEW MESSAGES
+// NOTIFY RECEPTION (RECEPTIE) ABOUT NEW MESSAGES
 // =============================================================================
 
 /**
- * Notifică toți utilizatorii cu acces la pipeline-ul Receptie despre un mesaj nou în conversație.
- * Receptia primește orice notificare referitoare la mesaje.
+ * Notifies all users with access to Reception pipeline about a new message in conversation.
+ * Reception receives any notification regarding messages.
  */
 export async function notifyReceptionAboutNewMessage(params: {
   conversationId: string
@@ -262,7 +262,7 @@ export async function notifyReceptionAboutNewMessage(params: {
       .maybeSingle()
 
     if (!receptiePipeline?.id) {
-      return { notifiedCount: 0, errors: ['Pipeline Receptie negăsit'] }
+      return { notifiedCount: 0, errors: ['Reception pipeline not found'] }
     }
 
     const { data: permissions, error: permErr } = await supabase
@@ -282,8 +282,8 @@ export async function notifyReceptionAboutNewMessage(params: {
       const result = await createNotification({
         userId,
         type: 'message_received',
-        title: 'Mesaj nou',
-        message: preview ? `Mesaj nou în conversație: ${preview}` : 'Mesaj nou în conversație.',
+        title: 'New message',
+        message: preview ? `New message in conversation: ${preview}` : 'New message in conversation.',
         data: {
           conversation_id: params.conversationId,
           lead_id: params.leadId,
@@ -306,7 +306,7 @@ export async function notifyReceptionAboutNewMessage(params: {
 // =============================================================================
 
 /**
- * Obține notificările pentru utilizatorul curent
+ * Gets notifications for current user
  */
 export async function getUserNotifications(params?: {
   unreadOnly?: boolean
@@ -344,7 +344,7 @@ export async function getUserNotifications(params?: {
 // =============================================================================
 
 /**
- * Marchează o notificare ca citită
+ * Marks a notification as read
  */
 export async function markNotificationAsRead(notificationId: string): Promise<{ success: boolean; error?: string }> {
   try {
@@ -365,7 +365,7 @@ export async function markNotificationAsRead(notificationId: string): Promise<{ 
 }
 
 /**
- * Marchează toate notificările ca citite pentru utilizatorul curent
+ * Marks all notifications as read for current user
  */
 export async function markAllNotificationsAsRead(): Promise<{ success: boolean; error?: string }> {
   try {
@@ -386,7 +386,7 @@ export async function markAllNotificationsAsRead(): Promise<{ success: boolean; 
 }
 
 // =============================================================================
-// CACHE NOTIFICĂRI PENTRU USER (un singur call la load / focus)
+// NOTIFICATION CACHE FOR USER (single call on load / focus)
 // =============================================================================
 
 const NOTIFICATIONS_CACHE_MS = 60 * 1000 // 1 min
@@ -394,8 +394,8 @@ let notificationsCache: { userId: string; data: Notification[]; ts: number } | n
 let notificationsPromise: Promise<Notification[]> | null = null
 
 /**
- * Notificări pentru user cu cache și dedupe request în zbor.
- * Folosit de NotificationBell pentru a evita 4× același request la mount/focus.
+ * User notifications with cache and dedupe in-flight requests.
+ * Used by NotificationBell to avoid 4× same request on mount/focus.
  */
 export async function getNotificationsForUserCached(userId: string): Promise<Notification[]> {
   const now = Date.now()
@@ -431,7 +431,7 @@ export function invalidateNotificationsCache() {
 // =============================================================================
 
 /**
- * Obține numărul de notificări necitite
+ * Gets count of unread notifications
  */
 export async function getUnreadNotificationCount(): Promise<{ count: number; error?: string }> {
   try {
@@ -450,4 +450,3 @@ export async function getUnreadNotificationCount(): Promise<{ count: number; err
     return { count: 0, error: err.message }
   }
 }
-

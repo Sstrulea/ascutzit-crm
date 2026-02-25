@@ -16,6 +16,10 @@ export type Service = {
 
 const supabase = supabaseBrowser();
 
+/**
+ * Fetches all services from the database, ordered by name.
+ * Returns services with price cast to number for UI consistency.
+ */
 export async function listServices(): Promise<Service[]> {
   const { data, error } = await supabase
     .from('services')
@@ -24,7 +28,7 @@ export async function listServices(): Promise<Service[]> {
 
   if (error) throw error;
 
-  // price este numeric în PG și poate veni ca string; cast la number pentru UI
+  // price is numeric in PG and may come as string; cast to number for UI
   return (data ?? []).map((s: any) => ({
     ...s,
     price: Number(s.price),
@@ -33,6 +37,10 @@ export async function listServices(): Promise<Service[]> {
   }));
 }
 
+/**
+ * Creates a new service with the given name and price.
+ * Associates the service with the currently authenticated user as created_by.
+ */
 export async function createService(input: {
   name: string;
   price: number;
@@ -49,6 +57,10 @@ export async function createService(input: {
   if (error) throw error;
 }
 
+/**
+ * Deletes a service by its ID.
+ * @param id - The ID of the service to delete
+ */
 export async function deleteService(id: string) {
   const { error } = await supabase.from('services').delete().eq('id', id);
   if (error) throw error;
