@@ -460,11 +460,16 @@ export function KanbanBoard({
         if (aHasRetur && !bHasRetur) return -1
         if (!aHasRetur && bHasRetur) return 1
         
-        // prioritate pentru cardurile cu tag Sună! (timp depășit – afișate primele, după PINNED) - doar în LEADuri sau leaduri straine
+        // prioritate pentru cardurile cu tag Sună! (timp depășit – afișate primele): Leaduri, Leaduri Straine, Call Back, Nu Răspunde
         const isStageAllowedForSuna = stageLower === 'leaduri' || stageLower === 'leads' || stageLower.includes('leaduri straine') || stageLower.includes('leaduristraine')
+          || stageLower.includes('call back') || stageLower.includes('callback')
+          || stageLower.includes('nu raspunde') || stageLower.includes('nuraspunde')
         const now = Date.now()
         const hasSuna = (item: any) => {
           if (!isStageAllowedForSuna) return false
+          const itemTags = item?.tags || []
+          const hasSunaTag = itemTags.some((t: any) => t && (t.name === 'Suna!' || (t.name && String(t.name).toLowerCase().includes('suna'))))
+          if (hasSunaTag) return true
           const cb = item?.callback_date
           const nr = item?.nu_raspunde_callback_at
           const isCallbackOverdue = !!cb && new Date(cb).getTime() <= now
