@@ -156,31 +156,24 @@ export function LeadDetailsPanel({
     setLead(initialLead)
   }, [initialLead])
 
-  if (!lead) return null
-
   const effectivePipelineSlug = overridePipelineSlug ?? pipelineSlug
 
-  // verifica daca suntem in unul dintre pipeline-urile care arata checkbox-urile
   const showActionCheckboxes = useMemo(() => {
     if (!effectivePipelineSlug) return false
     const slug = effectivePipelineSlug.toLowerCase()
     return slug.includes('receptie') || slug.includes('vanzari') || slug.includes('curier')
   }, [effectivePipelineSlug])
 
-  // verifica daca suntem in pipeline-ul Curier
   const isCurierPipeline = useMemo(() => {
     if (!effectivePipelineSlug) return false
     return effectivePipelineSlug.toLowerCase().includes('curier')
   }, [effectivePipelineSlug])
 
-  // Verifică dacă suntem în pipeline-ul Vânzări
   const isVanzariPipeline = useMemo(() => {
     if (!effectivePipelineSlug) return false
     return effectivePipelineSlug.toLowerCase().includes('vanzari') || effectivePipelineSlug.toLowerCase().includes('sales')
   }, [effectivePipelineSlug])
 
-
-  // Verifică dacă suntem în pipeline-ul Reparații
   const isReparatiiPipeline = useMemo(() => {
     if (!effectivePipelineSlug) return false
     return effectivePipelineSlug.toLowerCase().includes('reparatii') || effectivePipelineSlug.toLowerCase().includes('repair')
@@ -191,7 +184,6 @@ export function LeadDetailsPanel({
     return effectivePipelineSlug.toLowerCase().includes('receptie') || effectivePipelineSlug.toLowerCase().includes('reception')
   }, [effectivePipelineSlug])
 
-  // Verifică dacă suntem într-un pipeline departament (Saloane, Frizerii, Horeca, Reparatii)
   const isDepartmentPipeline = useMemo(() => {
     if (!effectivePipelineSlug) return false
     const slug = effectivePipelineSlug.toLowerCase()
@@ -201,7 +193,6 @@ export function LeadDetailsPanel({
            slug.includes('reparatii')
   }, [effectivePipelineSlug])
 
-  // Verifică dacă suntem în pipeline Saloane/Frizerii/Horeca (nu Reparatii)
   const isSaloaneHorecaFrizeriiPipeline = useMemo(() => {
     if (!effectivePipelineSlug) return false
     const slug = effectivePipelineSlug.toLowerCase()
@@ -210,7 +201,6 @@ export function LeadDetailsPanel({
            slug.includes('horeca')
   }, [effectivePipelineSlug])
 
-  // Obține rolul utilizatorului curent (din app_members.role)
   const { role, loading: roleLoading } = useRole()
   const { user } = useAuth()
   // Tehnician = rol explicit „technician” în app_members (nu „în app_members” = toți userii)
@@ -944,6 +934,8 @@ export function LeadDetailsPanel({
       },
     }).catch(() => {})
   }, [business.getLeadId, user?.id, user?.email])
+
+  if (!lead) return null
 
   return (
     <section ref={business.state.panelRef} className="h-full flex flex-col bg-card">

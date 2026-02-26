@@ -30,6 +30,12 @@ function isNuRaspundeStage(stageName: string): boolean {
   return (n.includes('nu') && n.includes('raspunde')) || n === 'nu raspunde'
 }
 
+/** Returnează dacă stage-ul este Leaduri Straine (la ieșire golim ambele date programate). */
+function isLeaduriStraineStage(stageName: string): boolean {
+  const n = String(stageName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
+  return n.includes('leaduri straine') || n.includes('leaduristraine')
+}
+
 // Helper pentru a determina tipul item-ului pe baza proprietăților lead-ului
 function getItemType(lead: KanbanLead): PipelineItemType {
   const leadAny = lead as any
@@ -1083,11 +1089,15 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
         setError(msg || 'Failed to move lead')
         throw new Error(typeof msg === 'string' ? msg : 'Mutarea a eșuat')
       } else {
-        // Când un lead iese din Call Back sau Nu Răspunde, golim data de reapel în DB
+        // Când un lead iese din Call Back, Nu Răspunde sau Leaduri Straine, golim datele de reapel în DB
         if (itemType === 'lead' && itemId) {
           const updates: Record<string, unknown> = {}
           if (isCallBackStage(previousStageName)) updates.callback_date = null
           if (isNuRaspundeStage(previousStageName)) updates.nu_raspunde_callback_at = null
+          if (isLeaduriStraineStage(previousStageName)) {
+            updates.callback_date = null
+            updates.nu_raspunde_callback_at = null
+          }
           if (Object.keys(updates).length > 0) {
             updateLead(itemId, updates).then(({ error: clearErr }) => {
               if (clearErr) console.error('[handleLeadMove] clear callback fields:', clearErr)

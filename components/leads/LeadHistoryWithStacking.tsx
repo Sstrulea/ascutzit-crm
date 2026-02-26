@@ -238,11 +238,6 @@ export default function LeadHistoryWithStacking({
   const hasMore = items ? items.length > 50 : false
   const totalStackedEvents = stackedEvents.length
 
-  // Loading and error states
-  if (loading) return <div className="p-4 text-sm text-muted-foreground">Se încarcă istoricul…</div>
-  if (error) return <div className="p-4 text-sm text-destructive">{error}</div>
-  if (!items || items.length === 0) return <div className="p-4 text-sm text-muted-foreground">Nu există evenimente încă.</div>
-
   const sourceLabel = useMemo(() => {
     if (!leadSource) return null
     const hasFb = !!(leadSource.campaign_name || leadSource.ad_name || leadSource.form_name)
@@ -251,6 +246,10 @@ export default function LeadHistoryWithStacking({
     if (leadSource.created_by) return { type: 'manual' as const, label: 'Manual', by: null }
     return { type: 'other' as const, label: 'Website / Import' }
   }, [leadSource])
+
+  if (loading) return <div className="p-4 text-sm text-muted-foreground">Se încarcă istoricul…</div>
+  if (error) return <div className="p-4 text-sm text-destructive">{error}</div>
+  if (!items || items.length === 0) return <div className="p-4 text-sm text-muted-foreground">Nu există evenimente încă.</div>
 
   return (
     <div className="flex flex-col h-full space-y-4">

@@ -81,6 +81,10 @@ function isNuRaspundeStageName(s: string): boolean {
   const n = String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
   return (n.includes('nu') && n.includes('raspunde')) || n === 'nu raspunde'
 }
+function isLeaduriStraineStageName(s: string): boolean {
+  const n = String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
+  return n.includes('leaduri straine') || n.includes('leaduristraine')
+}
 
 const LeadDetailsPanel = dynamic(
   () => import("@/components/leads/lead-details-panel").then(m => m.LeadDetailsPanel),
@@ -1437,10 +1441,14 @@ export default function CRMPage() {
       return
     }
 
-    if (isCallBackStageName(prevStage) || isNuRaspundeStageName(prevStage)) {
+    if (isCallBackStageName(prevStage) || isNuRaspundeStageName(prevStage) || isLeaduriStraineStageName(prevStage)) {
       const updates: Record<string, unknown> = {}
       if (isCallBackStageName(prevStage)) updates.callback_date = null
       if (isNuRaspundeStageName(prevStage)) updates.nu_raspunde_callback_at = null
+      if (isLeaduriStraineStageName(prevStage)) {
+        updates.callback_date = null
+        updates.nu_raspunde_callback_at = null
+      }
       updateLead(leadId, updates).catch((e) => console.error("[handleMoveToPipeline] clear callback fields:", e))
     }
     setSelectedLead(null)
@@ -1576,10 +1584,14 @@ export default function CRMPage() {
           console.error(`Eroare la mutarea lead-ului ${leadId}:`, res.message)
           return res
         }
-        if (isCallBackStageName(prevStage) || isNuRaspundeStageName(prevStage)) {
+        if (isCallBackStageName(prevStage) || isNuRaspundeStageName(prevStage) || isLeaduriStraineStageName(prevStage)) {
           const updates: Record<string, unknown> = {}
           if (isCallBackStageName(prevStage)) updates.callback_date = null
           if (isNuRaspundeStageName(prevStage)) updates.nu_raspunde_callback_at = null
+          if (isLeaduriStraineStageName(prevStage)) {
+            updates.callback_date = null
+            updates.nu_raspunde_callback_at = null
+          }
           updateLead(leadId, updates).catch((e) => console.error("[handleBulkMoveToPipeline] clear callback fields:", e))
         }
         return res

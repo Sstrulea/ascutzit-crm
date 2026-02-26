@@ -27,6 +27,7 @@ import type { Lead } from '@/lib/types/database'
 import { URGENT_MARKUP_PCT } from '@/lib/types/preturi'
 import type { V4SaveData } from '@/lib/history/vanzariViewV4Save'
 import { clearReceptieDraft } from '@/lib/history/receptieDraftCache'
+import { SPLIT_TRAY_FEATURE_ENABLED } from '@/lib/preturiFeatureFlags'
 
 /**
  * Componentă principală simplă care folosește hook-urile și orchestratorul
@@ -1251,10 +1252,10 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
 // -----------------------------------------------------------------------------------------------------------------------------------
       onClearForm={business.onClearForm}
       onRefreshItems={() => state.setItemsRefreshKey(k => k + 1)}
-      onSplitTrayItemsToTechnician={business.handleSplitTrayItemsToTechnician as any}
+      onSplitTrayItemsToTechnician={SPLIT_TRAY_FEATURE_ENABLED ? (business.handleSplitTrayItemsToTechnician as any) : undefined}
       currentUserId={user?.id ?? ''}
       currentUserDisplayName={(user?.user_metadata as any)?.full_name ?? user?.email?.split('@')[0] ?? 'Eu'}
-      onSplitTrayToRealTrays={business.handleSplitTrayToRealTrays as any}
+      onSplitTrayToRealTrays={SPLIT_TRAY_FEATURE_ENABLED ? (business.handleSplitTrayToRealTrays as any) : undefined}
       onBrandToggle={business.onBrandToggle}
       
       // Quick actions for department view
