@@ -84,6 +84,8 @@ interface UsePreturiTrayOperationsProps {
   
   // Callbacks
   recalcAllSheetsTotal: (quotes: LeadQuote[]) => Promise<void>
+  /** Apelat după ștergere reușită (ex. refresh Kanban). */
+  onAfterDeleteTray?: () => void
 }
 
 export function usePreturiTrayOperations({
@@ -124,6 +126,7 @@ export function usePreturiTrayOperations({
   instrumentToMove,
   targetTrayId,
   recalcAllSheetsTotal,
+  onAfterDeleteTray,
 }: UsePreturiTrayOperationsProps) {
   const { user: authUser } = useAuth()
 
@@ -146,10 +149,10 @@ export function usePreturiTrayOperations({
       return
     }
 
-    // Verifică disponibilitatea tăviței la nivel global (număr unic)
+    // Verifică unicitate număr per fișă (nu poate exista două tăvițe cu același număr pe aceeași fișă)
     try {
       const { checkTrayAvailability } = await import('@/lib/supabase/serviceFileOperations')
-      const { available, error: availError } = await checkTrayAvailability(num)
+      const { available, error: availError } = await checkTrayAvailability(num, { serviceFileId: fisaId || undefined })
       
       if (availError) {
         console.error('Error checking tray availability:', availError)
@@ -158,7 +161,7 @@ export function usePreturiTrayOperations({
       }
       
       if (!available) {
-        toast.error(`Tăvița cu numărul "${num}" este deja înregistrată în sistem. Te rog alege un alt număr.`)
+        toast.error(`O tăviță cu numărul "${num}" există deja pe această fișă. Alege un alt număr.`)
         return
       }
     } catch (err: any) {
@@ -303,20 +306,21 @@ export function usePreturiTrayOperations({
 
     // Verifică dacă numărul nou este diferit de cel curent
     if (newNumber.trim() !== (targetTray.number || '')) {
-      // Verifică disponibilitatea tăviței la nivel global, excluzând tăvița curentă
       try {
         const { checkTrayAvailability } = await import('@/lib/supabase/serviceFileOperations')
-        const { available, existingTray, error: availError } = await checkTrayAvailability(newNumber.trim())
-        
+        const { available, error: availError } = await checkTrayAvailability(newNumber.trim(), {
+          serviceFileId: fisaId || undefined,
+          excludeTrayId: trayId,
+        })
+
         if (availError) {
           console.error('Error checking tray availability:', availError)
           toast.error('Eroare la verificarea disponibilității tăviței')
           return
         }
-        
-        // Dacă o tăviță cu acest număr există și nu e cea curentă, aruncă eroare
-        if (!available && existingTray && existingTray.id !== trayId) {
-          toast.error(`Tăvița cu numărul "${newNumber.trim()}" este deja înregistrată în sistem.`)
+
+        if (!available) {
+          toast.error(`O tăviță cu numărul "${newNumber.trim()}" există deja pe această fișă. Alege un alt număr.`)
           return
         }
       } catch (err: any) {
@@ -402,10 +406,13 @@ export function usePreturiTrayOperations({
 
     // Verifică dacă numărul nou este diferit de cel curent
     if (editingTrayNumber.trim() !== (selectedQuote.number || '')) {
-      // Verifică disponibilitatea tăviței la nivel global, excluzând tăvița curentă
+      // Unicitate per fișă: nici o altă tăviță pe aceeași fișă să nu aibă același număr
       try {
         const { checkTrayAvailability } = await import('@/lib/supabase/serviceFileOperations')
-        const { available, existingTray, error: availError } = await checkTrayAvailability(editingTrayNumber.trim())
+        const { available, error: availError } = await checkTrayAvailability(editingTrayNumber.trim(), {
+          serviceFileId: fisaId || undefined,
+          excludeTrayId: selectedQuote.id,
+        })
         
         if (availError) {
           console.error('Error checking tray availability:', availError)
@@ -413,9 +420,8 @@ export function usePreturiTrayOperations({
           return
         }
         
-        // Dacă o tăviță cu acest număr există și nu e cea curentă, aruncă eroare
-        if (!available && existingTray && existingTray.id !== selectedQuote.id) {
-          toast.error(`Tăvița cu numărul "${editingTrayNumber.trim()}" este deja înregistrată în sistem. Te rog alege un alt număr.`)
+        if (!available) {
+          toast.error(`O tăviță cu numărul "${editingTrayNumber.trim()}" există deja pe această fișă. Alege un alt număr.`)
           return
         }
       } catch (err: any) {
@@ -583,6 +589,13 @@ export function usePreturiTrayOperations({
         } else {
           setSelectedQuoteId(null)
         }
+      }
+
+      // Sincronizează board-ul Kanban (Receptie/Departament) – același proces, altă locație
+      onAfterDeleteTray?.()
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tray:deleted', { detail: { trayId: trayToDelete } }))
+        window.dispatchEvent(new Event('refresh'))
       }
     } catch (error) {
       console.error('Error deleting tray:', error)
@@ -1562,8 +1575,28 @@ export function usePreturiTrayOperations({
   const sendAllTraysToPipeline = useCallback(async () => {
     if (sendAllTraysInProgressRef.current) return
     sendAllTraysInProgressRef.current = true
-    // Trimitem doar tăvițe cu număr (non-goale); tăvițele fără număr sau de vânzare nu merg la departamente
-    const traysToSend = quotes.filter((q: any) => {
+
+    // Șterge tăvițele unassigned (fără număr) înainte de trimitere – nu se trimit la departamente și nu trebuie să rămână pe fișă
+    const unassigned = quotes.filter((q: any) => {
+      const num = q?.number != null ? String(q.number).trim() : ''
+      return !num
+    })
+    for (const q of unassigned) {
+      const { success } = await deleteTray(q.id)
+      if (!success) console.warn('[sendAllTraysToPipeline] Nu s-a putut șterge tăvița unassigned:', q.id)
+    }
+    if (unassigned.length > 0) {
+      const keepIds = new Set(unassigned.map((q: any) => q.id))
+      setQuotes((prev) => prev.filter((p) => !keepIds.has(p.id)))
+      if (selectedQuoteId && keepIds.has(selectedQuoteId)) {
+        const remaining = quotes.filter((q: any) => !keepIds.has(q.id))
+        setSelectedQuoteId(remaining.length > 0 ? remaining[0].id : null)
+      }
+    }
+
+    // Recalculează quotes după eventuale ștergeri (folosim state actualizat prin callback în pasul următor)
+    const quotesAfterClean = unassigned.length > 0 ? quotes.filter((q: any) => (q?.number != null ? String(q.number).trim() : '') !== '') : quotes
+    const traysToSend = quotesAfterClean.filter((q: any) => {
       const num = q?.number != null ? String(q.number).trim() : ''
       if (!num) return false
       return !isVanzareTray(num)

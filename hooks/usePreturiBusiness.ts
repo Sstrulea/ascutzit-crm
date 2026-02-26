@@ -43,6 +43,8 @@ interface UsePreturiBusinessProps {
   isDepartmentPipeline: boolean
   isVanzariPipeline: boolean
   isReceptiePipeline: boolean
+  /** ID departament pentru view-ul filtrat (ex. Saloane); la salvare se trimite la V4 ca să nu șteargă itemii altor departamente. */
+  filterDepartmentId?: string | null
   subscriptionType: 'services' | 'parts' | 'both' | ''
   trayImages: any[]
   instrumentForm: any
@@ -138,6 +140,8 @@ interface UsePreturiBusinessProps {
   // Callbacks
   recalcAllSheetsTotal: (quotes: LeadQuote[]) => Promise<void>
   populateInstrumentFormFromItems: (items: LeadQuoteItem[], instrumentId: string | null, forceReload: boolean) => void
+  /** Apelat după ștergere reușită a unei tăvițe (ex. refresh Kanban). */
+  onAfterDeleteTray?: () => void
 }
 
 export function usePreturiBusiness({
@@ -157,6 +161,7 @@ export function usePreturiBusiness({
   isDepartmentPipeline,
   isVanzariPipeline,
   isReceptiePipeline,
+  filterDepartmentId,
   subscriptionType,
   trayImages,
   instrumentForm,
@@ -236,6 +241,7 @@ export function usePreturiBusiness({
   recalcAllSheetsTotal,
   populateInstrumentFormFromItems,
   setSaving,
+  onAfterDeleteTray,
 }: UsePreturiBusinessProps) {
   
   // Combină hook-urile specializate
@@ -363,6 +369,7 @@ export function usePreturiBusiness({
     instruments,
     departments,
     pipelinesWithIds,
+    filterDepartmentId,
     subtotal,
     totalDiscount,
     urgentAmount,
@@ -421,6 +428,7 @@ export function usePreturiBusiness({
     instrumentToMove,
     targetTrayId,
     recalcAllSheetsTotal,
+    onAfterDeleteTray,
   })
   // tempId eliminat - items-urile se salvează direct în DB, nu mai folosim temp IDs
 

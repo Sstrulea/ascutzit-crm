@@ -20,10 +20,10 @@ import type { Lead } from "@/app/(crm)/dashboard/page"
 import type { TagColor } from "@/lib/supabase/tagOperations"
 import { getOrCreatePinnedTag, getOrCreateNuRaspundeTag, getOrCreateSunaTag, getOrCreateCurierTrimisTag, getOrCreateOfficeDirectTag, getOrCreateReturTag, getOrCreateUrgentTag, getOrCreateNuAVenitTag, toggleLeadTag, addLeadTagIfNotPresent, listTags } from "@/lib/supabase/tagOperations"
 import { isTagHiddenFromUI } from "@/hooks/leadDetails/useLeadDetailsTags"
-import { deleteLead, updateLead, logLeadEvent, logButtonEvent } from "@/lib/supabase/leadOperations"
+import { deleteLead, updateLead, updateLeadWithHistory, logLeadEvent, logButtonEvent } from "@/lib/supabase/leadOperations"
 import { setLeadNoDeal, setLeadCurierTrimis, setLeadOfficeDirect } from "@/lib/vanzari/leadOperations"
 import { recordVanzariApelForDeliveryByStageName } from "@/lib/supabase/vanzariApeluri"
-import { deleteServiceFile, deleteTray, updateServiceFileWithHistory } from "@/lib/supabase/serviceFileOperations"
+import { deleteServiceFile, deleteTray, updateServiceFileWithHistory, updateTray } from "@/lib/supabase/serviceFileOperations"
 import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
 import { CallbackDialog } from "@/components/leads/vanzari/CallbackDialog"
 import { NuRaspundeDialog } from "@/components/leads/vanzari/NuRaspundeDialog"
@@ -105,12 +105,16 @@ interface LeadCardProps {
   onArchive?: () => Promise<void>
   /** Receptie: la scoaterea tag-ului Nu răspunde de pe fișă – mută fișa în De facturat și refresh */
   onNuRaspundeClearedForReceptie?: (serviceFileId: string) => void | Promise<void>
+  /** Vânzări: la adăugarea tag-ului Sună! mută lead-ul în stage-ul Suna */
+  onSunaTagAdded?: (leadId: string) => void
+  /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
+  onSunaTagRemoved?: (leadId: string, phone: string | undefined) => void
 }
 
 /** Taguri care nu apar în popup-ul „Taguri” de pe card (nu pot fi alocate de aici). */
 const TAGURI_ASCUNSE_DIN_POPUP = ['Follow Up', 'Frizerii', 'Horeca', 'Nevalidata', 'PINNED', 'Reparatii', 'Retur', 'RETUR', 'Saloane']
 
-export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDragging, stages, onPinToggle, isSelected = false, onSelectChange, leadTotal = 0, pipelineName, onRefresh, onClaimChange, onTagsChange, onDeliveryClear, showArchiveButton, onArchive, onNuRaspundeClearedForReceptie }: LeadCardProps) {
+export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDragging, stages, onPinToggle, isSelected = false, onSelectChange, leadTotal = 0, pipelineName, onRefresh, onClaimChange, onTagsChange, onDeliveryClear, showArchiveButton, onArchive, onNuRaspundeClearedForReceptie, onSunaTagAdded, onSunaTagRemoved }: LeadCardProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -143,6 +147,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
   const [assignableTagsList, setAssignableTagsList] = useState<{ id: string; name: string; color: TagColor }[]>([])
   const [loadingTags, setLoadingTags] = useState(false)
   const [togglingTagId, setTogglingTagId] = useState<string | null>(null)
+  const [unassigningTrayId, setUnassigningTrayId] = useState<string | null>(null)
   const ignoreNextCardClickRef = useRef<boolean>(false)
   
   // Tipul de item (lead/service_file/tray) - definit aici pentru a fi disponibil în useEffect
@@ -227,6 +232,15 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
         } else if (tagName === 'Office direct') {
           const stage = stages.find((s) => /office\s*direct/i.test(s))
           if (stage) onMove(lead.id, stage)
+        } else if (tagName === 'Suna!' || tagName === 'Sună!') {
+          onSunaTagAdded?.(leadIdForTags)
+        }
+      }
+      // La scoaterea tag-ului Sună! în Vânzări, mută lead-ul în Leaduri sau Leaduri Straine (după telefon)
+      if (hadTag && itemType === 'lead') {
+        const removedTagName = (currentTags.find((t) => t.id === tagId) as { name?: string } | undefined)?.name?.trim()
+        if (removedTagName === 'Suna!' || removedTagName === 'Sună!') {
+          onSunaTagRemoved?.(leadIdForTags, (lead as any).phone)
         }
       }
       // Actualizare live – fără refresh
@@ -591,7 +605,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
   const isArchivedStage = (lead.stage || '').toLowerCase().includes('arhivat')
   const deliveryAlreadyActiveNotArchived = !inNoDeal && !isCurierAjunsAziStage && (hasCurierTrimis || hasOfficeDirect || hasCurierTrimisTag || hasOfficeDirectTag) && !isArchivedStage
 
-  // Callback depășit: data/oră programată este în trecut → nu mai afișăm data, afișăm tag Sună!
+  // Callback depășit: data/oră programată este în trecut (afișăm tot data/oră pe card, cu stil diferit când e depășit)
   const isCallbackOverdue = useMemo(() => {
     const cb = (lead as any).callback_date
     if (!cb) return false
@@ -602,9 +616,10 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
     if (!nr) return false
     return new Date(nr).getTime() <= currentTime.getTime()
   }, [(lead as any).nu_raspunde_callback_at, currentTime])
-  const showCallbackDate = !inNoDeal && !isCurierAjunsAziStage && (lead as any).callback_date && !isCallbackOverdue
+  const showCallbackDate = !inNoDeal && !isCurierAjunsAziStage && !!(lead as any).callback_date
   const hasNuRaspundeTime = !!(lead as any).nu_raspunde_callback_at
-  const showNuRaspundeTime = !inNoDeal && !isCurierAjunsAziStage && hasNuRaspundeTime && !isNuRaspundeOverdue
+  /** Afișăm ora de reapel și când e depășită (roșu), nu doar când e în viitor (portocaliu). */
+  const showNuRaspundeDate = !inNoDeal && !isCurierAjunsAziStage && hasNuRaspundeTime
   // Tag „Sună!” doar în stage-urile: LEADuri sau leaduri straine
   const isStageAllowedForSuna = useMemo(() => {
     const s = (lead.stage || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
@@ -905,6 +920,28 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
     }
   }
 
+  const handleDeassignTrayTechnician = async (e: React.MouseEvent, trayId: string) => {
+    e.stopPropagation()
+    e.preventDefault()
+    ignoreNextCardClickRef.current = true
+    if (unassigningTrayId) return
+    setUnassigningTrayId(trayId)
+    try {
+      const { error } = await updateTray(trayId, {
+        technician_id: null,
+        technician2_id: null,
+        technician3_id: null,
+      })
+      if (error) throw error
+      toast({ title: "Tehnician dezatribuit", description: "Tăvița nu mai are tehnician atribuit." })
+      onRefresh?.()
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Eroare", description: err?.message ?? "Nu s-a putut dezatribui tehnicianul." })
+    } finally {
+      setUnassigningTrayId(null)
+    }
+  }
+
   const isTrayOrServiceFile = (lead as any).type === 'tray' || (lead as any).type === 'service_file' || lead.isQuote
   const isReadOnly = (lead as any).isReadOnly || false
   const qcStatus = (lead as any).qcStatus as ('validated' | 'not_validated' | null | undefined)
@@ -1155,6 +1192,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                                 const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string; name: string }[]) : []
                                 const newTags = currentTags.filter((t) => t.id !== sunaTag.id)
                                 onTagsChange?.(lead.id, newTags)
+                                onSunaTagRemoved?.(leadIdForDb, (lead as any).phone)
                               }
                             } catch (err: any) {
                               toast({ variant: "destructive", title: "Eroare", description: err?.message ?? "Nu s-a putut elimina tag-ul." })
@@ -1167,12 +1205,18 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                         </Button>
                       </span>
                     ) : showCallbackDate ? (
-                      <div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                      <div className={cn(
+                        'flex items-center gap-1 text-xs font-medium',
+                        isCallbackOverdue ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'
+                      )}>
                         <Calendar className="h-3 w-3 flex-shrink-0" />
                         <span>{format(new Date((lead as any).callback_date), 'dd MMM yyyy, HH:mm', { locale: ro })}</span>
                       </div>
-                    ) : showNuRaspundeTime ? (
-                      <div className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400 font-medium">
+                    ) : showNuRaspundeDate ? (
+                      <div className={cn(
+                        'flex items-center gap-1 text-xs font-medium',
+                        isNuRaspundeOverdue ? 'text-red-600 dark:text-red-400' : 'text-orange-600 dark:text-orange-400'
+                      )}>
                         <Clock className="h-3 w-3 flex-shrink-0" />
                         <span>{format(new Date((lead as any).nu_raspunde_callback_at), 'dd MMM yyyy, HH:mm', { locale: ro })}</span>
                       </div>
@@ -1501,7 +1545,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                             <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md border border-red-600 animate-suna-blink">
                               Sună!
                             </span>
-                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0 rounded" title="Elimină tag Sună!" disabled={isSavingSunaDismiss} onClick={(e) => { e.stopPropagation(); (async () => { setIsSavingSunaDismiss(true); try { await logLeadEvent(leadIdForDb, "Tag Sună! eliminat de pe card.", "suna_tag_eliminated", { tag_name: "Suna!" }); setSunaDismissed(true); const { error: updateErr } = await updateLead(leadIdForDb, { suna_acknowledged_at: new Date().toISOString() }); if (updateErr) console.warn('[LeadCard] suna_acknowledged_at update failed:', updateErr); if (leadIdForTags) { const sunaTag = await getOrCreateSunaTag(); await toggleLeadTag(leadIdForTags, sunaTag.id); const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string; name: string }[]) : []; const newTags = currentTags.filter((t) => t.id !== sunaTag.id); onTagsChange?.(lead.id, newTags); } } catch (err: any) { toast({ variant: "destructive", title: "Eroare", description: err?.message ?? "Nu s-a putut elimina tag-ul." }); } finally { setIsSavingSunaDismiss(false); } })(); }}>
+                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0 rounded" title="Elimină tag Sună!" disabled={isSavingSunaDismiss} onClick={(e) => { e.stopPropagation(); (async () => { setIsSavingSunaDismiss(true); try { await logLeadEvent(leadIdForDb, "Tag Sună! eliminat de pe card.", "suna_tag_eliminated", { tag_name: "Suna!" }); setSunaDismissed(true); const { error: updateErr } = await updateLead(leadIdForDb, { suna_acknowledged_at: new Date().toISOString() }); if (updateErr) console.warn('[LeadCard] suna_acknowledged_at update failed:', updateErr); if (leadIdForTags) { const sunaTag = await getOrCreateSunaTag(); await toggleLeadTag(leadIdForTags, sunaTag.id); const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string; name: string }[]) : []; const newTags = currentTags.filter((t) => t.id !== sunaTag.id); onTagsChange?.(lead.id, newTags); onSunaTagRemoved?.(leadIdForDb, (lead as any).phone); } } catch (err: any) { toast({ variant: "destructive", title: "Eroare", description: err?.message ?? "Nu s-a putut elimina tag-ul." }); } finally { setIsSavingSunaDismiss(false); } })(); }}>
                               <XCircle className="h-3.5 w-3.5" />
                             </Button>
                           </span>
@@ -1523,7 +1567,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                             <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md border border-red-600 animate-suna-blink">
                               Sună!
                             </span>
-                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0 rounded" title="Elimină tag Sună!" disabled={isSavingSunaDismiss} onClick={(e) => { e.stopPropagation(); (async () => { setIsSavingSunaDismiss(true); try { await logLeadEvent(leadIdForDb, "Tag Sună! eliminat de pe card.", "suna_tag_eliminated", { tag_name: "Suna!" }); setSunaDismissed(true); const { error: updateErr } = await updateLead(leadIdForDb, { suna_acknowledged_at: new Date().toISOString() }); if (updateErr) console.warn('[LeadCard] suna_acknowledged_at update failed:', updateErr); if (leadIdForTags) { const sunaTag = await getOrCreateSunaTag(); await toggleLeadTag(leadIdForTags, sunaTag.id); const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string; name: string }[]) : []; const newTags = currentTags.filter((t) => t.id !== sunaTag.id); onTagsChange?.(lead.id, newTags); } } catch (err: any) { toast({ variant: "destructive", title: "Eroare", description: err?.message ?? "Nu s-a putut elimina tag-ul." }); } finally { setIsSavingSunaDismiss(false); } })(); }}>
+                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0 rounded" title="Elimină tag Sună!" disabled={isSavingSunaDismiss} onClick={(e) => { e.stopPropagation(); (async () => { setIsSavingSunaDismiss(true); try { await logLeadEvent(leadIdForDb, "Tag Sună! eliminat de pe card.", "suna_tag_eliminated", { tag_name: "Suna!" }); setSunaDismissed(true); const { error: updateErr } = await updateLead(leadIdForDb, { suna_acknowledged_at: new Date().toISOString() }); if (updateErr) console.warn('[LeadCard] suna_acknowledged_at update failed:', updateErr); if (leadIdForTags) { const sunaTag = await getOrCreateSunaTag(); await toggleLeadTag(leadIdForTags, sunaTag.id); const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string; name: string }[]) : []; const newTags = currentTags.filter((t) => t.id !== sunaTag.id); onTagsChange?.(lead.id, newTags); onSunaTagRemoved?.(leadIdForDb, (lead as any).phone); } } catch (err: any) { toast({ variant: "destructive", title: "Eroare", description: err?.message ?? "Nu s-a putut elimina tag-ul." }); } finally { setIsSavingSunaDismiss(false); } })(); }}>
                               <XCircle className="h-3.5 w-3.5" />
                             </Button>
                           </span>
@@ -1811,6 +1855,25 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                         <span>Execuție: {trayInfo.executionTime}</span>
                       </span>
                     )}
+
+                    {/* Buton X: dezatribuie tehnicianul de la tăviță și de pe item */}
+                    {trayInfo.trayId && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 min-w-5 flex-shrink-0 rounded-full p-0 opacity-70 hover:opacity-100 hover:bg-destructive/10"
+                        onClick={(e) => handleDeassignTrayTechnician(e, trayInfo.trayId)}
+                        title="Dezatribuie tehnicianul de la tăviță"
+                        disabled={unassigningTrayId === trayInfo.trayId}
+                        aria-label="Dezatribuie tehnician"
+                      >
+                        {unassigningTrayId === trayInfo.trayId ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <XCircle className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                        )}
+                      </Button>
+                    )}
                   </div>
                 )
               })}
@@ -1893,6 +1956,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                             await toggleLeadTag(leadIdForTags, tag.id)
                             const currentTags = Array.isArray(lead?.tags) ? lead.tags : []
                             onTagsChange?.(lead.id, (currentTags as any[]).filter((t: any) => t.id !== tag.id))
+                            onSunaTagRemoved?.(leadIdForDb, (lead as any).phone)
                           } catch (err: any) {
                             toast({ variant: 'destructive', title: 'Eroare', description: err?.message ?? 'Nu s-a putut elimina eticheta.' })
                           } finally {
@@ -1929,20 +1993,60 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                       <Badge
                         key={tag.id}
                         variant="outline"
-                        className={getDepartmentBadgeStyle(tag.name) + " text-[10px] px-1.5 py-0.5"}
+                        className={getDepartmentBadgeStyle(tag.name) + " text-[10px] px-1.5 py-0.5 cursor-pointer hover:opacity-90 inline-flex items-center gap-0.5"}
+                        onClick={leadIdForTags ? async (e) => {
+                          e.stopPropagation()
+                          e.preventDefault()
+                          ignoreNextCardClickRef.current = true
+                          if (togglingTagId) return
+                          setTogglingTagId(tag.id)
+                          try {
+                            await toggleLeadTag(leadIdForTags, tag.id)
+                            const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string }[]) : []
+                            onTagsChange?.(lead.id, currentTags.filter((t) => t.id !== tag.id))
+                            toast({ title: "Tag scos", description: `„${tag.name}" a fost scos de pe card.` })
+                            onRefresh?.()
+                          } catch (err: any) {
+                            toast({ variant: "destructive", title: "Eroare", description: err?.message ?? "Nu s-a putut scoate tag-ul." })
+                          } finally {
+                            setTogglingTagId(null)
+                          }
+                        } : undefined}
+                        title={leadIdForTags ? "Click sau X pentru a scoate tag-ul de pe card" : undefined}
                       >
                         {getDepartmentIcon(tag.name)}
                         {tag.name}
+                        {leadIdForTags && <span className="ml-0.5 opacity-80 hover:opacity-100">×</span>}
                       </Badge>
                     )
                   }
                   return (
-                    <Badge 
-                      key={tag.id} 
-                      variant="outline" 
-                      className={`${tagClass(tag.color)} text-[10px] px-1.5 py-0.5`}
+                    <Badge
+                      key={tag.id}
+                      variant="outline"
+                      className={`${tagClass(tag.color)} text-[10px] px-1.5 py-0.5 cursor-pointer hover:opacity-90 inline-flex items-center gap-0.5`}
+                      onClick={leadIdForTags ? async (e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        ignoreNextCardClickRef.current = true
+                        if (togglingTagId) return
+                        setTogglingTagId(tag.id)
+                        try {
+                          await toggleLeadTag(leadIdForTags, tag.id)
+                          const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string }[]) : []
+                          onTagsChange?.(lead.id, currentTags.filter((t) => t.id !== tag.id))
+                          toast({ title: "Tag scos", description: `„${tag.name}" a fost scos de pe card.` })
+                          onRefresh?.()
+                        } catch (err: any) {
+                          toast({ variant: "destructive", title: "Eroare", description: err?.message ?? "Nu s-a putut scoate tag-ul." })
+                        } finally {
+                          setTogglingTagId(null)
+                        }
+                      } : undefined}
+                      title={leadIdForTags ? "Click sau X pentru a scoate tag-ul de pe card" : undefined}
                     >
                       {tag.name}
+                      {leadIdForTags && <span className="ml-0.5 opacity-80 hover:opacity-100">×</span>}
                     </Badge>
                   )
                 })}
@@ -1981,7 +2085,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
             const leadIdForDb = (lead as any).leadId || lead.id
             setIsSavingCallback(true)
             try {
-              const { error } = await updateLead(leadIdForDb, { callback_date: date.toISOString() })
+              const { error } = await updateLeadWithHistory(leadIdForDb, { callback_date: date.toISOString() })
               if (error) {
                 toast({ variant: "destructive", title: "Eroare", description: "Nu s-a putut programa callback-ul." })
                 return

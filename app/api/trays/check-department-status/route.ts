@@ -104,12 +104,22 @@ export async function GET(request: Request) {
       })
     }
 
+    // Tăvițele fără număr (unassigned) nu se iau în calcul și nu se afișează – evitat „Parțial complet” și „-” pe card
+    const effectiveTrays = trays.filter((t: any) => t.number != null && String(t.number).trim() !== '')
+    if (effectiveTrays.length === 0) {
+      return NextResponse.json({
+        status: 'green',
+        trays: [],
+        summary: { total: 0, correct: 0, missing: 0, wrongPipeline: 0 },
+      })
+    }
+
     let correct = 0
     let missing = 0
     let wrongPipeline = 0
     const trayDetails: any[] = []
 
-    for (const tray of trays) {
+    for (const tray of effectiveTrays) {
       const trayId = tray.id
       const trayNumber = tray.number
       
@@ -237,7 +247,7 @@ export async function GET(request: Request) {
     let finalStatus: 'red' | 'yellow' | 'green' | 'purple'
     if (wrongPipeline > 0) {
       finalStatus = 'purple'
-    } else if (missing === trays.length) {
+    } else if (missing === effectiveTrays.length) {
       finalStatus = 'red'
     } else if (missing > 0) {
       finalStatus = 'yellow'
@@ -249,7 +259,7 @@ export async function GET(request: Request) {
       status: finalStatus,
       trays: trayDetails,
       summary: {
-        total: trays.length,
+        total: effectiveTrays.length,
         correct,
         missing,
         wrongPipeline,

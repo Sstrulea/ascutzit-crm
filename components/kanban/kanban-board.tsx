@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import type { KanbanLead } from "../lib/types/database"
 import { Trash2, Loader2, TrendingUp, Inbox, Move, X, ArrowUpDown, ArrowUp, ArrowDown, MessageSquare, Package, PhoneCall, PhoneMissed, XCircle, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, Layers, Minus } from "lucide-react"
 import { toast } from "sonner"
-import { updateLead } from "@/lib/supabase/leadOperations"
+import { updateLead, updateLeadWithHistory } from "@/lib/supabase/leadOperations"
 import { setLeadNoDeal } from "@/lib/vanzari/leadOperations"
 import { CallbackDialog } from "@/components/leads/vanzari/CallbackDialog"
 import { NuRaspundeDialog } from "@/components/leads/vanzari/NuRaspundeDialog"
@@ -71,6 +71,10 @@ interface KanbanBoardProps {
   onNuRaspundeClearedForReceptie?: (serviceFileId: string) => void | Promise<void>
   /** Owner only: mută toate lead-urile din stage-ul „Curier Ajuns Azi” în „Avem Comandă” */
   onBulkMoveCurierAjunsAziToAvemComanda?: (leadIds: string[]) => Promise<void>
+  /** Vânzări: la adăugarea tag-ului Sună! mută lead-ul în stage-ul Suna */
+  onSunaTagAdded?: (leadId: string) => void
+  /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
+  onSunaTagRemoved?: (leadId: string, phone: string | undefined) => void
 }
 
 export function KanbanBoard({ 
@@ -94,6 +98,8 @@ export function KanbanBoard({
   showArchiveForStage,
   onNuRaspundeClearedForReceptie,
   onBulkMoveCurierAjunsAziToAvemComanda,
+  onSunaTagAdded,
+  onSunaTagRemoved,
 }: KanbanBoardProps) {
   const { role } = useRole()
   const canMovePipeline = role === 'owner' || role === 'admin'
@@ -454,11 +460,16 @@ export function KanbanBoard({
         if (aHasRetur && !bHasRetur) return -1
         if (!aHasRetur && bHasRetur) return 1
         
-        // prioritate pentru cardurile cu tag Sună! (timp depășit – afișate primele, după PINNED) - doar în LEADuri sau leaduri straine
+        // prioritate pentru cardurile cu tag Sună! (timp depășit – afișate primele): Leaduri, Leaduri Straine, Call Back, Nu Răspunde
         const isStageAllowedForSuna = stageLower === 'leaduri' || stageLower === 'leads' || stageLower.includes('leaduri straine') || stageLower.includes('leaduristraine')
+          || stageLower.includes('call back') || stageLower.includes('callback')
+          || stageLower.includes('nu raspunde') || stageLower.includes('nuraspunde')
         const now = Date.now()
         const hasSuna = (item: any) => {
           if (!isStageAllowedForSuna) return false
+          const itemTags = item?.tags || []
+          const hasSunaTag = itemTags.some((t: any) => t && (t.name === 'Suna!' || (t.name && String(t.name).toLowerCase().includes('suna'))))
+          if (hasSunaTag) return true
           const cb = item?.callback_date
           const nr = item?.nu_raspunde_callback_at
           const isCallbackOverdue = !!cb && new Date(cb).getTime() <= now
@@ -1360,6 +1371,8 @@ export function KanbanBoard({
                                       onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                                       showArchiveButton={showArchiveForStage?.(stage)}
                                       onArchive={onArchiveCard ? () => onArchiveCard(lead.id) : undefined}
+                                      onSunaTagAdded={onSunaTagAdded}
+                                      onSunaTagRemoved={onSunaTagRemoved}
                                     />
                                   ))}
                                 </div>
@@ -1403,6 +1416,8 @@ export function KanbanBoard({
                               onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                               showArchiveButton={showArchiveForStage?.(stage)}
                               onArchive={onArchiveCard ? () => onArchiveCard(lead.id) : undefined}
+                              onSunaTagAdded={onSunaTagAdded}
+                              onSunaTagRemoved={onSunaTagRemoved}
                             />
                           </div>
                         )
@@ -1606,6 +1621,8 @@ export function KanbanBoard({
                                         onTagsChange={onTagsChange}
                                         onDeliveryClear={onDeliveryClear}
                                         onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
+                                        onSunaTagAdded={onSunaTagAdded}
+                                        onSunaTagRemoved={onSunaTagRemoved}
                                       />
                                     ))}
                                   </div>
@@ -1634,6 +1651,8 @@ export function KanbanBoard({
                                 onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                                 showArchiveButton={showArchiveForStage?.(stage)}
                                 onArchive={onArchiveCard ? () => onArchiveCard(entry.lead.id) : undefined}
+                                onSunaTagAdded={onSunaTagAdded}
+                                onSunaTagRemoved={onSunaTagRemoved}
                               />
                             </div>
                           )
@@ -1887,6 +1906,8 @@ export function KanbanBoard({
                                       onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                                       showArchiveButton={showArchiveForStage?.(stage)}
                                       onArchive={onArchiveCard ? () => onArchiveCard(lead.id) : undefined}
+                                      onSunaTagAdded={onSunaTagAdded}
+                                      onSunaTagRemoved={onSunaTagRemoved}
                                     />
                                   ))}
                                 </div>
@@ -1930,6 +1951,8 @@ export function KanbanBoard({
                               onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                               showArchiveButton={showArchiveForStage?.(stage)}
                               onArchive={onArchiveCard ? () => onArchiveCard(lead.id) : undefined}
+                              onSunaTagAdded={onSunaTagAdded}
+                              onSunaTagRemoved={onSunaTagRemoved}
                             />
                           </div>
                         )
@@ -2042,7 +2065,7 @@ export function KanbanBoard({
             setBulkActionSaving(true)
             try {
               for (const leadId of selectedLeadIds) {
-                const { error } = await updateLead(leadId, { callback_date: date.toISOString() })
+                const { error } = await updateLeadWithHistory(leadId, { callback_date: date.toISOString() })
                 if (error) {
                   toast.error('Eroare la programarea callback-ului.')
                   break

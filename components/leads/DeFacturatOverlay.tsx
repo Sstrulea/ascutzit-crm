@@ -13,6 +13,12 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   User,
   Phone,
   Mail,
@@ -28,6 +34,9 @@ import {
   MessageSquare,
   PhoneOff,
   Pin,
+  Tag,
+  Plus,
+  ChevronDown,
 } from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
 import {
@@ -52,7 +61,7 @@ import { listQuoteItems } from '@/lib/utils/preturi-helpers'
 import { useToast } from '@/hooks/use-toast'
 import { PrintView, PrintTraysView } from '@/components/print'
 import { URGENT_MARKUP_PCT } from '@/lib/types/preturi'
-import { getOrCreateNuRaspundeTag, addLeadTagIfNotPresent, getOrCreatePinnedTag, toggleLeadTag } from '@/lib/supabase/tagOperations'
+import { getOrCreateNuRaspundeTag, addLeadTagIfNotPresent, getOrCreatePinnedTag, toggleLeadTag, listTags, type Tag as TagType } from '@/lib/supabase/tagOperations'
 import { NuRaspundeDialog } from '@/components/leads/vanzari/NuRaspundeDialog'
 import type { LeadQuoteItem } from '@/lib/types/preturi'
 import type { Service } from '@/lib/supabase/serviceOperations'
@@ -137,6 +146,10 @@ export function DeFacturatOverlay({
   const [isPinned, setIsPinned] = useState(false)
   const [retrimiteLoading, setRetrimiteLoading] = useState(false)
   const [techniciansByTrayId, setTechniciansByTrayId] = useState<Map<string, string>>(new Map())
+  const [allTags, setAllTags] = useState<TagType[]>([])
+  const [tagsLoading, setTagsLoading] = useState(false)
+  const [togglingTagId, setTogglingTagId] = useState<string | null>(null)
+  const [localTags, setLocalTags] = useState<{ id: string; name: string }[]>([])
 
   const DEPARTMENT_NAMES = ['Saloane', 'Frizerii', 'Horeca', 'Reparatii']
 
@@ -148,6 +161,20 @@ export function DeFacturatOverlay({
     const pinned = tags.some((t: any) => t?.name === 'PINNED')
     setIsPinned(pinned)
   }, [kanbanLead?.tags])
+
+  useEffect(() => {
+    const t = Array.isArray(kanbanLead?.tags) ? kanbanLead.tags : []
+    setLocalTags(t)
+  }, [open, kanbanLead?.tags])
+
+  useEffect(() => {
+    if (!open || !leadId) return
+    setTagsLoading(true)
+    listTags()
+      .then(setAllTags)
+      .catch(() => toast({ title: 'Eroare', description: 'Nu s-au putut încărca tag-urile', variant: 'destructive' }))
+      .finally(() => setTagsLoading(false))
+  }, [open, leadId, toast])
 
   // Ref stabil pentru kanbanLead – evită recrearea loadData la fiecare render
   const kanbanLeadRef = useRef(kanbanLead)
@@ -758,6 +785,65 @@ export function DeFacturatOverlay({
                   Retrimite în departament
                 </Button>
               </div>
+
+              {/* Tag-uri: afișare + atribuire */}
+              {leadId && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2">
+                  <span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground shrink-0">
+                    <Tag className="h-4 w-4" />
+                    Tag-uri
+                  </span>
+                  {localTags.map((t) => (
+                    <Badge key={t.id} variant="secondary" className="text-xs font-medium">
+                      {t.name}
+                    </Badge>
+                  ))}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-sm gap-1"
+                        disabled={tagsLoading || allTags.length === 0}
+                      >
+                        {tagsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                        Adaugă tag
+                        <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-[280px] overflow-y-auto w-[200px]">
+                      {allTags.map((tag) => {
+                        const isOnLead = localTags.some((x) => x.id === tag.id)
+                        return (
+                          <DropdownMenuItem
+                            key={tag.id}
+                            onSelect={(e) => {
+                              e.preventDefault()
+                              if (togglingTagId) return
+                              setTogglingTagId(tag.id)
+                              const had = localTags.some((x) => x.id === tag.id)
+                              setLocalTags((prev) => (had ? prev.filter((x) => x.id !== tag.id) : [...prev, { id: tag.id, name: tag.name }]))
+                              toggleLeadTag(leadId, tag.id)
+                                .then(() => onRefresh?.())
+                                .catch((err) => {
+                                  setLocalTags(Array.isArray(kanbanLead?.tags) ? kanbanLead.tags : [])
+                                  toast({ title: 'Eroare', description: err?.message ?? 'Nu s-a putut actualiza tag-ul', variant: 'destructive' })
+                                })
+                                .finally(() => setTogglingTagId(null))
+                            }}
+                            disabled={togglingTagId !== null}
+                          >
+                            <span className={`inline-flex items-center gap-2 ${isOnLead ? 'font-semibold' : ''}`}>
+                              <span className="rounded px-1.5 py-0.5 text-xs bg-muted">{tag.name}</span>
+                              {isOnLead && <span className="text-xs text-muted-foreground">(pe fișă)</span>}
+                            </span>
+                          </DropdownMenuItem>
+                        )
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
 
               <NuRaspundeDialog
                 open={showNuRaspundeDialog}

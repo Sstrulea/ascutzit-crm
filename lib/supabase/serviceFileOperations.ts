@@ -549,16 +549,20 @@ export async function createTray(data: {
       }
     }
 
+    // Tăvițe cu număr: o singură înregistrare per (service_file_id, număr normalizat) – evită duplicate 28S vs 28s
     if (!skipUniqueness && !isEmptyNumber) {
-      const { data: existing } = await supabase
+      const { data: traysForFisa } = await supabase
         .from('trays')
         .select('*')
         .eq('service_file_id', data.service_file_id)
-        .eq('number', data.number)
-        .maybeSingle()
-
-      if (existing) {
-        return { data: existing as Tray, error: null }
+        .not('status', 'in', '("2","3")')
+      const normalizedNew = numberTrimmed.toLowerCase()
+      const existingSameNumber = (traysForFisa || []).find(
+        (t: { number?: string | null }) =>
+          t.number != null && String(t.number).trim().toLowerCase() === normalizedNew
+      )
+      if (existingSameNumber) {
+        return { data: existingSameNumber as Tray, error: null }
       }
     }
 
@@ -576,7 +580,21 @@ export async function createTray(data: {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      if (isEmptyNumber && !skipUniqueness && (error as any).code === '23505') {
+        const { data: traysForFisa } = await supabase
+          .from('trays')
+          .select('*')
+          .eq('service_file_id', data.service_file_id)
+          .not('status', 'in', '("2","3")')
+          .order('created_at', { ascending: true })
+        const existingEmpty = (traysForFisa || []).find(
+          (t: { number?: string | null }) => t.number == null || String(t.number).trim() === ''
+        )
+        if (existingEmpty) return { data: existingEmpty as Tray, error: null }
+      }
+      throw error
+    }
     return { data: result as Tray, error: null }
   } catch (error) {
     return { data: null, error }
@@ -589,36 +607,40 @@ export async function createTray(data: {
  * Dacă o tăviță cu același număr există deja, funcția returnează o eroare.
  * 
  * @param trayNumber - Numărul tăviței (ex: "Tăbliță 1")
+ * @param options - serviceFileId: dacă e setat, verifică doar pe fișa dată (unicitate per fișă); excludeTrayId: exclude tăvița la edit
  * @returns Obiect cu available: true dacă tăvița poate fi creată, false dacă există deja,
  *          și existingTray cu datele tăviței existente (dacă aceasta există)
  */
 export async function checkTrayAvailability(
-  trayNumber: string
+  trayNumber: string,
+  options?: { serviceFileId?: string; excludeTrayId?: string }
 ): Promise<{ available: boolean; existingTray?: Tray; error: any }> {
   try {
-    // Caută orice tăviță cu același număr.
-    // La arhivare, tăvițele sunt redenumite (41 → 41-copy1), deci numărul original devine disponibil.
-    const { data, error } = await supabase
-      .from('trays')
-      .select('*')
-      .eq('number', trayNumber.trim())
-      .maybeSingle()
-    
+    const num = trayNumber.trim()
+    if (!num) return { available: true, error: null }
+
+    let q = supabase.from('trays').select('*').eq('number', num)
+    if (options?.serviceFileId) {
+      q = q.eq('service_file_id', options.serviceFileId)
+    }
+    if (options?.excludeTrayId) {
+      q = q.neq('id', options.excludeTrayId)
+    }
+    const { data, error } = await q.maybeSingle()
+
     if (error) {
       console.error('[checkTrayAvailability] Error checking tray availability:', error)
       throw error
     }
-    
-    // Dacă nu găsim vreo tăviță cu acest număr, e disponibilă
+
     if (!data) {
       return { available: true, error: null }
     }
-    
-    // Dacă găsim o tăviță existentă, nu e disponibilă
-    return { 
-      available: false, 
+
+    return {
+      available: false,
       existingTray: data as Tray,
-      error: null 
+      error: null
     }
   } catch (error) {
     return { available: false, error }
@@ -858,26 +880,46 @@ export async function deleteTray(trayId: string, supabaseClient?: SupabaseClient
  * @returns { success, deletedCount, error }
  */
 /**
+ * Opțiuni pentru deleteEmptyTrays (recomandare cron – Analiza riscurilor Etapa 3).
+ */
+export type DeleteEmptyTraysOptions = {
+  /** Exclude tăvițe create în ultimele N minute (cron: ex. 10). 0 = nu exclude. */
+  minAgeMinutes?: number
+}
+
+/**
  * Șterge doar tăvițele care sunt „goale” în toate sensurile:
  * - fără număr (number null sau string gol)
  * - fără niciun tray_item
  * - fără imagini (tray_images)
  * Nu șterge tăvițe care au conținut dar au rămas fără număr din greșeală.
+ * Cu minAgeMinutes > 0 (ex. 10), nu șterge tăvițe create foarte recent (evită ștergerea placeholder-ului nou).
  */
-export async function deleteEmptyTrays(supabaseClient?: SupabaseClient): Promise<{
+export async function deleteEmptyTrays(
+  supabaseClient?: SupabaseClient,
+  options?: DeleteEmptyTraysOptions
+): Promise<{
   success: boolean
   deletedCount: number
   error: any
 }> {
   const db = supabaseClient ?? supabaseBrowser()
+  const minAgeMinutes = options?.minAgeMinutes ?? 0
   try {
     const { data: trays, error: fetchErr } = await db
       .from('trays')
-      .select('id, number')
+      .select('id, number, created_at')
     if (fetchErr) return { success: false, deletedCount: 0, error: fetchErr }
+    const cutoff = minAgeMinutes > 0 ? Date.now() - minAgeMinutes * 60 * 1000 : 0
     const noNumberTrays = (trays || []).filter(
-      (t: { id: string; number: string | null }) =>
-        t.number == null || String(t.number).trim() === ''
+      (t: { id: string; number: string | null; created_at?: string | null }) => {
+        if (t.number != null && String(t.number).trim() !== '') return false
+        if (cutoff > 0 && t.created_at) {
+          const created = new Date(t.created_at).getTime()
+          if (Number.isFinite(created) && created > cutoff) return false
+        }
+        return true
+      }
     )
     if (noNumberTrays.length === 0) {
       return { success: true, deletedCount: 0, error: null }

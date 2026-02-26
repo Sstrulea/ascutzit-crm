@@ -50,6 +50,7 @@ type ReceptieTrayInfo = {
   }>
   hasInLucru: boolean
   hasInAsteptare: boolean
+  hasFinalizare: boolean
   allFinalizare: boolean
   allQcValidated: boolean
   hasNoua: boolean
@@ -582,7 +583,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       }
 
       // ========== III. IN LUCRU ==========
-      // Când o tăviță se află în lucru
+      // Când o tăviță se află în lucru, sau cel puțin o tăviță e finalizată dar alta încă nu (ex. Nouă fără tehnician)
       if (serviceFileTraysInfo && serviceFileTraysInfo.trays.length > 0) {
         if (serviceFileTraysInfo.hasInLucru && inLucruStage) {
           if (pipelineItem.stage_id !== inLucruStage.id) {
@@ -592,6 +593,13 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
         }
         // Dacă toate tăvițele sunt finalizate dar nu validate QC, rămâne în In Lucru
         if (serviceFileTraysInfo.allFinalizare && !serviceFileTraysInfo.allQcValidated && inLucruStage) {
+          if (pipelineItem.stage_id !== inLucruStage.id) {
+            moves.push({ serviceFileId: serviceFile.id, targetStage: inLucruStage, pipelineItem })
+          }
+          return
+        }
+        // Cel puțin o tăviță finalizată dar alta încă nu → fișa în IN LUCRU (chiar dacă tăvița rămasă nu are tehnician)
+        if (serviceFileTraysInfo.hasFinalizare && !serviceFileTraysInfo.allFinalizare && inLucruStage) {
           if (pipelineItem.stage_id !== inLucruStage.id) {
             moves.push({ serviceFileId: serviceFile.id, targetStage: inLucruStage, pipelineItem })
           }
@@ -1339,6 +1347,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       const hasInLucru = stageTypes.includes('in_lucru')
       const hasInAsteptare = stageTypes.includes('in_asteptare')
       const hasNewUnassigned = stageTypes.includes('new_unassigned')
+      const hasFinalizare = stageTypes.includes('finalizare')
       const allFinalizare = stageTypes.length > 0 && stageTypes.every(s => s === 'finalizare')
       
       // Verifică dacă toate tăvițele finalizate sunt validate în Quality
@@ -1368,6 +1377,9 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
         receptieStage = findStageByPattern(receptieStages, 'DE_FACTURAT')
       } else if (allFinalizare && !allQcValidated) {
         // Dacă toate tăvițele sunt finalizate DAR nu sunt toate validate, rămâne în "In Lucru" (cu status mov)
+        receptieStage = findStageByPattern(receptieStages, 'IN_LUCRU')
+      } else if (hasFinalizare && !allFinalizare) {
+        // Cel puțin o tăviță finalizată dar alta încă nu (Nouă fără tehnician, sau în lucru) → fișa în IN LUCRU
         receptieStage = findStageByPattern(receptieStages, 'IN_LUCRU')
       } else if (hasNewUnassigned) {
         // Dacă sunt tăvițe neatribuite din stagiul NOUĂ, pune-le în COLET AJUNS
@@ -1647,6 +1659,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       }>
       hasInLucru: boolean
       hasInAsteptare: boolean
+      hasFinalizare: boolean
       allFinalizare: boolean
       allQcValidated: boolean
       hasNoua: boolean
@@ -1704,6 +1717,9 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       if (!traysData?.length) return { result, trayQcValidatedAtMap: new Map<string, string | null>() }
       allTrays = traysData as TrayRow[]
     }
+    // Tăvițele fără număr (unassigned) nu intră în logica QC / De Facturat – nu blochează mutarea
+    const hasNumber = (t: TrayRow) => t.number != null && String(t.number).trim() !== ''
+    allTrays = allTrays.filter(hasNumber)
     const allTrayIds = allTrays.map(t => t.id)
 
     // === QC status per TĂVIȚĂ (items_events) – din preload (6.3) sau fetch local ===
@@ -1951,6 +1967,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
           trays: [],
           hasInLucru: false,
           hasInAsteptare: false,
+          hasFinalizare: false,
           allFinalizare: false,
           allQcValidated: false,
           hasNoua: false,
@@ -1995,6 +2012,8 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
         info.hasInAsteptare = true
       } else if (stageType === 'noua') {
         info.hasNoua = true
+      } else if (stageType === 'finalizare') {
+        info.hasFinalizare = true
       }
     })
     

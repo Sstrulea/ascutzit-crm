@@ -513,7 +513,7 @@ export function DepartmentView({
 
           {/* Acțiuni - aliniate la dreapta */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            {selectedQuoteId && items.length > 0 && technicians.length > 0 && (
+            {(onSplitTrayToRealTrays || onSplitTrayItemsToTechnician) && selectedQuoteId && items.length > 0 && technicians.length > 0 && (
               <Button
                 size="sm"
                 type="button"
@@ -528,7 +528,7 @@ export function DepartmentView({
               </Button>
             )}
 
-            {selectedQuoteId && items.length > 0 && technicians.length > 0 && (
+            {onSplitTrayItemsToTechnician && selectedQuoteId && items.length > 0 && technicians.length > 0 && (
               <Button
                 size="sm"
                 type="button"

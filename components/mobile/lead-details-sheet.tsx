@@ -58,6 +58,7 @@ import type { TechnicianDetailEntry } from '@/lib/supabase/serviceFileOperations
 import { LeadTechnicianDetailsSection } from '@/components/lead-details/sections'
 import { SplitTrayToRealTraysDialog } from '@/components/preturi/dialogs/SplitTrayToRealTraysDialog'
 import { SplitTrayTechnicianDialog } from '@/components/preturi/dialogs/SplitTrayTechnicianDialog'
+import { SPLIT_TRAY_FEATURE_ENABLED } from '@/lib/preturiFeatureFlags'
 
 const supabase = supabaseBrowser()
 const toSlug = (s: string) => String(s).toLowerCase().replace(/\s+/g, '-')
@@ -2436,8 +2437,8 @@ export function LeadDetailsSheet({
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        {/* Doar Împarte tăvița */}
-                        {isDepartmentPipeline && getTrayId() && pipelineIdForTray && (
+                        {/* Doar Împarte tăvița – ascuns când împărțirea tăvițelor e dezactivată */}
+                        {SPLIT_TRAY_FEATURE_ENABLED && isDepartmentPipeline && getTrayId() && pipelineIdForTray && (
                           <div className="flex flex-wrap gap-2">
                             <Button
                               variant="outline"
@@ -3153,8 +3154,8 @@ export function LeadDetailsSheet({
                 </Dialog>
               )}
 
-          {/* Dialog Împarte volumul către alt tehnician (mobil – la fel ca desktop) */}
-          {isDepartmentPipeline && getTrayId() && trayItems.length > 0 && techniciansForSplit.length > 0 && (
+          {/* Dialog Împarte volumul către alt tehnician (mobil – la fel ca desktop) – doar când feature e activ */}
+          {SPLIT_TRAY_FEATURE_ENABLED && isDepartmentPipeline && getTrayId() && trayItems.length > 0 && techniciansForSplit.length > 0 && (
             <SplitTrayTechnicianDialog
               open={splitOpen}
               onOpenChange={setSplitOpen}
@@ -3179,8 +3180,8 @@ export function LeadDetailsSheet({
             />
           )}
 
-          {/* Dialog Împarte tăvița în 2/3 tăvițe (mobil – la fel ca desktop) */}
-          {isDepartmentPipeline && getTrayId() && pipelineIdForTray && user && (
+          {/* Dialog Împarte tăvița în 2/3 tăvițe (mobil – la fel ca desktop) – doar când feature e activ */}
+          {SPLIT_TRAY_FEATURE_ENABLED && isDepartmentPipeline && getTrayId() && pipelineIdForTray && user && (
             <SplitTrayToRealTraysDialog
               open={splitRealOpen}
               onOpenChange={setSplitRealOpen}

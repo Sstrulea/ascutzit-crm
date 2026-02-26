@@ -10,6 +10,12 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Loader2,
   FileText,
   Package,
@@ -23,12 +29,15 @@ import {
   Printer,
   Pin,
   ArrowUpCircle,
+  Tag,
+  Plus,
+  ChevronDown,
 } from 'lucide-react'
 import { getServiceFile, listTraysForServiceFile } from '@/lib/supabase/serviceFileOperations'
 import { moveItemToStage, getPipelineIdForItem } from '@/lib/supabase/pipelineOperations'
 import { fetchStagesForPipeline } from '@/lib/supabase/kanban/fetchers'
 import { matchesStagePattern, findStageByPattern } from '@/lib/supabase/kanban/constants'
-import { getOrCreateNuRaspundeTag, toggleLeadTag, getOrCreatePinnedTag, getOrCreateUrgentareTag, addLeadTagIfNotPresent } from '@/lib/supabase/tagOperations'
+import { getOrCreateNuRaspundeTag, toggleLeadTag, getOrCreatePinnedTag, getOrCreateUrgentareTag, addLeadTagIfNotPresent, listTags, type Tag as TagType } from '@/lib/supabase/tagOperations'
 import { listServices } from '@/lib/supabase/serviceOperations'
 import { listQuoteItems } from '@/lib/utils/preturi-helpers'
 import { useToast } from '@/hooks/use-toast'
@@ -90,6 +99,10 @@ export function NuRaspundeOverlay({
   const [isPinned, setIsPinned] = useState(false)
   const [retrimiteLoading, setRetrimiteLoading] = useState(false)
   const [isUrgentaring, setIsUrgentaring] = useState(false)
+  const [allTags, setAllTags] = useState<TagType[]>([])
+  const [tagsLoading, setTagsLoading] = useState(false)
+  const [togglingTagId, setTogglingTagId] = useState<string | null>(null)
+  const [localTags, setLocalTags] = useState<{ id: string; name: string }[]>([])
   const kanbanLeadRef = useRef(kanbanLead)
   kanbanLeadRef.current = kanbanLead
 
@@ -103,6 +116,11 @@ export function NuRaspundeOverlay({
     const pinned = tags.some((t: any) => t?.name === 'PINNED')
     setIsPinned(pinned)
   }, [kanbanLead?.tags])
+
+  useEffect(() => {
+    const t = Array.isArray((kanbanLead as any)?.tags) ? (kanbanLead as any).tags : []
+    setLocalTags(t)
+  }, [open, (kanbanLead as any)?.tags])
 
   const loadData = useCallback(async () => {
     const kl = kanbanLeadRef.current
@@ -274,6 +292,15 @@ export function NuRaspundeOverlay({
   useEffect(() => {
     if (open && kanbanLead) loadData()
   }, [open, (kanbanLead as any)?.id, (kanbanLead as any)?.type, loadData])
+
+  useEffect(() => {
+    if (!open || !leadId) return
+    setTagsLoading(true)
+    listTags()
+      .then(setAllTags)
+      .catch(() => toast({ title: 'Eroare', description: 'Nu s-au putut încărca tag-urile', variant: 'destructive' }))
+      .finally(() => setTagsLoading(false))
+  }, [open, leadId, toast])
 
   const getReceptieStages = useCallback(async () => {
     const receptie = (pipelinesWithStages || []).find((p: any) => norm(p.name || '').includes('receptie'))
@@ -567,6 +594,65 @@ export function NuRaspundeOverlay({
                 {isUrgentare ? 'Anulează urgentare' : 'Urgentare'}
               </Button>
             </div>
+
+            {/* Tag-uri: afișare + atribuire */}
+            {leadId && (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2">
+                <span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground shrink-0">
+                  <Tag className="h-4 w-4" />
+                  Tag-uri
+                </span>
+                {localTags.map((t) => (
+                  <Badge key={t.id} variant="secondary" className="text-xs font-medium">
+                    {t.name}
+                  </Badge>
+                ))}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-sm gap-1"
+                      disabled={tagsLoading || allTags.length === 0}
+                    >
+                      {tagsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                      Adaugă tag
+                      <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="max-h-[280px] overflow-y-auto w-[200px]">
+                    {allTags.map((tag) => {
+                      const isOnLead = localTags.some((x) => x.id === tag.id)
+                      return (
+                        <DropdownMenuItem
+                          key={tag.id}
+                          onSelect={(e) => {
+                            e.preventDefault()
+                            if (togglingTagId) return
+                            setTogglingTagId(tag.id)
+                            const had = localTags.some((x) => x.id === tag.id)
+                            setLocalTags((prev) => (had ? prev.filter((x) => x.id !== tag.id) : [...prev, { id: tag.id, name: tag.name }]))
+                            toggleLeadTag(leadId, tag.id)
+                              .then(() => onRefresh?.())
+                              .catch((err) => {
+                                setLocalTags(Array.isArray((kanbanLead as any)?.tags) ? (kanbanLead as any).tags : [])
+                                toast({ title: 'Eroare', description: err?.message ?? 'Nu s-a putut actualiza tag-ul', variant: 'destructive' })
+                              })
+                              .finally(() => setTogglingTagId(null))
+                          }}
+                          disabled={togglingTagId !== null}
+                        >
+                          <span className={`inline-flex items-center gap-2 ${isOnLead ? 'font-semibold' : ''}`}>
+                            <span className="rounded px-1.5 py-0.5 text-xs bg-muted">{tag.name}</span>
+                            {isOnLead && <span className="text-xs text-muted-foreground">(pe fișă)</span>}
+                          </span>
+                        </DropdownMenuItem>
+                      )
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
 
             {/* Opțiuni fișă */}
             {serviceFile && (

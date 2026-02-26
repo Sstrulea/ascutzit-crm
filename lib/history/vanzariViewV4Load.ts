@@ -124,7 +124,6 @@ export async function loadVanzariViewV4FromDb(
     const servicesOut: V4LoadedService[] = []
     const partsOut: V4LoadedPart[] = []
     const instrumentTrayId: Record<string, string> = {}
-    const instrumentHasServiceOrPart = new Set<string>()
 
     for (const row of trayItems as any[]) {
       const instrumentId = row.instrument_id
@@ -164,7 +163,6 @@ export async function loadVanzariViewV4FromDb(
       }
 
       if (itemType === 'service' || row.service_id) {
-        instrumentHasServiceOrPart.add(instrumentId)
         const serviceId = row.service_id || (notes.service_id as string)
         if (serviceId) {
           // Articol = numele serviciului; folosim name_snapshot, apoi numele din join service:services(id,name), nu numele instrumentului
@@ -191,7 +189,6 @@ export async function loadVanzariViewV4FromDb(
           })
         }
       } else if (itemType === 'part' || row.part_id) {
-        instrumentHasServiceOrPart.add(instrumentId)
         partsOut.push({
           id: generateLocalId(),
           instrumentLocalId: localId!,
@@ -201,11 +198,9 @@ export async function loadVanzariViewV4FromDb(
           trayId: trayId,
           forSerialNumbers: (notes.forSerialNumbers as string[]) ?? [],
         })
-      } else {
-        if (!instrumentHasServiceOrPart.has(instrumentId)) {
-          instrumentTrayId[localId!] = trayId
-        }
       }
+      // Atribuie tăvița instrumentului la fiecare rând (serviciu, piesă sau doar instrument), ca la re-deschidere butonul „Trimite tăvițele” să fie activ
+      instrumentTrayId[localId!] = trayId
     }
 
     const instrumentsOut = Array.from(instrumentsMap.values())

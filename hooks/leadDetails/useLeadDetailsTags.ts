@@ -35,6 +35,10 @@ interface UseLeadDetailsTagsProps {
   onTagsChange?: (leadId: string, tags: Tag[]) => void
   /** Când true (pipeline Receptie), PINNED poate fi atribuit/eliminat de receptie */
   isReceptiePipeline?: boolean
+  /** Vânzări: la adăugarea tag-ului Sună! mută lead-ul în stage-ul Suna */
+  onSunaTagAdded?: (leadId: string) => void
+  /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
+  onSunaTagRemoved?: (leadId: string, phone: string | undefined) => void
 }
 
 export function useLeadDetailsTags({
@@ -45,6 +49,8 @@ export function useLeadDetailsTags({
   setSelectedTagIds,
   onTagsChange,
   isReceptiePipeline = false,
+  onSunaTagAdded,
+  onSunaTagRemoved,
 }: UseLeadDetailsTagsProps) {
   
   // Verifică dacă un tag este tag de departament
@@ -103,9 +109,13 @@ export function useLeadDetailsTags({
       try {
         await logLeadEvent(leadId, "Tag Sună! eliminat din detalii.", "suna_tag_eliminated", { tag_name: "Suna!" })
         await updateLead(leadId, { suna_acknowledged_at: new Date().toISOString() })
+        onSunaTagRemoved?.(leadId, (lead as any)?.phone)
       } catch (e) {
         console.warn('[useLeadDetailsTags] suna_acknowledged_at on Sună! remove:', e)
       }
+    }
+    if (tag && !isRemoving && (tag.name === 'Suna!' || tag.name === 'Sună!')) {
+      onSunaTagAdded?.(leadId)
     }
 
     // 2) compute next selection based on current state
@@ -119,7 +129,7 @@ export function useLeadDetailsTags({
     // 4) notify parent AFTER local setState (outside render)
     const nextTags = allTags.filter(t => nextIds.includes(t.id))
     onTagsChange?.(leadId, nextTags)
-  }, [lead, getLeadId, allTags, selectedTagIds, setSelectedTagIds, onTagsChange, isReceptiePipeline])
+  }, [lead, getLeadId, allTags, selectedTagIds, setSelectedTagIds, onTagsChange, isReceptiePipeline, onSunaTagAdded, onSunaTagRemoved])
 
   /** True dacă tag-ul poate fi înlăturat (nu e auto, sau e PINNED în Receptie) */
   const canRemoveTag = useCallback((tagName: string) => {

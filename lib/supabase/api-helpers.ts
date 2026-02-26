@@ -78,3 +78,26 @@ export async function requireOwner() {
   console.log('[requireOwner] Owner verified successfully:', user.id)
   return { user, admin }
 }
+
+/**
+ * Cere autentificare și rol admin sau owner.
+ * Folosit pentru endpoint-uri admin care permit atât owner cât și admin.
+ */
+export async function requireAdminOrOwner() {
+  const { user } = await requireAuth()
+  const admin = createAdminClient()
+  const { data: membership, error } = await admin
+    .from('app_members')
+    .select('role')
+    .eq('user_id', user.id)
+    .single()
+
+  if (error || !membership) {
+    throw NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
+  }
+  const role = (membership.role ?? '').toLowerCase()
+  if (role !== 'owner' && role !== 'admin') {
+    throw NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
+  }
+  return { user, admin }
+}

@@ -190,8 +190,11 @@ export function LeadServiceFilesSelector({
                       <SelectValue placeholder={loadingTrays ? "Se încarcă..." : "Selectează o tăviță"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {allTrays.map((tray) => {
-                        const displayText = `Tăviță #${tray.number}`
+                      {allTrays.map((tray, index) => {
+                        const num = (tray.number || '').trim()
+                        const sameNumberBefore = allTrays.slice(0, index).filter((t) => (t.number || '').trim().toLowerCase() === num.toLowerCase()).length
+                        const suffix = sameNumberBefore > 0 ? ` (${sameNumberBefore + 1})` : ''
+                        const displayText = num ? `Tăviță #${tray.number}${suffix}` : `Tăviță fără număr${suffix}`
                         return (
                           <SelectItem key={tray.id} value={tray.id}>
                             {displayText}

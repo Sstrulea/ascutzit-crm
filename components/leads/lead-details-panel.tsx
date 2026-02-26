@@ -113,6 +113,10 @@ interface LeadDetailsPanelProps {
   onSectionChangeForPersist?: (section: 'fisa' | 'de-confirmat' | 'istoric') => void
   /** Receptie: la scoaterea „Nu răspunde” din detalii fișă – mută fișa în De facturat și refresh */
   onMoveFisaToDeFacturat?: (serviceFileId: string) => void | Promise<void>
+  /** Vânzări: la adăugarea tag-ului Sună! mută lead-ul în stage-ul Suna */
+  onSunaTagAdded?: (leadId: string) => void
+  /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
+  onSunaTagRemoved?: (leadId: string, phone: string | undefined) => void
 }
 
 export function LeadDetailsPanel({
@@ -131,6 +135,8 @@ export function LeadDetailsPanel({
   defaultSection,
   onSectionChangeForPersist,
   onMoveFisaToDeFacturat,
+  onSunaTagAdded,
+  onSunaTagRemoved,
 }: LeadDetailsPanelProps) {
   const supabase = supabaseBrowser()
   
@@ -150,31 +156,24 @@ export function LeadDetailsPanel({
     setLead(initialLead)
   }, [initialLead])
 
-  if (!lead) return null
-
   const effectivePipelineSlug = overridePipelineSlug ?? pipelineSlug
 
-  // verifica daca suntem in unul dintre pipeline-urile care arata checkbox-urile
   const showActionCheckboxes = useMemo(() => {
     if (!effectivePipelineSlug) return false
     const slug = effectivePipelineSlug.toLowerCase()
     return slug.includes('receptie') || slug.includes('vanzari') || slug.includes('curier')
   }, [effectivePipelineSlug])
 
-  // verifica daca suntem in pipeline-ul Curier
   const isCurierPipeline = useMemo(() => {
     if (!effectivePipelineSlug) return false
     return effectivePipelineSlug.toLowerCase().includes('curier')
   }, [effectivePipelineSlug])
 
-  // Verifică dacă suntem în pipeline-ul Vânzări
   const isVanzariPipeline = useMemo(() => {
     if (!effectivePipelineSlug) return false
     return effectivePipelineSlug.toLowerCase().includes('vanzari') || effectivePipelineSlug.toLowerCase().includes('sales')
   }, [effectivePipelineSlug])
 
-
-  // Verifică dacă suntem în pipeline-ul Reparații
   const isReparatiiPipeline = useMemo(() => {
     if (!effectivePipelineSlug) return false
     return effectivePipelineSlug.toLowerCase().includes('reparatii') || effectivePipelineSlug.toLowerCase().includes('repair')
@@ -185,7 +184,6 @@ export function LeadDetailsPanel({
     return effectivePipelineSlug.toLowerCase().includes('receptie') || effectivePipelineSlug.toLowerCase().includes('reception')
   }, [effectivePipelineSlug])
 
-  // Verifică dacă suntem într-un pipeline departament (Saloane, Frizerii, Horeca, Reparatii)
   const isDepartmentPipeline = useMemo(() => {
     if (!effectivePipelineSlug) return false
     const slug = effectivePipelineSlug.toLowerCase()
@@ -195,7 +193,6 @@ export function LeadDetailsPanel({
            slug.includes('reparatii')
   }, [effectivePipelineSlug])
 
-  // Verifică dacă suntem în pipeline Saloane/Frizerii/Horeca (nu Reparatii)
   const isSaloaneHorecaFrizeriiPipeline = useMemo(() => {
     if (!effectivePipelineSlug) return false
     const slug = effectivePipelineSlug.toLowerCase()
@@ -204,7 +201,6 @@ export function LeadDetailsPanel({
            slug.includes('horeca')
   }, [effectivePipelineSlug])
 
-  // Obține rolul utilizatorului curent (din app_members.role)
   const { role, loading: roleLoading } = useRole()
   const { user } = useAuth()
   // Tehnician = rol explicit „technician” în app_members (nu „în app_members” = toți userii)
@@ -262,6 +258,8 @@ export function LeadDetailsPanel({
     onItemStageUpdated,
     user,
     initialSection: defaultSection,
+    onSunaTagAdded,
+    onSunaTagRemoved,
   })
 
   // NOTĂ: Toate state-urile sunt gestionate în useLeadDetailsBusiness hook
@@ -937,6 +935,8 @@ export function LeadDetailsPanel({
     }).catch(() => {})
   }, [business.getLeadId, user?.id, user?.email])
 
+  if (!lead) return null
+
   return (
     <section ref={business.state.panelRef} className="h-full flex flex-col bg-card">
       {/* Header refactorizat */}
@@ -1492,6 +1492,7 @@ export function LeadDetailsPanel({
                       onAfterFacturare={onRefresh}
                       onAfterSendTrays={onRefresh}
                       onAfterSave={onRefresh}
+                      onAfterDeleteTray={onRefresh}
                       onClose={onClose}
                       showUrgentareButton={itemType === 'service_file' || itemType === 'tray'}
                       isUrgentare={isUrgentare}

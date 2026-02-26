@@ -212,9 +212,12 @@ export default function StatisticiApeluriPage() {
     if (profile?.role !== 'owner') return
     setBackfilling(true)
     try {
-      const res = await fetch('/api/owner/backfill-vanzari-apeluri', { method: 'POST' })
+      const res = await fetch('/api/owner/backfill-vanzari-apeluri', { method: 'POST', credentials: 'include' })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Eroare la backfill')
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('Sesiune expirată. Te rugăm să te reconectezi.')
+        throw new Error(data.error || 'Eroare la backfill')
+      }
       toast.success(data.message || `Backfill: ${data.inserted} comenzi adăugate`)
       await loadData()
     } catch (e: any) {
@@ -228,9 +231,12 @@ export default function StatisticiApeluriPage() {
     if (profile?.role !== 'owner' || !atribuieUserId) return
     setAtribuieLoading(true)
     try {
-      const res = await fetch(`/api/owner/backfill-vanzari-apeluri?atribuie=1&userId=${encodeURIComponent(atribuieUserId)}`, { method: 'POST' })
+      const res = await fetch(`/api/owner/backfill-vanzari-apeluri?atribuie=1&userId=${encodeURIComponent(atribuieUserId)}`, { method: 'POST', credentials: 'include' })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Eroare la atribuire')
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('Sesiune expirată. Te rugăm să te reconectezi.')
+        throw new Error(data.error || 'Eroare la atribuire')
+      }
       toast.success(data.message || `Atribuit: ${data.attributed ?? 0} comenzi, ${data.inserted ?? 0} înregistrări noi`)
       setAtribuieOpen(false)
       setAtribuieUserId('')
@@ -249,11 +255,15 @@ export default function StatisticiApeluriPage() {
       const apelAt = atribuieDate.toISOString()
       const res = await fetch('/api/owner/atribuie-apel-manual', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadId: atribuieLeadId, userId: atribuieUserId, status: atribuieStatus, apelAt }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Eroare la atribuire')
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('Sesiune expirată. Te rugăm să te reconectezi.')
+        throw new Error(data.error || 'Eroare la atribuire')
+      }
       toast.success(data.message || 'Apel atribuit cu succes.')
       setAtribuieOpen(false)
       setAtribuieLeadId('')
