@@ -17,7 +17,7 @@ import { Plus, Settings2, Filter, X, UserPlus, Loader2, User, MapPin, Building2,
 import { useRole, useAuthContext } from '@/lib/contexts/AuthContext'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
 import { AppSidebar as Sidebar, LoadingScreen } from '@/components/layout'
-import { moveLeadToPipelineByName, getPipelineOptions, updatePipelineAndStages, logLeadEvent, logItemEvent } from "@/lib/supabase/leadOperations"
+import { moveLeadToPipelineByName, getPipelineOptions, updatePipelineAndStages, logLeadEvent, logItemEvent, updateLead } from "@/lib/supabase/leadOperations"
 import { invalidateStageIdsCache } from "@/lib/supabase/tehnicianDashboardStageIdsCache"
 import { clearDashboardFullCache } from "@/lib/supabase/tehnicianDashboard"
 import { usePipelinesCache } from "@/hooks/usePipelinesCache"
@@ -44,6 +44,7 @@ import { NuRaspundeOverlay } from "@/components/leads/NuRaspundeOverlay"
 import { searchTraysGlobally } from "@/lib/supabase/traySearchOperations"
 import { TRAY_SEARCH_OPEN_KEY, PENDING_SEARCH_OPEN_KEY, PENDING_SEARCH_OPEN_TTL_MS, type TraySearchOpenPayload } from "@/components/search/SmartTraySearch"
 import { NetworkStatusBanner } from "@/components/ui/network-status-banner"
+import { isForeignPhone } from "@/lib/facebook-lead-helpers"
 
 type Technician = {
   id: string // user_id din app_members
@@ -70,6 +71,15 @@ function isHiddenVanzariStage(stageName: string): boolean {
   if (n.includes('curier') && n.includes('trimis')) return true
   if (n.includes('office') && n.includes('direct')) return true
   return false
+}
+
+function isCallBackStageName(s: string): boolean {
+  const n = String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
+  return n.includes('call') && n.includes('back')
+}
+function isNuRaspundeStageName(s: string): boolean {
+  const n = String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
+  return (n.includes('nu') && n.includes('raspunde')) || n === 'nu raspunde'
 }
 
 const LeadDetailsPanel = dynamic(
@@ -453,6 +463,19 @@ export default function CRMPage() {
     if (!isVanzariPipeline || showHiddenVanzariStages) return orderedStages
     return orderedStages.filter((s) => !isHiddenVanzariStage(s))
   }, [isVanzariPipeline, showHiddenVanzariStages, orderedStages])
+
+  /** Vânzări: nume stage-uri pentru mutare automată la tag Sună! (Suna, Leaduri, Leaduri Straine). */
+  const { sunaStageName, leaduriStageName, leaduriStraineStageName } = useMemo(() => {
+    const norm = (x: string) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const suna = visibleStages.find((s) => norm(s).includes('suna'))
+    const leaduri = visibleStages.find((s) => (norm(s).includes('leaduri') || norm(s).includes('leads')) && !norm(s).includes('straine'))
+    const straine = visibleStages.find((s) => norm(s).includes('straine') && norm(s).includes('lead'))
+    return {
+      sunaStageName: suna ?? undefined,
+      leaduriStageName: leaduri ?? undefined,
+      leaduriStraineStageName: straine ?? undefined,
+    }
+  }, [visibleStages])
 
   /** Actualizare taguri în același timp pe board și în panoul de detalii (dacă e deschis pentru acel lead). */
   const handleTagsChange = useCallback((leadId: string, tags: Tag[]) => {
@@ -1390,6 +1413,8 @@ export default function CRMPage() {
   }
 
   async function handleMoveToPipeline(leadId: string, targetName: string) {
+    const lead = leads.find((l: any) => l.id === leadId)
+    const prevStage = lead?.stage ?? ""
     const res = await moveLeadToPipelineByName(leadId, targetName, "UI move from modal")
     if (!res.ok) {
       if (res.code === "TARGET_PIPELINE_NO_ACTIVE_STAGES") {
@@ -1412,10 +1437,16 @@ export default function CRMPage() {
       return
     }
 
+    if (isCallBackStageName(prevStage) || isNuRaspundeStageName(prevStage)) {
+      const updates: Record<string, unknown> = {}
+      if (isCallBackStageName(prevStage)) updates.callback_date = null
+      if (isNuRaspundeStageName(prevStage)) updates.nu_raspunde_callback_at = null
+      updateLead(leadId, updates).catch((e) => console.error("[handleMoveToPipeline] clear callback fields:", e))
+    }
     setSelectedLead(null)
     clearOpenCard()
     toast({ title: "Lead moved", description: `Sent to ${targetName} (default stage).` })
-    router.refresh?.() 
+    router.refresh?.()
   }
 
   // functie pentru mutarea in batch in stage
@@ -1538,9 +1569,18 @@ export default function CRMPage() {
   const handleBulkMoveToPipeline = async (leadIds: string[], pipelineName: string) => {
     try {
       const movePromises = leadIds.map(async (leadId) => {
+        const lead = leads.find((l: any) => l.id === leadId)
+        const prevStage = lead?.stage ?? ""
         const res = await moveLeadToPipelineByName(leadId, pipelineName, "Bulk move")
         if (!res.ok) {
           console.error(`Eroare la mutarea lead-ului ${leadId}:`, res.message)
+          return res
+        }
+        if (isCallBackStageName(prevStage) || isNuRaspundeStageName(prevStage)) {
+          const updates: Record<string, unknown> = {}
+          if (isCallBackStageName(prevStage)) updates.callback_date = null
+          if (isNuRaspundeStageName(prevStage)) updates.nu_raspunde_callback_at = null
+          updateLead(leadId, updates).catch((e) => console.error("[handleBulkMoveToPipeline] clear callback fields:", e))
         }
         return res
       })
@@ -2321,6 +2361,11 @@ export default function CRMPage() {
                   } : undefined}
                   onNuRaspundeClearedForReceptie={pipelineSlug?.toLowerCase() === 'receptie' ? moveServiceFileToDeFacturat : undefined}
                   onBulkMoveCurierAjunsAziToAvemComanda={toSlugNormalized(activePipelineName || '').includes('vanzari') ? handleBulkMoveCurierAjunsAziToAvemComanda : undefined}
+                  onSunaTagAdded={isVanzariPipeline && sunaStageName ? (leadId: string) => handleMove(leadId, sunaStageName) : undefined}
+                  onSunaTagRemoved={isVanzariPipeline && (leaduriStageName || leaduriStraineStageName) ? (leadId: string, phone: string | undefined) => {
+                    const stage = isForeignPhone(phone) ? leaduriStraineStageName : leaduriStageName
+                    if (stage) handleMove(leadId, stage)
+                  } : undefined}
                 />
                 
                 {/* Panel de detalii: rămâne deschis până la Close/Escape (nu se închide la click în afară) */}
@@ -2351,6 +2396,11 @@ export default function CRMPage() {
                 onRefresh={refresh}
                 onItemStageUpdated={updateItemStage}
                 onMoveFisaToDeFacturat={pipelineSlug?.toLowerCase() === 'receptie' ? moveServiceFileToDeFacturat : undefined}
+                onSunaTagAdded={isVanzariPipeline && sunaStageName ? (leadId: string) => handleMove(leadId, sunaStageName) : undefined}
+                onSunaTagRemoved={isVanzariPipeline && (leaduriStageName || leaduriStraineStageName) ? (leadId: string, phone: string | undefined) => {
+                  const stage = isForeignPhone(phone) ? leaduriStraineStageName : leaduriStageName
+                  if (stage) handleMove(leadId, stage)
+                } : undefined}
               />
                       </div>
                     </div>

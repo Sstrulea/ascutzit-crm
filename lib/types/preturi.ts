@@ -38,6 +38,8 @@ export interface PreturiProps {
   onAfterSendTrays?: () => void
   /** Apelat după salvare fișă (ex. refresh Kanban pentru urgent / date actualizate). */
   onAfterSave?: () => void
+  /** Apelat după ștergere tăviță (ex. refresh Kanban ca board-ul să nu mai afișeze tăvița ștearsă). */
+  onAfterDeleteTray?: () => void
   /** Închide panoul / overlay (ex. din overlay-ul „Distribuie instrumentele”). */
   onClose?: () => void
   /** Pentru fișe/tăvițe: afișează butonul Urgentare în secțiunea Recepție Comandă. */

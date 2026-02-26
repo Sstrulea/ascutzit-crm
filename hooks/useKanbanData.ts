@@ -18,6 +18,18 @@ import { toast } from 'sonner'
 const supabase = supabaseBrowser()
 const toSlug = (s: string) => String(s).toLowerCase().replace(/\s+/g, '-')
 
+/** Returnează dacă stage-ul este Call Back / Callback (pentru a șterge callback_date la ieșire). */
+function isCallBackStage(stageName: string): boolean {
+  const n = String(stageName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
+  return n.includes('call') && n.includes('back')
+}
+
+/** Returnează dacă stage-ul este Nu răspunde (pentru a șterge nu_raspunde_callback_at la ieșire). */
+function isNuRaspundeStage(stageName: string): boolean {
+  const n = String(stageName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
+  return (n.includes('nu') && n.includes('raspunde')) || n === 'nu raspunde'
+}
+
 // Helper pentru a determina tipul item-ului pe baza proprietăților lead-ului
 function getItemType(lead: KanbanLead): PipelineItemType {
   const leadAny = lead as any
@@ -1071,6 +1083,17 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
         setError(msg || 'Failed to move lead')
         throw new Error(typeof msg === 'string' ? msg : 'Mutarea a eșuat')
       } else {
+        // Când un lead iese din Call Back sau Nu Răspunde, golim data de reapel în DB
+        if (itemType === 'lead' && itemId) {
+          const updates: Record<string, unknown> = {}
+          if (isCallBackStage(previousStageName)) updates.callback_date = null
+          if (isNuRaspundeStage(previousStageName)) updates.nu_raspunde_callback_at = null
+          if (Object.keys(updates).length > 0) {
+            updateLead(itemId, updates).then(({ error: clearErr }) => {
+              if (clearErr) console.error('[handleLeadMove] clear callback fields:', clearErr)
+            }).catch((e) => console.error('[handleLeadMove] clear callback fields:', e))
+          }
+        }
         // Dacă mutarea a reușit și noul stage este "Arhivat", eliberează tăvițele
         const isArchiveStage = newStageNameLower.includes('arhivat') || newStageNameLower.includes('arhiva') || newStageNameLower.includes('archive')
         if (isArchiveStage && itemType === 'service_file') {

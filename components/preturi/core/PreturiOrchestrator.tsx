@@ -34,7 +34,7 @@ import type { Service } from '@/lib/supabase/serviceOperations'
 import type { Part } from '@/lib/supabase/partOperations'
 import type { TrayImage } from '@/lib/supabase/imageOperations'
 import { URGENT_MARKUP_PCT } from '@/lib/types/preturi'
-import { createTrayItem, updateTrayItem, createTray } from '@/lib/supabase/serviceFileOperations'
+import { createTrayItem, updateTrayItem, createTray, listTraysForServiceFile } from '@/lib/supabase/serviceFileOperations'
 import { createQuoteForLead } from '@/lib/utils/preturi-helpers'
 import { toast } from 'sonner'
 import {
@@ -458,8 +458,19 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
     ) {
       creatingUndefinedTrayRef.current = true
       setIsCreatingUndefinedTray(true)
-      createQuoteForLead(props.leadId, '', fisaId)
+      listTraysForServiceFile(fisaId)
+        .then(({ data: existingTrays }) => {
+          if (existingTrays && existingTrays.length > 0) {
+            props.setQuotes!(existingTrays as LeadQuote[])
+            props.setSelectedQuoteId!(existingTrays[0].id)
+            creatingUndefinedTrayRef.current = false
+            setIsCreatingUndefinedTray(false)
+            return
+          }
+          return createQuoteForLead(props.leadId, '', fisaId)
+        })
         .then((newTray) => {
+          if (!newTray) return
           props.setQuotes!([newTray])
           props.setSelectedQuoteId!(newTray.id)
           creatingUndefinedTrayRef.current = false

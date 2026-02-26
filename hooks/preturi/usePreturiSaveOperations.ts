@@ -20,6 +20,8 @@ import { getPipelinesWithStages, logItemEvent, updateLead } from '@/lib/supabase
 import { createQuoteForLead, updateQuote, listQuoteItems, addInstrumentItem, listTraysForServiceSheet, listQuotesForLead } from '@/lib/utils/preturi-helpers'
 import { persistAndLogServiceSheet } from '@/lib/history/serviceSheet'
 import { saveVanzariViewV4ToDb, type V4SaveData } from '@/lib/history/vanzariViewV4Save'
+import { buildSnapshotFromV4Data, saveServiceFileSnapshot } from '@/lib/history/serviceFileSnapshot'
+import { listTrayImages } from '@/lib/supabase/imageOperations'
 import type { LeadQuote, LeadQuoteItem } from '@/lib/types/preturi'
 import type { Service } from '@/lib/supabase/serviceOperations'
 import type { Lead } from '@/lib/types/database'
@@ -59,6 +61,8 @@ interface UsePreturiSaveOperationsProps {
   instruments: Array<{ id: string; name: string; weight: number; department_id: string | null }>
   departments: Array<{ id: string; name: string }>
   pipelinesWithIds: Array<{ id: string; name: string }>
+  /** Când salvare din view departament (ex. Saloane) – trimis la saveVanzariViewV4ToDb ca să nu șteargă itemii altor departamente. */
+  filterDepartmentId?: string | null
   
   // Totals
   subtotal: number
@@ -112,6 +116,7 @@ export function usePreturiSaveOperations(props: UsePreturiSaveOperationsProps) {
     services,
     instruments,
     departments,
+    filterDepartmentId,
     subtotal,
     totalDiscount,
     urgentAmount,
@@ -712,6 +717,7 @@ export function usePreturiSaveOperations(props: UsePreturiSaveOperationsProps) {
             instrumentsWithDept: instruments.map((i) => ({ id: i.id, name: i.name, department_id: i.department_id })),
             defaultDepartmentId,
             urgent: urgentAllServices,
+            filterDepartmentId: filterDepartmentId ?? undefined,
           })
           if (v4Err) {
             const msg = typeof v4Err.message === 'string' ? v4Err.message : 'Eroare la salvarea în baza de date'
@@ -744,11 +750,13 @@ export function usePreturiSaveOperations(props: UsePreturiSaveOperationsProps) {
           }
         }
         setIsDirty(false)
-        
+
+        let quotesForSnapshot = quotes
         // Reîncarcă lista de tăvițe după salvare pentru a vedea tăvițele create în loop
         try {
           if (fisaId) {
             const refreshedQuotes = await listTraysForServiceSheet(fisaId)
+            quotesForSnapshot = refreshedQuotes
             setQuotes(refreshedQuotes)
             // Păstrează selecția pe prima tăviță sau pe cea selectată anterior
             if (refreshedQuotes.length > 0 && !refreshedQuotes.find(q => q.id === selectedQuote?.id)) {
@@ -756,6 +764,7 @@ export function usePreturiSaveOperations(props: UsePreturiSaveOperationsProps) {
             }
           } else if (leadId) {
             const refreshedQuotes = await listQuotesForLead(leadId)
+            quotesForSnapshot = refreshedQuotes
             setQuotes(refreshedQuotes)
             if (refreshedQuotes.length > 0 && !refreshedQuotes.find(q => q.id === selectedQuote?.id)) {
               setSelectedQuoteId(refreshedQuotes[0].id)
@@ -765,13 +774,92 @@ export function usePreturiSaveOperations(props: UsePreturiSaveOperationsProps) {
           console.error('[saveAllAndLog] Error refreshing quotes after save:', refreshError)
           // Nu blocăm fluxul dacă refresh-ul eșuează
         }
-        
+
+        // Snapshot pentru Istoric: o înregistrare completă la „Salvează în Istoric” (nu modifică fișa)
+        if (hasInstrumentsOrTrays && fisaId) {
+          try {
+            const trayIds = (quotesForSnapshot?.length ? quotesForSnapshot : quotes).map((q) => q.id)
+            const imagesByTray = await Promise.all(trayIds.map((tid) => listTrayImages(tid)))
+            const trayImages = imagesByTray.flat()
+            const { data: sf } = await getServiceFile(fisaId)
+            const payload = buildSnapshotFromV4Data(v4Data, {
+              urgentAllServices,
+              subscriptionType,
+              officeDirect,
+              curierTrimis,
+              retur,
+              receptieComanda: (sf as any)?.status === 'comanda',
+              serviceFileId: fisaId,
+              leadId: lead?.id ?? leadId ?? null,
+              leadName: lead?.full_name ?? lead?.company_name ?? null,
+              savedByUserName: user?.email ?? (user as any)?.user_metadata?.full_name ?? null,
+              trayImages,
+              quotes: quotesForSnapshot?.length ? quotesForSnapshot : quotes,
+            })
+            const { error: snapErr } = await saveServiceFileSnapshot(fisaId, payload, {
+              leadId: lead?.id ?? leadId ?? null,
+              savedByUserId: user?.id ?? null,
+              savedByName: user?.email ?? (user as any)?.user_metadata?.full_name ?? null,
+            })
+            if (snapErr) console.warn('[saveAllAndLog] Snapshot istoric:', snapErr.message)
+          } catch (snapErr) {
+            console.warn('[saveAllAndLog] Snapshot istoric:', snapErr)
+          }
+        }
+
         toast.success(hasInstrumentsOrTrays ? 'Salvat în istoric' : 'Opțiuni salvate')
         setSaving(false)
         return
       }
 
-      // 1. Asigură-te că există o tăviță (trebuie să fie prima!)
+      // Când nu există items și nici tăvițe: salvează doar opțiunile pe fișă (Office direct / Curier trimis etc.), fără a crea o tăviță goală
+      const hasNoItemsAndNoQuotes = items.length === 0 && (!quotes || quotes.length === 0)
+      if (hasNoItemsAndNoQuotes && fisaId) {
+        const detailsToSave = cleanDetailsForSave(trayDetails)
+        const combinedUpdates: any = {}
+        if (detailsToSave !== undefined && detailsToSave !== null && detailsToSave.trim() !== '') combinedUpdates.details = detailsToSave
+        if (paymentCash !== undefined) combinedUpdates.cash = paymentCash
+        if (paymentCard !== undefined) combinedUpdates.card = paymentCard
+        if (officeDirect !== undefined) {
+          combinedUpdates.office_direct = officeDirect
+          combinedUpdates.office_direct_at = officeDirect ? new Date().toISOString() : null
+        }
+        if (curierTrimis !== undefined) {
+          combinedUpdates.curier_trimis = curierTrimis
+          combinedUpdates.curier_scheduled_at = curierTrimis ? curierScheduledAt : null
+        }
+        if (Object.keys(combinedUpdates).length > 0) {
+          await updateServiceFileWithHistory(fisaId, combinedUpdates)
+        }
+        if (officeDirect || curierTrimis) {
+          const { data: pipelinesData } = await getPipelinesWithStages()
+          const receptiePipeline = pipelinesWithIds.find(p => p.name.toLowerCase().includes('receptie'))
+          if (receptiePipeline && pipelinesData) {
+            const receptiePipelineData = pipelinesData.find((p: any) => p.id === receptiePipeline.id)
+            if (receptiePipelineData?.stages?.length) {
+              const stageName = officeDirect ? 'Office direct' : 'Curier Trimis'
+              const stage = receptiePipelineData.stages.find((s: any) => s.is_active && s.name?.toLowerCase() === stageName.toLowerCase())
+              if (stage) {
+                await addServiceFileToPipeline(fisaId, receptiePipeline.id, stage.id)
+                try {
+                  const { data: existing } = await supabase.from('items_events').select('id').eq('type', 'service_file').eq('item_id', fisaId).eq('event_type', 'delivery_started').order('created_at', { ascending: true }).limit(1)
+                  if (!Array.isArray(existing) || existing.length === 0) {
+                    await logItemEvent('service_file', fisaId, `Fișa a intrat în "${stage.name || stageName}"`, 'delivery_started', { mode: officeDirect ? 'office_direct' : 'curier_trimis' })
+                  }
+                } catch (e) {
+                  console.warn('[saveAllAndLog] Nu am putut loga delivery_started:', e)
+                }
+              }
+            }
+          }
+        }
+        setIsDirty(false)
+        toast.success('Opțiuni salvate')
+        setSaving(false)
+        return
+      }
+
+      // 1. Asigură-te că există o tăviță (doar când avem items de salvat)
       const quoteToUse = await ensureTrayExists()
       if (!quoteToUse) {
         toast.error('Nu s-a putut crea sau găsi o tăviță pentru salvare')

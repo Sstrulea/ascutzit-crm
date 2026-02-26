@@ -40,6 +40,10 @@ interface UseLeadDetailsBusinessProps {
   user: { id: string } | null
   /** Tab inițial la restaurare (fisa / de-confirmat / istoric). */
   initialSection?: 'fisa' | 'de-confirmat' | 'istoric'
+  /** Vânzări: la adăugarea tag-ului Sună! mută lead-ul în stage-ul Suna */
+  onSunaTagAdded?: (leadId: string) => void
+  /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
+  onSunaTagRemoved?: (leadId: string, phone: string | undefined) => void
 }
 
 export function useLeadDetailsBusiness({
@@ -62,6 +66,8 @@ export function useLeadDetailsBusiness({
   onItemStageUpdated,
   user,
   initialSection,
+  onSunaTagAdded,
+  onSunaTagRemoved,
 }: UseLeadDetailsBusinessProps) {
   
   // Ref pentru componenta Preturi - pentru a apela salvarea la Close
@@ -230,6 +236,8 @@ export function useLeadDetailsBusiness({
     setSelectedTagIds: state.setSelectedTagIds,
     onTagsChange,
     isReceptiePipeline,
+    onSunaTagAdded,
+    onSunaTagRemoved,
   })
 
   // Pipelines

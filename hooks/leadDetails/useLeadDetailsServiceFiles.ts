@@ -6,7 +6,6 @@ import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { 
   createServiceFile,
-  createTray,
   getNextGlobalServiceFileNumber,
 } from '@/lib/supabase/serviceFileOperations'
 import { logLeadEvent } from '@/lib/supabase/leadOperations'
@@ -113,24 +112,10 @@ const createServiceSheet = async (leadId: string, name?: string, currentUserId?:
   } catch (e) {
     console.warn('[createServiceSheet] Nu s-a putut loga crearea fișei:', e)
   }
-  
-  // Creează automat o tăviță "undefined" (fără număr) pentru fișa de serviciu nou creată
-  try {
-    const { data: undefinedTray, error: trayError } = await createTray({
-      number: '', // Tăviță "undefined" - fără număr
-      service_file_id: data.id,
-      status: 'in_receptie',
-    })
-    
-    if (trayError) {
-      console.error('Error creating undefined tray:', trayError)
-      // Nu aruncăm eroarea, doar logăm - fișa de serviciu a fost creată cu succes
-    }
-  } catch (trayErr) {
-    console.error('Error creating undefined tray:', trayErr)
-    // Nu aruncăm eroarea, doar logăm
-  }
-  
+
+  // Nu mai creăm automat o tăviță fără număr: utilizatorul creează tăvițe explicit (buton „Nouă”).
+  // O tăviță goală făcea ca fișa să aibă mereu 2 tăvițe (una goală + una creată de user) și bloca mutarea la De Facturat (QC pe tăvița goală).
+
   // Creează conversație pentru lead dacă nu există deja (Faza 5: doar din parametru currentUserId – fără getSession())
   try {
     const supabase = supabaseBrowser()

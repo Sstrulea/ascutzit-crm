@@ -113,6 +113,10 @@ interface LeadDetailsPanelProps {
   onSectionChangeForPersist?: (section: 'fisa' | 'de-confirmat' | 'istoric') => void
   /** Receptie: la scoaterea „Nu răspunde” din detalii fișă – mută fișa în De facturat și refresh */
   onMoveFisaToDeFacturat?: (serviceFileId: string) => void | Promise<void>
+  /** Vânzări: la adăugarea tag-ului Sună! mută lead-ul în stage-ul Suna */
+  onSunaTagAdded?: (leadId: string) => void
+  /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
+  onSunaTagRemoved?: (leadId: string, phone: string | undefined) => void
 }
 
 export function LeadDetailsPanel({
@@ -131,6 +135,8 @@ export function LeadDetailsPanel({
   defaultSection,
   onSectionChangeForPersist,
   onMoveFisaToDeFacturat,
+  onSunaTagAdded,
+  onSunaTagRemoved,
 }: LeadDetailsPanelProps) {
   const supabase = supabaseBrowser()
   
@@ -262,6 +268,8 @@ export function LeadDetailsPanel({
     onItemStageUpdated,
     user,
     initialSection: defaultSection,
+    onSunaTagAdded,
+    onSunaTagRemoved,
   })
 
   // NOTĂ: Toate state-urile sunt gestionate în useLeadDetailsBusiness hook
@@ -1492,6 +1500,7 @@ export function LeadDetailsPanel({
                       onAfterFacturare={onRefresh}
                       onAfterSendTrays={onRefresh}
                       onAfterSave={onRefresh}
+                      onAfterDeleteTray={onRefresh}
                       onClose={onClose}
                       showUrgentareButton={itemType === 'service_file' || itemType === 'tray'}
                       isUrgentare={isUrgentare}

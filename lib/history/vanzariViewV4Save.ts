@@ -99,6 +99,11 @@ export interface V4SaveContext {
   /** Catalog servicii (pentru validare) */
   servicesCatalog?: Array<{ id: string; name: string; price: number }>
   urgent?: boolean
+  /**
+   * Când e setat (salvare din view departament, ex. Saloane), ștergem/actualizăm doar tray_items cu acest department_id.
+   * Evită pierderea itemilor din alte departamente (Frizerii, Horeca etc.) când utilizatorul salvează din view-ul unui singur departament.
+   */
+  filterDepartmentId?: string | null
 }
 
 /**
@@ -148,6 +153,7 @@ export async function saveVanzariViewV4ToDb(
         return lt && (lt.number?.trim() ?? '').toLowerCase() === key
       })
     }
+    const filterDepartmentId = context.filterDepartmentId ?? null
     for (const tray of existing) {
       const key = (tray.number?.trim() ?? '').toLowerCase()
       if (!payloadTrayNumbers.has(key)) continue
@@ -159,11 +165,19 @@ export async function saveVanzariViewV4ToDb(
         }
       }
       const { data: items } = await listTrayItemsForTray(tray.id)
-      const itemIds = (items || []).map((i: any) => i.id)
+      const itemsList = items ?? []
+      const toDelete = filterDepartmentId
+        ? itemsList.filter((i: any) => i.department_id === filterDepartmentId)
+        : itemsList
+      const itemIds = toDelete.map((i: any) => i.id)
       if (itemIds.length > 0) {
         await supabase.from('tray_item_brands').delete().in('tray_item_id', itemIds)
       }
-      await supabase.from('tray_items').delete().eq('tray_id', tray.id)
+      if (filterDepartmentId) {
+        await supabase.from('tray_items').delete().eq('tray_id', tray.id).eq('department_id', filterDepartmentId)
+      } else {
+        await supabase.from('tray_items').delete().eq('tray_id', tray.id)
+      }
     }
 
     // 3. Șterge doar tăvițe care nu mai sunt în data.trays ȘI nu există deja în DB pentru această fișă.
@@ -193,19 +207,18 @@ export async function saveVanzariViewV4ToDb(
     const localTrayIdToDbTrayId = new Map<string, string>()
     
     // Verifică dacă există deja o tăviță goală pentru această fișă (pentru a evita duplicate)
-    const emptyTrayNumber = ''
     let existingEmptyTray: { id: string } | null = null
     
     // Verifică dacă există tăvițe cu number gol în traysToUse
     const hasEmptyTrays = traysToUse.some(lt => !lt.number || lt.number.trim() === '')
     
     if (hasEmptyTrays) {
-      // Caută o tăviță existentă cu number gol pentru această fișă
+      // Caută o tăviță existentă cu number = '' sau number IS NULL (evită duplicate)
       const { data: emptyTrays } = await supabase
         .from('trays')
         .select('id')
         .eq('service_file_id', fisaId)
-        .eq('number', emptyTrayNumber)
+        .or('number.eq.,number.is.null')
         .limit(1)
       
       if (emptyTrays && emptyTrays.length > 0) {

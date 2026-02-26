@@ -28,6 +28,10 @@ interface LazyLeadCardProps {
   onArchive?: () => Promise<void>
   /** Receptie: la scoaterea tag-ului Nu răspunde de pe fișă – mută fișa în De facturat */
   onNuRaspundeClearedForReceptie?: (serviceFileId: string) => void | Promise<void>
+  /** Vânzări: la adăugarea tag-ului Sună! mută lead-ul în stage-ul Suna */
+  onSunaTagAdded?: (leadId: string) => void
+  /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
+  onSunaTagRemoved?: (leadId: string, phone: string | undefined) => void
 }
 
 /**
@@ -55,6 +59,8 @@ export function LazyLeadCard({
   showArchiveButton,
   onArchive,
   onNuRaspundeClearedForReceptie,
+  onSunaTagAdded,
+  onSunaTagRemoved,
 }: LazyLeadCardProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [isVisible, setIsVisible] = useState(false)
@@ -113,6 +119,8 @@ export function LazyLeadCard({
           onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
           showArchiveButton={showArchiveButton}
           onArchive={onArchive}
+          onSunaTagAdded={onSunaTagAdded}
+          onSunaTagRemoved={onSunaTagRemoved}
         />
       ) : (
         // Skeleton loader care imită dimensiunile LeadCard

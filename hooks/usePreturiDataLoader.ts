@@ -224,6 +224,7 @@ export function usePreturiDataLoader({
           return idsMatch ? prevQuotesArray : quotesArray
         })
 
+        let v4Data: import('@/lib/history/vanzariViewV4Load').V4InitialData | null = null
         // Încarcă datele V4 (tray_items) pentru fișă – 1 apel listTrayItemsForTrays, pentru afișare la revenire pe fișă
         // În pipeline departament: filtrează doar itemurile cu department_id = id departament (nume pipeline = nume departament)
         if (fisaId && quotesArray.length > 0) {
@@ -244,22 +245,29 @@ export function usePreturiDataLoader({
               if (dept?.id) filterDepartmentId = dept.id
             }
           }
-          const { data: v4Data } = await loadVanzariViewV4FromDb(fisaId, catalog, {
+          const { data: loaded } = await loadVanzariViewV4FromDb(fisaId, catalog, {
             traysPreloaded: quotesArray,
             filterDepartmentId: filterDepartmentId ?? undefined,
           })
+          v4Data = loaded ?? null
           if (mounted && v4Data) setV4InitialData(v4Data)
         } else {
           if (mounted) setV4InitialData(null)
         }
 
-        // Selectează prima tăviță sau cea specificată; când nu există tăvițe (ex. fișă arhivată), curăță selecția
+        // Selectează prima tăviță: preferă una cu instrumente/servicii; altfel tăvița fără număr sau prima
         if (quotesArray && quotesArray.length > 0) {
-          // Prioritizează tăvița "undefined" (fără număr) dacă există
+          const trayIdsWithItems = new Set<string>()
+          if (v4Data) {
+            Object.values(v4Data.instrumentTrayId || {}).forEach((tid) => { if (tid) trayIdsWithItems.add(tid) })
+            ;(v4Data.services || []).forEach((s: any) => { if (s.trayId) trayIdsWithItems.add(s.trayId) })
+            ;(v4Data.parts || []).forEach((p: any) => { if (p.trayId) trayIdsWithItems.add(p.trayId) })
+          }
+          const trayWithItems = quotesArray.find((q: any) => trayIdsWithItems.has(q.id))
           const undefinedTray = quotesArray.find((q: any) => !q.number || q.number === '')
-          const quoteToSelect = initialQuoteId 
-            ? quotesArray.find((q: any) => q.id === initialQuoteId) || undefinedTray || quotesArray[0]
-            : undefinedTray || quotesArray[0]
+          const quoteToSelect = initialQuoteId
+            ? quotesArray.find((q: any) => q.id === initialQuoteId) || trayWithItems || undefinedTray || quotesArray[0]
+            : trayWithItems || undefinedTray || quotesArray[0]
           setSelectedQuoteId(quoteToSelect.id)
         } else {
           setSelectedQuoteId(null)

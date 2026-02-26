@@ -15,6 +15,7 @@ import { listQuoteItems } from '@/lib/utils/preturi-helpers'
 import { isVanzareService, isVanzareTray } from '@/lib/utils/vanzare-helpers'
 import { updateServiceFileWithHistory, clearTrayPositionsOnFacturare, updateTray } from '@/lib/supabase/serviceFileOperations'
 import { logItemEvent } from '@/lib/supabase/leadOperations'
+import { invalidateKanbanCacheForPipeline } from '@/lib/supabase/kanban/kanbanCache'
 import { addServiceFileToPipeline, tryMoveLeadToArhivatIfAllFacturate } from '@/lib/supabase/pipelineOperations'
 import { fetchStagesForPipeline } from '@/lib/supabase/kanban/fetchers'
 import { PreturiOrchestrator } from './PreturiOrchestrator'
@@ -43,6 +44,7 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
   onAfterFacturare,
   onAfterSendTrays,
   onAfterSave,
+  onAfterDeleteTray,
   onClose,
   showUrgentareButton,
   isUrgentare,
@@ -457,6 +459,7 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
     isDepartmentPipeline,
     isVanzariPipeline: pipeline.isVanzariPipeline,
     isReceptiePipeline: pipeline.isReceptiePipeline,
+    filterDepartmentId,
     isCurierPipeline: pipelineSlug?.toLowerCase().includes('curier') || false,
     subscriptionType: state.subscriptionType,
     trayImages: state.trayImages,
@@ -536,6 +539,7 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
     recalcAllSheetsTotal: calculations.recalcAllSheetsTotal,
     populateInstrumentFormFromItems: formOperations.populateInstrumentFormFromItems,
     setSaving: state.setSaving,
+    onAfterDeleteTray,
   })
   
   // Încarcă items-urile când se selectează o tăviță
@@ -680,7 +684,9 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
     [fisaId, leadId, state.pipelinesWithIds, state.setServiceFileStatus, onAfterFacturare]
   )
 
-  // Validare QC direct din Recepție – doar pentru administratori
+  // Validare QC direct din Recepție – doar pentru administratori.
+  // Dacă există mai multe tăvițe cu același număr (ex. duplicate 28S), validăm QC pentru toate,
+  // ca pe card să apară toate cu bifă verde, nu doar cea pe care s-a apăsat.
   const onValidateTrayQc = useCallback(
     async (trayId: string) => {
       const receptie = state.pipelinesWithIds.find(
@@ -691,27 +697,42 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
         return
       }
       try {
-        await updateTray(trayId, { qc_notes: null }).catch((e) =>
-          console.warn('[onValidateTrayQc] updateTray:', e)
-        )
-        await logItemEvent(
-          'tray',
-          trayId,
-          'QC: tăvița a fost validată (din Recepție)',
-          'quality_validated',
-          {
-            sourcePipelineId: receptie.id,
-            sourcePipelineName: receptie.name || 'Recepție',
-          }
-        )
+        const validatedTray = state.quotes.find((q: { id?: string; number?: string | null }) => q.id === trayId)
+        const trayNumber = String(validatedTray?.number ?? '').trim().toLowerCase()
+        const sameNumberTrayIds = state.quotes
+          .filter(
+            (q: { id?: string; number?: string | null; service_file_id?: string | null }) =>
+              q.service_file_id === fisaId &&
+              String(q.number ?? '').trim().toLowerCase() === trayNumber
+          )
+          .map((q: { id: string }) => q.id)
+        if (sameNumberTrayIds.length === 0) sameNumberTrayIds.push(trayId)
+
+        const payload = {
+          sourcePipelineId: receptie.id,
+          sourcePipelineName: receptie.name || 'Recepție',
+        }
+        for (const id of sameNumberTrayIds) {
+          await updateTray(id, { qc_notes: null }).catch((e) =>
+            console.warn('[onValidateTrayQc] updateTray:', e)
+          )
+          await logItemEvent(
+            'tray',
+            id,
+            'QC: tăvița a fost validată (din Recepție)',
+            'quality_validated',
+            payload
+          )
+        }
         toast.success('Tăvița a fost validată (QC).')
         state.setItemsRefreshKey?.((k) => (k ?? 0) + 1)
+        invalidateKanbanCacheForPipeline(receptie.id)
       } catch (e: any) {
         console.error('[onValidateTrayQc]', e)
         toast.error(e?.message || 'Nu s-a putut valida tăvița.')
       }
     },
-    [state.pipelinesWithIds, state.setItemsRefreshKey]
+    [fisaId, state.pipelinesWithIds, state.quotes, state.setItemsRefreshKey]
   )
 
   // Hook-uri pentru effects
