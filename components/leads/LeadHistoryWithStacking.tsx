@@ -2,12 +2,21 @@
 
 import { useEffect, useState, useMemo } from "react"
 import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
-import { Clock, History as HistoryIcon, User } from "lucide-react"
+import { Clock, History as HistoryIcon, User, Megaphone, UserPlus, Globe } from "lucide-react"
 import { format, isToday, isYesterday } from "date-fns"
 import { ro } from "date-fns/locale"
 import { stackEventsSmart, type StackedEvent } from "@/lib/tracking/eventStacker"
 import { StackedEventCard } from "./StackedEventCard"
 import type { LeadEvent } from "./lead-history"
+
+export type LeadSourceInfo = {
+  campaign_name: string | null
+  ad_name: string | null
+  form_name: string | null
+  created_at: string | null
+  created_by: string | null
+  created_by_name: string | null
+}
 
 interface LeadHistoryWithStackingProps {
   leadId: string
@@ -59,6 +68,7 @@ export default function LeadHistoryWithStacking({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
+  const [leadSource, setLeadSource] = useState<LeadSourceInfo | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -85,6 +95,34 @@ export default function LeadHistoryWithStacking({
         }
         if (cancelled) return
 
+        // Sursa lead: campaign_name, ad_name, form_name, created_by + nume creator
+        const leadSourcePromise = (async () => {
+          const { data: leadRow } = await supabaseBrowser()
+            .from("leads")
+            .select("campaign_name, ad_name, form_name, created_at, created_by")
+            .eq("id", effectiveLeadId)
+            .single()
+          if (cancelled || !leadRow) return null
+          const row = leadRow as { campaign_name?: string | null; ad_name?: string | null; form_name?: string | null; created_at?: string | null; created_by?: string | null }
+          let created_by_name: string | null = null
+          if (row.created_by) {
+            const { data: member } = await supabaseBrowser()
+              .from("app_members")
+              .select("user_id, name")
+              .eq("user_id", row.created_by)
+              .maybeSingle()
+            created_by_name = (member as { name?: string } | null)?.name ?? null
+          }
+          return {
+            campaign_name: row.campaign_name ?? null,
+            ad_name: row.ad_name ?? null,
+            form_name: row.form_name ?? null,
+            created_at: row.created_at ?? null,
+            created_by: row.created_by ?? null,
+            created_by_name,
+          } as LeadSourceInfo
+        })()
+
         const [leadRes, sfRes, trayRes] = await Promise.all([
           supabaseBrowser().from("items_events").select("*").eq("type", "lead").eq("item_id", effectiveLeadId).order("created_at", { ascending: false }).limit(1000),
           serviceFileIds.length
@@ -105,6 +143,8 @@ export default function LeadHistoryWithStacking({
           setItems(merged.slice(0, 1000).map(normalizeEvent))
           setError(null)
         }
+        const source = await leadSourcePromise
+        if (!cancelled && source) setLeadSource(source)
         setLoading(false)
 
         const leadIdSet = effectiveLeadId
@@ -128,6 +168,7 @@ export default function LeadHistoryWithStacking({
       }
 
       if (trayId) {
+        setLeadSource(null)
         const { data, error: err } = await supabaseBrowser()
           .from("items_events")
           .select("*")
@@ -155,6 +196,7 @@ export default function LeadHistoryWithStacking({
         return
       }
 
+      setLeadSource(null)
       setItems([])
       setError(null)
       setLoading(false)
@@ -201,8 +243,42 @@ export default function LeadHistoryWithStacking({
   if (error) return <div className="p-4 text-sm text-destructive">{error}</div>
   if (!items || items.length === 0) return <div className="p-4 text-sm text-muted-foreground">Nu există evenimente încă.</div>
 
+  const sourceLabel = useMemo(() => {
+    if (!leadSource) return null
+    const hasFb = !!(leadSource.campaign_name || leadSource.ad_name || leadSource.form_name)
+    if (hasFb) return { type: 'facebook' as const, label: 'Facebook Ads' }
+    if (leadSource.created_by && leadSource.created_by_name) return { type: 'manual' as const, label: 'Manual', by: leadSource.created_by_name }
+    if (leadSource.created_by) return { type: 'manual' as const, label: 'Manual', by: null }
+    return { type: 'other' as const, label: 'Website / Import' }
+  }, [leadSource])
+
   return (
     <div className="flex flex-col h-full space-y-4">
+      {leadSource && sourceLabel && (
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 flex-shrink-0 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            {sourceLabel.type === 'facebook' && <Megaphone className="h-4 w-4 text-blue-600" />}
+            {sourceLabel.type === 'manual' && <UserPlus className="h-4 w-4 text-emerald-600" />}
+            {sourceLabel.type === 'other' && <Globe className="h-4 w-4 text-muted-foreground" />}
+            <span>Sursa lead</span>
+          </div>
+          <div className="text-sm text-muted-foreground space-y-1 pl-6">
+            {sourceLabel.type === 'facebook' && (
+              <>
+                {leadSource.campaign_name && <div>Campanie: <span className="font-medium text-foreground">{leadSource.campaign_name}</span></div>}
+                {leadSource.ad_name && <div>Anunț: <span className="font-medium text-foreground">{leadSource.ad_name}</span></div>}
+                {leadSource.form_name && <div>Formular: <span className="font-medium text-foreground">{leadSource.form_name}</span></div>}
+              </>
+            )}
+            {sourceLabel.type === 'manual' && sourceLabel.by && <div>Creat de: <span className="font-medium text-foreground">{sourceLabel.by}</span></div>}
+            {sourceLabel.type === 'manual' && !sourceLabel.by && <div>Creat manual</div>}
+            {sourceLabel.type === 'other' && <div>Import sau website</div>}
+            {leadSource.created_at && (
+              <div className="text-xs pt-1">Creat la {format(new Date(leadSource.created_at), "d MMM yyyy, HH:mm", { locale: ro })}</div>
+            )}
+          </div>
+        </div>
+      )}
       {hasMore && !showAll && (
         <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-lg border border-blue-200 dark:border-blue-800 flex-shrink-0">
           <div className="flex items-center justify-between">
