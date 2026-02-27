@@ -1,10 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Trash2, Move, Package, Wrench, Tag, AlertTriangle, Pencil } from 'lucide-react'
+import { Trash2, Move, Package, Wrench, AlertTriangle, Pencil } from 'lucide-react'
 import { URGENT_MARKUP_PCT } from '@/lib/types/preturi'
 import type { LeadQuoteItem } from '@/lib/types/preturi'
 import type { Service } from '@/lib/supabase/serviceOperations'
@@ -48,9 +47,6 @@ export function ItemsTable({
   const safeTechnicians = Array.isArray(technicians) ? technicians : []
   const safePipelinesWithIds = Array.isArray(pipelinesWithIds) ? pipelinesWithIds : []
   
-  // State pentru bifarea serial numberurilor
-  const [verifiedSerials, setVerifiedSerials] = useState<Set<string>>(new Set())
-  
   // Grupează items-urile pe (instrument, serviciu, piesă, tehnician) și însumează cantitățile,
   // astfel în detalii tăviță se văd rânduri unite (ex: Cleste x2 + Cleste x3 → Cleste x5)
   const groupedItems = useMemo(() => {
@@ -81,61 +77,8 @@ export function ItemsTable({
         result.push(groupItems[0])
       } else {
         const firstItem = groupItems[0]
-        const brandGroupsMap = new Map<string, any>()
-        
-        groupItems.forEach(item => {
-          if (!item) return
-          const itemBrandGroups = item && typeof item === 'object' && Array.isArray((item as any)?.brand_groups) ? (item as any).brand_groups : []
-          if (itemBrandGroups.length > 0) {
-            itemBrandGroups.forEach((bg: any) => {
-              if (!bg || typeof bg !== 'object') return
-              const brandKey = bg?.brand || ''
-              if (!brandGroupsMap.has(brandKey)) {
-                brandGroupsMap.set(brandKey, {
-                  brand: bg?.brand || '',
-                  serialNumbers: [],
-                  garantie: bg?.garantie || false
-                })
-              }
-              const existingBg = brandGroupsMap.get(brandKey)
-              if (!existingBg) return
-              let serialNumbers: any[] = []
-              if (bg && typeof bg === 'object' && 'serialNumbers' in bg) {
-                const bgSerialNumbers = (bg as any).serialNumbers
-                if (Array.isArray(bgSerialNumbers)) {
-                  serialNumbers = bgSerialNumbers
-                }
-              }
-              if (Array.isArray(serialNumbers) && serialNumbers.length > 0) {
-                if (!Array.isArray(existingBg.serialNumbers)) {
-                  existingBg.serialNumbers = []
-                }
-                existingBg.serialNumbers.push(...serialNumbers)
-              }
-            })
-          } else if (item?.brand) {
-            const brandKey = item.brand
-            if (!brandGroupsMap.has(brandKey)) {
-              brandGroupsMap.set(brandKey, {
-                brand: item.brand || '',
-                serialNumbers: item?.serial_number ? [item.serial_number] : [],
-                garantie: item?.garantie || false
-              })
-            } else {
-              const existingBg = brandGroupsMap.get(brandKey)
-              if (existingBg && item?.serial_number) {
-                if (!Array.isArray(existingBg.serialNumbers)) {
-                  existingBg.serialNumbers = []
-                }
-                existingBg.serialNumbers.push(item.serial_number)
-              }
-            }
-          }
-        })
-        
         const combinedItem: LeadQuoteItem = {
           ...firstItem,
-          brand_groups: Array.from(brandGroupsMap.values()),
           qty: groupItems.reduce((sum, item) => sum + (item.qty || 1), 0),
           _mergedIds: groupItems.map(i => i.id),
         } as LeadQuoteItem & { _mergedIds?: string[] }
@@ -232,20 +175,7 @@ export function ItemsTable({
       
       const instrument = safeInstruments.find(i => i && i.id === currentInstrumentId)
       
-      const cleanedItems = instrumentItems.map(it => {
-        let safeBrandGroups: Array<{ id: string; brand: string; serialNumbers: string[]; garantie: boolean }> = []
-        if (Array.isArray(it.brand_groups)) {
-          safeBrandGroups = it.brand_groups.map((bg: any) => ({
-            id: typeof bg?.id === 'string' ? bg.id : String(bg?.id || ''),
-            brand: typeof bg?.brand === 'string' ? bg.brand : String(bg?.brand || ''),
-            serialNumbers: Array.isArray(bg?.serialNumbers) 
-              ? bg.serialNumbers.map((sn: any) => typeof sn === 'string' ? sn : String(sn || ''))
-              : [],
-            garantie: Boolean(bg?.garantie)
-          }))
-        }
-        
-        return {
+      const cleanedItems = instrumentItems.map(it => ({
           id: typeof it.id === 'string' ? it.id : String(it.id || ''),
           tray_id: typeof it.tray_id === 'string' ? it.tray_id : String(it.tray_id || ''),
           item_type: it.item_type || null,
@@ -256,9 +186,7 @@ export function ItemsTable({
           price: typeof it.price === 'number' ? it.price : 0,
           name_snapshot: typeof it.name_snapshot === 'string' ? it.name_snapshot : '',
           urgent: Boolean(it.urgent),
-          brand_groups: safeBrandGroups,
-        } as LeadQuoteItem
-      })
+        } as LeadQuoteItem))
       
       return {
         instrument: { id: currentInstrumentId, name: instrument?.name || 'Instrument necunoscut' },
@@ -267,109 +195,6 @@ export function ItemsTable({
     } catch (error: any) {
       // console.log('[ItemsTable] Error building instrumentGroup:', error?.message || 'Unknown error')
       return null
-    }
-  }
-
-  const renderBrandSerial = (item: LeadQuoteItem) => {
-    try {
-      const brandGroups = item && typeof item === 'object' && Array.isArray((item as any)?.brand_groups) ? (item as any).brand_groups : []
-      // console.log(`[ItemsTable] Rendering brand/serial for item ${item.id}:`, brandGroups)
-      
-      if (brandGroups.length > 0) {
-        return (
-          <div className="flex flex-col gap-1">
-            {brandGroups.flatMap((bg: any, bgIdx: number) => {
-              if (!bg || typeof bg !== 'object') return []
-              
-              let serialNumbers: any[] = []
-              if (bg && typeof bg === 'object' && 'serialNumbers' in bg && Array.isArray(bg.serialNumbers)) {
-                serialNumbers = bg.serialNumbers
-              }
-              
-              const brandName = bg.brand || '—'
-              
-              // IMPORTANT: Creează un badge separat pentru fiecare serial number, cu checkbox, afișat vertical pentru claritate
-              return serialNumbers.map((sn: any, snIdx: number) => {
-                const serial = typeof sn === 'string' ? sn : (sn && typeof sn === 'object' ? sn?.serial || '' : '')
-                const serialDisplay = serial && serial.trim() ? serial.trim() : `Serial ${snIdx + 1}`
-                const garantie = typeof sn === 'object' ? (sn?.garantie || false) : (bg.garantie || false)
-                // Cheie unică pentru fiecare serial number
-                const verificationKey = `${item.id}_${bgIdx}_${snIdx}`
-                const isVerified = verifiedSerials.has(verificationKey)
-                
-                return (
-                  <div 
-                    key={`${bgIdx}-${snIdx}`}
-                    className={cn(
-                      "flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-medium min-w-0 transition-all border",
-                      isVerified
-                        ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 border-green-300 dark:border-green-700"
-                        : garantie 
-                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700"
-                        : "bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700"
-                    )}
-                  >
-                    <Checkbox 
-                      checked={isVerified}
-                      onCheckedChange={(checked) => {
-                        setVerifiedSerials((prev) => {
-                          const newSet = new Set(prev)
-                          if (checked) {
-                            newSet.add(verificationKey)
-                          } else {
-                            newSet.delete(verificationKey)
-                          }
-                          return newSet
-                        })
-                      }}
-                      className="h-3 w-3 flex-shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <Tag className="h-3 w-3 flex-shrink-0" />
-                    <span className="font-semibold text-[11px]">{brandName}</span>
-                    <span className="text-slate-400 dark:text-slate-500">—</span>
-                    <span className="truncate">{serialDisplay}</span>
-                    {garantie && (
-                      <span className="text-emerald-600 dark:text-emerald-400 flex-shrink-0">✓</span>
-                    )}
-                    {isVerified && (
-                      <span className="text-green-600 dark:text-green-400 flex-shrink-0 ml-auto">✓✓</span>
-                    )}
-                  </div>
-                )
-              })
-            })}
-          </div>
-        )
-      } else {
-        // Pentru instrumente fără brand_groups (ex: ascuțire), câmpuri editabile pe un rând
-        return (
-          <div className="flex flex-col gap-1.5">
-            <Input
-              className="h-8 text-xs rounded-lg border-slate-200 dark:border-slate-600 max-w-[130px]"
-              placeholder="Brand..."
-              value={item.brand || ''}
-              onChange={e => {
-                onUpdateItem(item.id, { brand: e.target.value || null });
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-            <Input
-              className="h-8 text-xs rounded-lg border-slate-200 dark:border-slate-600 max-w-[130px]"
-              placeholder="Serial..."
-              value={item.serial_number || ''}
-              onChange={e => {
-                onUpdateItem(item.id, { serial_number: e.target.value || null });
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        )
-      }
-      return <span className="text-muted-foreground text-xs">—</span>
-    } catch (error) {
-      console.error('❌ [ItemsTable] Error in brand/serial rendering:', error)
-      return <span className="text-muted-foreground text-xs">—</span>
     }
   }
 
@@ -393,14 +218,11 @@ export function ItemsTable({
       {/* Header — grupare: Instrument & identificare | Serviciu | Valori | Nerepar | Acțiuni */}
       <div className={cn(
         "grid gap-3 px-5 py-3.5 min-w-[744px] bg-slate-100/80 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700",
-        "grid-cols-[minmax(140px,1.2fr)_minmax(140px,1fr)_minmax(160px,1.5fr)_72px_72px_80px_96px_80px]"
+        "grid-cols-[minmax(140px,1.2fr)_minmax(160px,1.5fr)_72px_72px_80px_96px_80px]"
       )}>
         <div className="flex items-center gap-2">
           <Wrench className="h-4 w-4 text-slate-500 shrink-0" />
           <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Instrument</span>
-        </div>
-        <div>
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Brand / Serial</span>
         </div>
         <div>
           <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Serviciu</span>
@@ -454,7 +276,7 @@ export function ItemsTable({
               key={item.id}
               className={cn(
                 "grid gap-3 px-5 py-3 items-center transition-all min-w-[744px] border-b border-slate-100 dark:border-slate-800 last:border-0",
-                "grid-cols-[minmax(140px,1.2fr)_minmax(140px,1fr)_minmax(160px,1.5fr)_72px_72px_80px_96px_80px]",
+                "grid-cols-[minmax(140px,1.2fr)_minmax(160px,1.5fr)_72px_72px_80px_96px_80px]",
                 "hover:bg-slate-50/80 dark:hover:bg-slate-800/50",
                 item.urgent && "bg-red-50/60 dark:bg-red-950/25 hover:bg-red-50 dark:hover:bg-red-950/35",
                 index % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/40 dark:bg-slate-800/30"
@@ -489,11 +311,6 @@ export function ItemsTable({
                 ) : (
                   <span className="text-slate-300 dark:text-slate-600 text-lg" aria-hidden title="Același instrument">↳</span>
                 )}
-              </div>
-
-              {/* Brand / Serial */}
-              <div className="min-w-0">
-                {renderBrandSerial(item)}
               </div>
 
               {/* Serviciu */}

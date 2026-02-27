@@ -48,15 +48,12 @@ export interface ReceptieViewProps {
   instrumentForm: { 
     instrument: string
     qty: string
-    brandSerialGroups?: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }> | string[]; qty?: string }>
   }
   svc: { 
     id: string
     qty: string
     discount: string
     instrumentId: string
-    selectedBrands?: string[]
-    serialNumberId?: string
   }
   serviceSearchQuery: string
   serviceSearchFocused: boolean
@@ -109,16 +106,6 @@ export interface ReceptieViewProps {
   onNuRaspundeChange: (checked: boolean) => void
   onCallBackChange: (checked: boolean) => void
   onSave: () => void
-  onBrandToggle?: (brandName: string, checked: boolean) => void
-  onSerialNumberChange?: (serialNumberId: string) => void
-  onAddBrandSerialGroup?: () => void
-  onRemoveBrandSerialGroup?: (groupIndex: number) => void
-  onUpdateBrand?: (groupIndex: number, value: string) => void
-  onUpdateBrandQty?: (groupIndex: number, qty: string) => void
-  onUpdateSerialNumber?: (groupIndex: number, serialIndex: number, value: string) => void
-  onAddSerialNumber?: (groupIndex: number) => void
-  onRemoveSerialNumber?: (groupIndex: number, serialIndex: number) => void
-  onUpdateSerialGarantie?: (groupIndex: number, serialIndex: number, garantie: boolean) => void
   setIsDirty?: (dirty: boolean) => void
   
   // ========== FLAGS ==========
@@ -131,7 +118,7 @@ export interface ReceptieViewProps {
   technicians?: Array<{ id: string; name: string }>
   onTechnicianChange?: (technicianId: string) => void
   onSetStatusComanda?: () => Promise<void> // [OWNER-ONLY] DE ELIMINAT mai târziu
-  onAddInstrumentDirect?: (instrumentId: string, qty: number, brand?: string, brandSerialGroups?: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }>; qty: string }>) => void
+  onAddInstrumentDirect?: (instrumentId: string, qty: number) => void
   onRowClick?: (item: LeadQuoteItem) => void
   onClearForm?: () => void
   onUndo?: () => void
@@ -222,48 +209,6 @@ export interface ReceptieViewProps {
  *   3. SendConfirmationDialog - confirmarea trimiterii tăvițelor
  * - Bandă non-blocantă + popover pentru distribuția instrumentelor (fără overlay)
  */
-/**
- * Funcție helper pentru afișarea serial numbers-urilor pentru o înregistrare de serviciu
- * Afișează toate serial numbers-urile asociate cu înregistrarea serviciului dat
- */
-function renderServiceSerialNumbers(
-  item: LeadQuoteItem,
-  brandGroups: Array<{ id?: string; brand: string; serialNumbers: string[]; garantie?: boolean }>
-): React.ReactNode[] {
-  if (!brandGroups || brandGroups.length === 0) {
-    return []
-  }
-
-  return brandGroups.flatMap((bg: any, bgIdx: number) => {
-    if (!bg || typeof bg !== 'object') return []
-    const bgBrand = bg.brand || '—'
-    const bgSerials = Array.isArray(bg.serialNumbers) ? bg.serialNumbers : []
-    
-    return bgSerials.map((sn: any, snIdx: number) => {
-      const serial = typeof sn === 'string' ? sn : (sn?.serial || '')
-      // IMPORTANT: Afișează TOATE serial numbers-urile, inclusiv cele goale
-      // Pentru serial numbers goale, afișează un placeholder
-      const displaySerial = serial && serial.trim() ? serial.trim() : `Serial ${snIdx + 1}`
-      
-      return (
-        <div 
-          key={`${item.id}-${bgIdx}-${snIdx}`}
-          className={cn(
-            "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium border",
-            serial && serial.trim()
-              ? "bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700"
-              : "bg-slate-100/50 text-slate-500 dark:bg-slate-800/50 dark:text-slate-500 border-slate-300 dark:border-slate-600"
-          )}
-        >
-          <span className="font-semibold text-[11px]">{bgBrand}</span>
-          <span className="text-slate-400 dark:text-slate-500">—</span>
-          <span className="truncate">{displaySerial}</span>
-        </div>
-      )
-    })
-  })
-}
-
 export function ReceptieView({
   instrumentForm,
   svc,
@@ -314,16 +259,6 @@ export function ReceptieView({
   onNuRaspundeChange,
   onCallBackChange,
   onSave,
-  onBrandToggle,
-  onSerialNumberChange,
-  onAddBrandSerialGroup,
-  onRemoveBrandSerialGroup,
-  onUpdateBrand,
-  onUpdateBrandQty,
-  onUpdateSerialNumber,
-  onAddSerialNumber,
-  onRemoveSerialNumber,
-  onUpdateSerialGarantie,
   setIsDirty,
   currentInstrumentId,
   hasServicesOrInstrumentInSheet,
@@ -421,16 +356,6 @@ export function ReceptieView({
   const mobileInstrumentForm = {
     instrument: currentInstrument ? { id: currentInstrument.id, name: currentInstrument.name } : null,
     qty: parseInt(instrumentForm.qty) || 1,
-    brandSerialGroups: (instrumentForm.brandSerialGroups || []).map((g, idx) => ({
-      id: `group-${idx}`,
-      brand: g.brand || '',
-      qty: parseInt(g.qty || '1') || 1,
-      serialNumbers: (Array.isArray(g.serialNumbers) ? g.serialNumbers : []).map((s: any, sIdx: number) => ({
-        id: `serial-${idx}-${sIdx}`,
-        serial: typeof s === 'string' ? s : s?.serial || '',
-        garantie: typeof s === 'object' ? s?.garantie || false : false,
-      })),
-    })),
   }
 
   // Popover deschis pentru „Distribuie” (id instrument) – folosit doar cu onMoveInstrumentToTray
@@ -943,38 +868,6 @@ export function ReceptieView({
                 onInstrumentDoubleClick?.(inst.id)
               }}
               onQtyChange={(qty) => onQtyChange(String(qty))}
-              onAddBrandSerialGroup={onAddBrandSerialGroup}
-              onRemoveBrandSerialGroup={(groupId) => {
-                const idx = parseInt(groupId.replace('group-', ''))
-                onRemoveBrandSerialGroup?.(idx)
-              }}
-              onUpdateBrand={(groupId, brand) => {
-                const idx = parseInt(groupId.replace('group-', ''))
-                onUpdateBrand?.(idx, brand)
-              }}
-              onUpdateBrandQty={(groupId, qty) => {
-                const idx = parseInt(groupId.replace('group-', ''))
-                onUpdateBrandQty?.(idx, String(qty))
-              }}
-              onAddSerialNumber={(groupId) => {
-                const idx = parseInt(groupId.replace('group-', ''))
-                onAddSerialNumber?.(idx)
-              }}
-              onRemoveSerialNumber={(groupId, serialId) => {
-                const groupIdx = parseInt(groupId.replace('group-', ''))
-                const serialIdx = parseInt(serialId.split('-')[2] || '0')
-                onRemoveSerialNumber?.(groupIdx, serialIdx)
-              }}
-              onUpdateSerialNumber={(groupId, serialId, serial) => {
-                const groupIdx = parseInt(groupId.replace('group-', ''))
-                const serialIdx = parseInt(serialId.split('-')[2] || '0')
-                onUpdateSerialNumber?.(groupIdx, serialIdx, serial)
-              }}
-              onUpdateSerialGarantie={(groupId, serialId, garantie) => {
-                const groupIdx = parseInt(groupId.replace('group-', ''))
-                const serialIdx = parseInt(serialId.split('-')[2] || '0')
-                onUpdateSerialGarantie?.(groupIdx, serialIdx, garantie)
-              }}
               onClearForm={onClearForm}
             />
           </>
@@ -996,14 +889,6 @@ export function ReceptieView({
                 onInstrumentChange={onInstrumentChange}
                 onInstrumentDoubleClick={onInstrumentDoubleClick}
                 onQtyChange={onQtyChange}
-                onAddBrandSerialGroup={onAddBrandSerialGroup}
-                onRemoveBrandSerialGroup={onRemoveBrandSerialGroup}
-                onUpdateBrand={onUpdateBrand}
-                onUpdateBrandQty={onUpdateBrandQty}
-                onUpdateSerialNumber={onUpdateSerialNumber}
-                onAddSerialNumber={onAddSerialNumber}
-                onRemoveSerialNumber={onRemoveSerialNumber}
-                onUpdateSerialGarantie={onUpdateSerialGarantie}
                 setIsDirty={setIsDirty}
                 onAddInstrumentDirect={onAddInstrumentDirect}
                 onClearForm={onClearForm}
@@ -1032,8 +917,6 @@ export function ReceptieView({
                 onQtyChange={onSvcQtyChange}
                 onDiscountChange={onSvcDiscountChange}
                 onAddService={onAddService}
-                onBrandToggle={onBrandToggle}
-                onSerialNumberChange={onSerialNumberChange}
               />
             </>
             
@@ -1050,7 +933,6 @@ export function ReceptieView({
             <TableHeader>
               <TableRow className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
                 <TableHead className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider w-[140px]">Instrument</TableHead>
-                <TableHead className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider w-[120px]">Brand / Serial</TableHead>
                 <TableHead className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider min-w-[180px]">Serviciu</TableHead>
                 <TableHead className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider text-center w-14">Cant.</TableHead>
                 <TableHead className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider text-right w-16">Preț</TableHead>
@@ -1097,46 +979,6 @@ export function ReceptieView({
                   ? instruments.find(i => i.id === it.instrument_id)?.name || '—'
                   : '—'
                 
-                // IMPORTANT: Colectează TOATE brand-urile și serial numbers-urile din brand_groups
-                // pentru afișare clară a tuturor serial numbers-urilor asociate cu serviciul
-                const brandGroups = (it as any)?.brand_groups && Array.isArray((it as any).brand_groups) 
-                  ? (it as any).brand_groups 
-                  : []
-                
-                
-                // Colectează toate brand-urile și serial numbers-urile
-                const allBrandsAndSerials: Array<{ brand: string; serial: string }> = []
-                
-                if (brandGroups.length > 0) {
-                  // Procesează toate brand-urile și serial numbers-urile
-                  brandGroups.forEach((bg: any) => {
-                    if (!bg || typeof bg !== 'object') return
-                    const brandName = bg.brand || '—'
-                    const serialNumbers = Array.isArray(bg.serialNumbers) ? bg.serialNumbers : []
-                    
-                    serialNumbers.forEach((sn: any, snIdx: number) => {
-                      const serial = typeof sn === 'string' ? sn : (sn?.serial || '')
-                      // IMPORTANT: Include TOATE serial numbers-urile, inclusiv cele goale
-                      // Pentru serial numbers goale, folosește un placeholder
-                      const displaySerial = serial && serial.trim() ? serial.trim() : `Serial ${snIdx + 1}`
-                      allBrandsAndSerials.push({
-                        brand: brandName,
-                        serial: displaySerial
-                      })
-                    })
-                  })
-                } else if (it.brand || it.serial_number) {
-                  // Fallback la câmpurile vechi pentru compatibilitate
-                  allBrandsAndSerials.push({
-                    brand: it.brand || '—',
-                    serial: it.serial_number || ''
-                  })
-                }
-                
-                // Pentru afișare, folosim primul brand ca brand principal
-                const brandName = allBrandsAndSerials.length > 0 ? allBrandsAndSerials[0].brand : '—'
-                const serialNumbers = allBrandsAndSerials.map(bs => bs.serial).filter(sn => sn)
-                
                 return (
                   <TableRow 
                     key={it.id} 
@@ -1144,34 +986,6 @@ export function ReceptieView({
                   >
                     <TableCell className="text-xs text-slate-700 dark:text-slate-300 py-2.5 align-top">
                       <span className="font-medium">{instrumentName}</span>
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-600 dark:text-slate-400 py-2.5 align-top">
-                      <div className="flex flex-col gap-1">
-                        {brandGroups.length > 0 ? (
-                          renderServiceSerialNumbers(it, brandGroups)
-                        ) : (
-                          <>
-                            <Input
-                              className="h-7 text-[11px] w-full max-w-[100px]"
-                              placeholder="Brand..."
-                              value={it.brand || ''}
-                              onFocus={e => e.target.select()}
-                              onChange={e => {
-                                onUpdateItem(it.id, { brand: e.target.value || null })
-                              }}
-                            />
-                            <Input
-                              className="h-7 text-[11px] w-full max-w-[100px]"
-                              placeholder="Serial..."
-                              value={it.serial_number || ''}
-                              onFocus={e => e.target.select()}
-                              onChange={e => {
-                                onUpdateItem(it.id, { serial_number: e.target.value || null })
-                              }}
-                            />
-                          </>
-                        )}
-                      </div>
                     </TableCell>
                     <TableCell className="font-medium text-sm text-slate-800 dark:text-slate-200 py-2.5 align-top max-w-[200px]">
                       <span className="line-clamp-2">{it.name_snapshot}</span>
@@ -1293,7 +1107,7 @@ export function ReceptieView({
               })}
               {items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={isAdmin && technicians.length > 0 ? 10 : 9} className="text-slate-500 dark:text-slate-400 text-center py-8 text-sm">
+                  <TableCell colSpan={isAdmin && technicians.length > 0 ? 9 : 8} className="text-slate-500 dark:text-slate-400 text-center py-8 text-sm">
                     Nu există poziții încă.
                   </TableCell>
                 </TableRow>

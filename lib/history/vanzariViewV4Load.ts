@@ -205,10 +205,30 @@ export async function loadVanzariViewV4FromDb(
 
     const instrumentsOut = Array.from(instrumentsMap.values())
 
+    // Normalizează datele: uneori în DB pot exista mai multe rânduri tray_items pentru
+    // același (instrument, serviciu, tăviță). Pentru UX, un serviciu ar trebui să apară
+    // o singură dată per instrument/tăviță, cu cantități însumate.
+    const mergedServicesMap = new Map<string, V4LoadedService>()
+    for (const svc of servicesOut) {
+      const key = `${svc.instrumentLocalId}__${svc.serviceId}__${svc.trayId ?? ''}`
+      const existing = mergedServicesMap.get(key)
+      if (!existing) {
+        mergedServicesMap.set(key, { ...svc })
+      } else {
+        existing.quantity += svc.quantity
+        existing.unrepairedCount += svc.unrepairedCount
+        const existingSerials = existing.forSerialNumbers ?? []
+        const newSerials = svc.forSerialNumbers ?? []
+        const mergedSerials = Array.from(new Set([...existingSerials, ...newSerials]))
+        existing.forSerialNumbers = mergedSerials
+      }
+    }
+    const mergedServicesOut = Array.from(mergedServicesMap.values())
+
     return {
       data: {
         instruments: instrumentsOut,
-        services: servicesOut,
+        services: mergedServicesOut,
         parts: partsOut,
         trays: traysOut,
         instrumentTrayId,

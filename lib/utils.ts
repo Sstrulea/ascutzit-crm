@@ -53,6 +53,39 @@ export function normalizePhoneNumber(phone: string | null | undefined): string {
 }
 
 /**
+ * Removes diacritics (ă, â, î, ș, ț) for search normalization.
+ * Used for name/technician search so "Ștefan" matches "Stefan".
+ */
+export function removeDiacritics(s: string | null | undefined): string {
+  if (!s) return ''
+  return String(s)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[șş]/gi, 's')
+    .replace(/[țţ]/gi, 't')
+    .replace(/[ăâ]/gi, 'a')
+    .replace(/î/gi, 'i')
+}
+
+/**
+ * Returns all phone number variants for search (0, +40, 40 prefix).
+ * Used so "0721123456", "+40721123456", "40721123456" all match.
+ */
+export function getPhoneVariants(input: string | null | undefined): string[] {
+  const digits = normalizePhoneNumber(input)
+  if (!digits.length) return []
+  const variants: string[] = []
+  if (digits.startsWith('40') && digits.length > 2) {
+    variants.push('0' + digits.slice(2), '+' + digits, digits)
+  } else if (digits.startsWith('0')) {
+    variants.push(digits, '40' + digits.slice(1), '+40' + digits.slice(1))
+  } else {
+    variants.push('0' + digits, '40' + digits, '+40' + digits)
+  }
+  return [...new Set(variants)]
+}
+
+/**
  * Checks if a search query matches a phone number
  * Compares normalized numbers (digits only) to allow searching
  * in different formats (+40, 40, 0721, etc.)

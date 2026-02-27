@@ -12,7 +12,6 @@ const TABLE_WHITELIST = [
   'pipelines', 'stages', 'tags', 'lead_tags', 'app_members',
   'instruments', 'services', 'parts', 'conversations', 'messages',
   'departments', 'items_events', 'work_sessions', 'stage_history',
-  'tray_item_brands', 'tray_item_brand_serials',
   'arhiva_fise_serviciu', 'arhiva_tray_items',
 ]
 

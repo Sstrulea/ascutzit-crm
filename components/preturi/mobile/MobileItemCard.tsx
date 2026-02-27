@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Trash2, AlertTriangle, Tag, ChevronRight, Minus, Plus } from 'lucide-react'
+import { Trash2, AlertTriangle, ChevronRight, Minus, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { LeadQuoteItem } from '@/lib/types/preturi'
@@ -46,10 +46,6 @@ export function MobileItemCard({
       : isInstrumentOnly
         ? '(fără serviciu)'
         : ''
-
-  // Brand/Serial display
-  const brandGroups = Array.isArray((item as any)?.brand_groups) ? (item as any).brand_groups : []
-  const hasBrandSerial = brandGroups.length > 0 || item.brand || item.serial_number
 
   // Touch handlers pentru swipe
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -105,25 +101,35 @@ export function MobileItemCard({
     onUpdateItem(item.id, { qty: newQty })
   }
 
+  const showDeleteStrip = Math.abs(swipeOffset) > 5
+  const deleteStripOpacity = Math.min(1, Math.abs(swipeOffset) / 80)
+
   return (
     <div className="relative overflow-hidden rounded-xl">
-      {/* Delete action background */}
-      <div 
-        className="absolute inset-y-0 right-0 w-20 bg-red-500 flex items-center justify-center"
-        style={{ opacity: Math.abs(swipeOffset) / 80 }}
-      >
+      {/* Delete action background – vizibil doar la swipe, ca să nu apară bloc roșu în colț */}
+      {showDeleteStrip && (
+        <div
+          className="absolute inset-y-0 right-0 w-20 flex items-center justify-center pointer-events-none"
+          style={{ opacity: deleteStripOpacity }}
+          aria-hidden
+        >
+          <div className="w-full h-full bg-red-500" />
+        </div>
+      )}
+      {showDeleteStrip && (
         <Button
           variant="ghost"
           size="icon"
-          className="min-h-[44px] min-w-[44px] h-12 w-12 text-white hover:text-white hover:bg-red-600 touch-manipulation"
+          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 min-h-[44px] min-w-[44px] h-12 w-12 text-white hover:text-white hover:bg-red-600 touch-manipulation pointer-events-auto"
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
           }}
+          aria-label="Șterge"
         >
           <Trash2 className="h-6 w-6" />
         </Button>
-      </div>
+      )}
 
       {/* Card content */}
       <div
@@ -159,39 +165,6 @@ export function MobileItemCard({
             </div>
             <ChevronRight className="h-4 w-4 text-slate-400 flex-shrink-0" />
           </div>
-
-          {/* Brand/Serial */}
-          {hasBrandSerial && (
-            <div className="flex flex-wrap gap-1 mb-2">
-              {brandGroups.length > 0 ? (
-                brandGroups.slice(0, 2).map((bg: any, idx: number) => (
-                  <span
-                    key={idx}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                  >
-                    <Tag className="h-2.5 w-2.5" />
-                    {bg.brand || 'Brand'}
-                    {bg.serialNumbers?.length > 0 && (
-                      <span className="text-slate-400">({bg.serialNumbers.length})</span>
-                    )}
-                  </span>
-                ))
-              ) : (
-                item.brand && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                    <Tag className="h-2.5 w-2.5" />
-                    {item.brand}
-                    {item.serial_number && <span>— {item.serial_number}</span>}
-                  </span>
-                )
-              )}
-              {brandGroups.length > 2 && (
-                <span className="text-[10px] text-muted-foreground">
-                  +{brandGroups.length - 2} mai multe
-                </span>
-              )}
-            </div>
-          )}
 
           {/* Rezumat nereparabile (pentru fiecare instrument) */}
           {nonRepairableQty > 0 && (

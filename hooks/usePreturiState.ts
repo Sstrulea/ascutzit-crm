@@ -134,11 +134,9 @@ export function usePreturiState(initialQuoteId?: string | null) {
   // Technician state
   const [isTechnician, setIsTechnician] = useState(false)
 
-  // Instrument settings state (pentru brand-uri și serial numbers)
+  // Instrument settings state
   const [instrumentSettings, setInstrumentSettings] = useState<Record<string, {
     qty: string
-    brandSerialGroups: Array<{ brand: string; serialNumbers: string[] }>
-    garantie: boolean
   }>>({})
 
   // V4 view: date încărcate din DB la deschiderea fișei (tray_items → instruments, services, parts, trays)
@@ -147,15 +145,6 @@ export function usePreturiState(initialQuoteId?: string | null) {
   // Form state - Instrument
   const [instrumentForm, setInstrumentForm] = useState({
     instrument: '',
-    brandSerialGroups: [{ 
-      brand: '', 
-      serialNumbers: [{ serial: '', garantie: false }], 
-      qty: '1' 
-    }] as Array<{ 
-      brand: string
-      serialNumbers: Array<{ serial: string; garantie: boolean }>
-      qty: string 
-    }>,
     qty: '1'
   })
 
@@ -169,7 +158,6 @@ export function usePreturiState(initialQuoteId?: string | null) {
     technicianId: '',
     pipelineId: '',
     serialNumberId: '',
-    selectedBrands: [] as string[],
   })
 
   // Form state - Part

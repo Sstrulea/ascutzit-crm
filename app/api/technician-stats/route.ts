@@ -140,20 +140,20 @@ export async function POST(request: NextRequest) {
     const oldStats = await statsService.getTechnicianStatistics(technicianId)
     const oldValue = (oldStats as any)[field]
 
-    // Înregistrează editarea în istoric
-    const { error: historyError } = await supabase
-      .from('technician_stats_history')
-      .insert({
-        technician_id: technicianId,
-        field,
-        old_value: oldValue,
-        new_value: newValue,
-        edited_by: user.id,
-        edit_reason: reason || null,
-        edited_at: new Date().toISOString()
-      })
-
-    if (historyError) {
+    // NOTE: technician_stats_history table does not exist in DB yet.
+    // Logging edit to items_events instead for traceability.
+    try {
+      await supabase
+        .from('items_events')
+        .insert({
+          type: 'tray' as const,
+          item_id: technicianId,
+          event_type: 'technician_stat_edited',
+          message: `Stat ${field} edited: ${oldValue} → ${newValue}${reason ? ` (${reason})` : ''}`,
+          payload: { field, old_value: oldValue, new_value: newValue, edit_reason: reason || null },
+          actor_id: user.id,
+        })
+    } catch (historyError) {
       console.error('Error saving edit history:', historyError)
     }
 

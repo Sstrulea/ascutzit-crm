@@ -1012,20 +1012,6 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
                 urgent: Boolean(item.urgent),
               }
               
-              // Curățăm brand_groups dacă există
-              if (Array.isArray(item.brand_groups)) {
-                cleanedItem.brand_groups = item.brand_groups.map((bg: any) => ({
-                  id: typeof bg.id === 'string' ? bg.id : String(bg.id || ''),
-                  brand: typeof bg.brand === 'string' ? bg.brand : String(bg.brand || ''),
-                  serialNumbers: Array.isArray(bg.serialNumbers) 
-                    ? bg.serialNumbers.map((sn: any) => typeof sn === 'string' ? sn : String(sn || ''))
-                    : [],
-                  garantie: Boolean(bg.garantie)
-                }))
-              } else {
-                cleanedItem.brand_groups = []
-              }
-              
               return cleanedItem
             }) : []
           }
@@ -1048,14 +1034,6 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
       }}
       onMoveInstrumentToTray={(group, trayId) => business.handleMoveInstrumentToTray(trayId, group)}
       onMoveInstrumentToNewTray={(group, number) => business.handleMoveInstrumentToNewTray(group, number)}
-      onAddBrandSerialGroup={business.onAddBrandSerialGroup}
-      onRemoveBrandSerialGroup={business.onRemoveBrandSerialGroup}
-      onUpdateBrand={business.onUpdateBrand}
-      onUpdateBrandQty={business.onUpdateBrandQty}
-      onUpdateSerialNumber={business.onUpdateSerialNumber}
-      onAddSerialNumber={business.onAddSerialNumber}
-      onRemoveSerialNumber={business.onRemoveSerialNumber}
-      onUpdateSerialGarantie={business.onUpdateSerialGarantie}
       setIsDirty={state.setIsDirty}
       onCreateTray={business.handleCreateTray}
       onCreateTrayInline={(num) => business.handleCreateTray({ number: num })}
@@ -1115,49 +1093,13 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
         const instrumentId = item.instrument_id || ''
         const qty = String(item.qty || 1)
         
-        // STEP 3: Construiește brandSerialGroups
-        // Format: [{brand, serialNumbers: [{serial, garantie}], qty}]
-        let brandSerialGroups: any[] = []
-        
-        if (item.brand_groups && Array.isArray(item.brand_groups) && item.brand_groups.length > 0) {
-          // Format NOU: brand_groups din DB
-          brandSerialGroups = item.brand_groups.map((bg: any) => ({
-            brand: bg.brand || '',
-            serialNumbers: Array.isArray(bg.serialNumbers) 
-              ? bg.serialNumbers.map((sn: any) => 
-                  typeof sn === 'string' 
-                    ? { serial: sn, garantie: false }
-                    : { serial: sn?.serial || '', garantie: sn?.garantie || false }
-                )
-              : [],
-            qty: bg.qty || '1'
-          }))
-        } else if (item.brand || item.serial_number) {
-          // Format VECHI: brand + serial_number simple
-          brandSerialGroups = [{
-            brand: item.brand || '',
-            serialNumbers: item.serial_number 
-              ? [{ serial: item.serial_number, garantie: false }]
-              : [],
-            qty: '1'
-          }]
-        } else {
-          // NIMIC: Grup gol default
-          brandSerialGroups = [{
-            brand: '',
-            serialNumbers: [],
-            qty: '1'
-          }]
-        }
-        
-        // STEP 4: Populează INSTRUMENT FORM (înlocuiește complet)
+        // STEP 3: Populează INSTRUMENT FORM (înlocuiește complet)
         state.setInstrumentForm({
           instrument: instrumentId,
           qty: qty,
-          brandSerialGroups: brandSerialGroups
         })
         
-        // STEP 5: Populează SERVICIU (doar dacă există și e valid)
+        // STEP 4: Populează SERVICIU (doar dacă există și e valid)
         if (item.item_type === 'service' && item.service_id) {
           const serviceExists = state.services.find(s => s.id === item.service_id)
           if (serviceExists) {
@@ -1171,9 +1113,7 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
               urgent: false,
               technicianId: '',
               pipelineId: '',
-              serialNumberId: '',
-              selectedBrands: [],
-              editingItemId: item.id // IMPORTANT: Reține ID-ul înregistrării pentru actualizare
+              editingItemId: item.id
             })
             state.setServiceSearchQuery(serviceExists.name || item.name_snapshot || '')
           }
@@ -1188,13 +1128,11 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
             urgent: false,
             technicianId: '',
             pipelineId: '',
-            serialNumberId: '',
-            selectedBrands: []
           })
           state.setServiceSearchQuery('')
         }
         
-        // STEP 6: Populează PIESE (doar dacă există și e valid)
+        // STEP 5: Populează PIESE (doar dacă există și e valid)
         if (item.item_type === 'part' && item.part_id) {
           const partExists = state.parts.find(p => p.id === item.part_id)
           if (partExists) {
@@ -1223,7 +1161,7 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
           state.setPartSearchQuery('')
         }
         
-        // STEP 7: Toast informativ
+        // STEP 6: Toast informativ
         toast.info('Date încărcate pentru editare. Apasă Undo pentru a anula.')
       }}
       onUndo={() => {
@@ -1256,8 +1194,6 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
       currentUserId={user?.id ?? ''}
       currentUserDisplayName={(user?.user_metadata as any)?.full_name ?? user?.email?.split('@')[0] ?? 'Eu'}
       onSplitTrayToRealTrays={SPLIT_TRAY_FEATURE_ENABLED ? (business.handleSplitTrayToRealTrays as any) : undefined}
-      onBrandToggle={business.onBrandToggle}
-      
       // Quick actions for department view
       onMarkInProgress={() => {
         // TODO: Implementare logică pentru "În lucru"

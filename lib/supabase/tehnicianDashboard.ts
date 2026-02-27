@@ -1030,17 +1030,17 @@ async function fetchStatsForRange(
   }
   try {
     const { data: membersDisplay, error: membersErr } = await (supabase as any)
-      .from('members')
-      .select('user_id, display_name')
+      .from('app_members')
+      .select('user_id, name')
       .in('user_id', techIds)
     if (!membersErr && membersDisplay?.length) {
       for (const m of membersDisplay as any[]) {
-        const dn = (m as any).display_name && String((m as any).display_name).trim()
+        const dn = (m as any).name && String((m as any).name).trim()
         if (dn && !nameById.has(m.user_id)) nameById.set(m.user_id, dn)
       }
     }
   } catch {
-    // Tabelul/view "members" poate să nu existe
+    // fallback: app_members name lookup failed
   }
 
   const result: TehnicianTrayStat[] = []

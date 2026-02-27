@@ -28,28 +28,14 @@ interface MobileItemsViewProps {
   instrumentForm?: {
     instrument: { id: string; name: string } | null
     qty: number
-    brandSerialGroups: Array<{
-      id: string
-      brand: string
-      qty: number
-      serialNumbers: Array<{ id: string; serial: string; garantie: boolean }>
-    }>
   }
   onUpdateItem: (id: string, patch: Partial<LeadQuoteItem>) => void
   onDelete: (id: string) => void
-  onAddService?: (service: Service, qty: number, brandSerialIds?: string[]) => void
+  onAddService?: (service: Service, qty: number) => void
   onAddPart?: (part: { id: string; name: string; price: number }, qty: number, serialNumber?: string) => void
   onInstrumentChange?: (instrument: { id: string; name: string } | null) => void
   onInstrumentDoubleClick?: (instrument: { id: string; name: string }) => void
   onQtyChange?: (qty: number) => void
-  onAddBrandSerialGroup?: () => void
-  onRemoveBrandSerialGroup?: (groupId: string) => void
-  onUpdateBrand?: (groupId: string, brand: string) => void
-  onUpdateBrandQty?: (groupId: string, qty: number) => void
-  onAddSerialNumber?: (groupId: string) => void
-  onRemoveSerialNumber?: (groupId: string, serialId: string) => void
-  onUpdateSerialNumber?: (groupId: string, serialId: string, serial: string) => void
-  onUpdateSerialGarantie?: (groupId: string, serialId: string, garantie: boolean) => void
   onClearForm?: () => void
   onSvcDiscountChange?: (discount: string) => void
 }
@@ -76,14 +62,6 @@ export function MobileItemsView({
   onInstrumentChange,
   onInstrumentDoubleClick,
   onQtyChange,
-  onAddBrandSerialGroup,
-  onRemoveBrandSerialGroup,
-  onUpdateBrand,
-  onUpdateBrandQty,
-  onAddSerialNumber,
-  onRemoveSerialNumber,
-  onUpdateSerialNumber,
-  onUpdateSerialGarantie,
   onClearForm,
   onSvcDiscountChange,
 }: MobileItemsViewProps) {
@@ -228,14 +206,6 @@ export function MobileItemsView({
           onInstrumentChange={onInstrumentChange}
           onInstrumentDoubleClick={onInstrumentDoubleClick}
           onQtyChange={onQtyChange}
-          onAddBrandSerialGroup={onAddBrandSerialGroup}
-          onRemoveBrandSerialGroup={onRemoveBrandSerialGroup}
-          onUpdateBrand={onUpdateBrand}
-          onUpdateBrandQty={onUpdateBrandQty}
-          onAddSerialNumber={onAddSerialNumber}
-          onRemoveSerialNumber={onRemoveSerialNumber}
-          onUpdateSerialNumber={onUpdateSerialNumber}
-          onUpdateSerialGarantie={onUpdateSerialGarantie}
           onAddService={onAddService}
           onAddPart={onAddPart}
           onClearForm={onClearForm}
@@ -337,14 +307,6 @@ export function MobileItemsView({
         onInstrumentChange={onInstrumentChange}
         onInstrumentDoubleClick={onInstrumentDoubleClick}
         onQtyChange={onQtyChange}
-        onAddBrandSerialGroup={onAddBrandSerialGroup}
-        onRemoveBrandSerialGroup={onRemoveBrandSerialGroup}
-        onUpdateBrand={onUpdateBrand}
-        onUpdateBrandQty={onUpdateBrandQty}
-        onAddSerialNumber={onAddSerialNumber}
-        onRemoveSerialNumber={onRemoveSerialNumber}
-        onUpdateSerialNumber={onUpdateSerialNumber}
-        onUpdateSerialGarantie={onUpdateSerialGarantie}
         onAddService={onAddService}
         onAddPart={onAddPart}
         onClearForm={onClearForm}

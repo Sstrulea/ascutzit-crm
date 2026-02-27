@@ -36,9 +36,9 @@ export async function GET(request: NextRequest) {
 
     // 2. Validare permisiuni (admin/owner/vanzar)
     const { data: userProfile } = await supabase
-      .from('user_profiles')
+      .from('app_members')
       .select('role')
-      .eq('id', user.id)
+      .eq('user_id', user.id)
       .single()
 
     const role = userProfile?.role?.toLowerCase()

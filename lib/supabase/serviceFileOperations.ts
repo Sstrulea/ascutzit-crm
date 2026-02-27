@@ -151,16 +151,6 @@ export type TrayItem = {
     name: string
     price: number
   } | null
-  // Noua structură pentru brand-uri și serial numbers
-  tray_item_brands?: Array<{
-    id: string
-    brand: string
-    garantie: boolean
-    tray_item_brand_serials?: Array<{
-      id: string
-      serial_number: string
-    }>
-  }>
 }
 
 // ==================== SERVICE FILES ====================
@@ -486,11 +476,6 @@ export async function deleteServiceFile(serviceFileId: string): Promise<{ succes
 
     if (trayIds.length) {
       await supabase.from('pipeline_items').delete().eq('type', 'tray').in('item_id', trayIds)
-      const { data: trayItems } = await supabase.from('tray_items').select('id').in('tray_id', trayIds)
-      if (trayItems?.length) {
-        const itemIds = trayItems.map((ti: any) => ti.id)
-        await supabase.from('tray_item_brands').delete().in('tray_item_id', itemIds)
-      }
       await supabase.from('tray_items').delete().in('tray_id', trayIds)
       await supabase.from('tray_images').delete().in('tray_id', trayIds)
       await supabase.from('trays').delete().in('id', trayIds)
@@ -820,7 +805,7 @@ export async function updateTray(
 }
 
 /**
- * Șterge o tăviță din baza de date (pipeline_items, tray_item_brands, tray_items, tray_images, trays).
+ * Șterge o tăviță din baza de date (pipeline_items, tray_items, tray_images, trays).
  * ATENȚIE: Operația este ireversibilă.
  */
 export async function deleteTray(trayId: string, supabaseClient?: SupabaseClient): Promise<{ success: boolean; error: any }> {
@@ -838,29 +823,18 @@ export async function deleteTray(trayId: string, supabaseClient?: SupabaseClient
     // 3. Șterge stage_history pentru tăviță
     await db.from('stage_history').delete().eq('tray_id', trayId)
 
-    // 4. Șterge tray_item_brands (seriale) ale tăviței
-    const { data: trayItems } = await db.from('tray_items').select('id').eq('tray_id', trayId)
-    if (trayItems?.length) {
-      const ids = trayItems.map((ti: any) => ti.id)
-      await db.from('tray_item_brands').delete().in('tray_item_id', ids)
-      // Șterge și tray_item_brand_serials dacă există
-      try {
-        await db.from('tray_item_brand_serials').delete().in('tray_item_id', ids)
-      } catch { /* ignore if table doesn't exist */ }
-    }
-
-    // 5. Șterge tray_items (servicii, piese, instrumente din tăviță)
+    // 4. Șterge tray_items (servicii, piese, instrumente din tăviță)
     await db.from('tray_items').delete().eq('tray_id', trayId)
 
-    // 6. Șterge imaginile tăviței
+    // 5. Șterge imaginile tăviței
     await db.from('tray_images').delete().eq('tray_id', trayId)
 
-    // 7. Șterge arhiva_tavite_unite dacă există
+    // 6. Șterge arhiva_tavite_unite dacă există
     try {
       await db.from('arhiva_tavite_unite').delete().eq('parent_tray_id', trayId)
     } catch { /* ignore if not applicable */ }
 
-    // 8. În final, șterge tăvița
+    // 7. În final, șterge tăvița
     const { error } = await db.from('trays').delete().eq('id', trayId)
     if (error) throw error
 
@@ -1077,41 +1051,26 @@ export async function archiveServiceFileToDb(
       const { data: items, error: itemsErr } = await (db as any)
         .from('tray_items')
         .select(`
-          id, tray_id, department_id, instrument_id, service_id, part_id, qty, notes, pipeline,
-          tray_item_brands(id, brand, garantie, tray_item_brand_serials(id, serial_number))
+          id, tray_id, department_id, instrument_id, service_id, part_id, qty, notes, pipeline
         `)
         .in('tray_id', trayIds)
 
       if (!itemsErr && items?.length) allTrayItems.push(...items)
     }
 
-    // Snapshot tăvițe: number și itemi cu datele introduse (brand/serial/garanție în info)
     const traysSnapshot = (trays || []).map((t: any) => {
       const itemsInTray = allTrayItems
         .filter((ti: any) => ti.tray_id === t.id)
-        .map((ti: any) => {
-          const brands = ti.tray_item_brands as any[] | undefined
-          let info = ''
-          if (brands?.length) {
-            const parts = brands.map((b: any) => {
-              const serials = (b.tray_item_brand_serials || []).map((s: any) => s.serial_number).filter(Boolean)
-              const ser = serials.length ? ` Serial: ${serials.join(', ')}` : ''
-              const gar = b.garantie ? ' Garanție: Da' : ' Garanție: Nu'
-              return `Brand: ${b.brand || ''}${ser}${gar}`
-            })
-            info = parts.join(' | ')
-          }
-          return {
-            department_id: ti.department_id ?? null,
-            instrument_id: ti.instrument_id ?? null,
-            service_id: ti.service_id ?? null,
-            part_id: ti.part_id ?? null,
-            qty: ti.qty ?? 1,
-            notes: ti.notes ?? null,
-            pipeline: ti.pipeline ?? null,
-            info: info || null,
-          }
-        })
+        .map((ti: any) => ({
+          department_id: ti.department_id ?? null,
+          instrument_id: ti.instrument_id ?? null,
+          service_id: ti.service_id ?? null,
+          part_id: ti.part_id ?? null,
+          qty: ti.qty ?? 1,
+          notes: ti.notes ?? null,
+          pipeline: ti.pipeline ?? null,
+          info: null,
+        }))
       return { id: t.id, number: t.number, items: itemsInTray }
     })
 
@@ -1158,18 +1117,6 @@ export async function archiveServiceFileToDb(
     const arhivaFisaId = insertedFisa.id
 
     for (const ti of allTrayItems) {
-      const brands = ti.tray_item_brands as any[] | undefined
-      let info = ''
-      if (brands?.length) {
-        const parts = brands.map((b: any) => {
-          const serials = (b.tray_item_brand_serials || []).map((s: any) => s.serial_number).filter(Boolean)
-          const ser = serials.length ? ` Serial: ${serials.join(', ')}` : ''
-          const gar = b.garantie ? ' Garanție: Da' : ' Garanție: Nu'
-          return `Brand: ${b.brand || ''}${ser}${gar}`
-        })
-        info = parts.join(' | ')
-      }
-
       const { error: insertItemErr } = await (db as any)
         .from('arhiva_tray_items')
         .insert({
@@ -1182,7 +1129,7 @@ export async function archiveServiceFileToDb(
           qty: ti.qty ?? 1,
           notes: ti.notes ?? null,
           pipeline: ti.pipeline ?? null,
-          info: info || null,
+          info: null,
         })
 
       if (insertItemErr) {
@@ -1312,9 +1259,6 @@ export async function releaseTraysOnArchive(
 /**
  * Creează un nou item într-o tăviță (tray item).
  * Un tray item reprezintă un serviciu, piese sau instrument care trebuie procesat în cadrul unei tăvițe.
- * Funcția suportă noua structură cu brand-uri și serial numbers, salvând datele în tabelele
- * tray_item_brands și tray_item_brand_serials. Dacă aceste tabele nu există, funcția va funcționa
- * doar cu câmpurile de bază.
  * 
  * @param data - Datele item-ului:
  *   - tray_id: ID-ul tăviței căreia îi aparține item-ul
@@ -1323,9 +1267,8 @@ export async function releaseTraysOnArchive(
  *   - service_id: ID-ul serviciului (opțional)
  *   - part_id: ID-ul piesei (opțional)
  *   - qty: Cantitatea item-ului
- *   - notes: Note JSON cu detalii (preț, discount, urgent, item_type, brand, serial_number)
+ *   - notes: Note JSON cu detalii (preț, discount, urgent, item_type)
  *   - pipeline: Pipeline-ul asociat (opțional)
- *   - brandSerialGroups: Array cu grupuri de brand-uri și serial numbers (noua structură)
  * @returns Obiect cu data item-ului creat sau null și eroarea dacă există
  */
 export async function createTrayItem(data: {
@@ -1339,33 +1282,11 @@ export async function createTrayItem(data: {
   unrepaired_qty?: number
   notes?: string | null
   pipeline?: string | null
-  /** Grupuri brand + serialuri (structura normalizată) */
-  brandSerialGroups?: Array<{ brand: string | null; serialNumbers: string[]; garantie?: boolean }>
-  /**
-   * Sumă text a tuturor serial number-elor pentru acest tray_item.
-   * Dacă nu este furnizat, se calculează automat din brandSerialGroups (dacă există).
-   * Stocat în coloana `serials` (text) pentru raportare/filtrare rapidă.
-   */
+  /** Sumă text a tuturor serial number-elor (stocat în coloana `serials` pentru raportare/filtrare rapidă). */
   serials?: string | null
 }): Promise<{ data: TrayItem | null; error: any }> {
   try {
-    // Serial summary pentru coloana tray_items.serials
-    let serialsText: string | null = data.serials ?? null
-    if (!serialsText && data.brandSerialGroups && data.brandSerialGroups.length > 0) {
-      const allSerials: string[] = []
-      for (const group of data.brandSerialGroups) {
-        const serialNumbers = Array.isArray(group.serialNumbers) ? group.serialNumbers : []
-        for (const sn of serialNumbers) {
-          const trimmed = typeof sn === 'string' ? sn.trim() : ''
-          if (trimmed) allSerials.push(trimmed)
-        }
-      }
-      if (allSerials.length > 0) {
-        serialsText = allSerials.join(', ')
-      }
-    }
-
-    // Creează tray_item-ul (brand/serial_number se salvează în tray_item_brands și tray_item_brand_serials)
+    const serialsText: string | null = data.serials ?? null
     const { data: result, error } = await supabase
       .from('tray_items')
       .insert([{
@@ -1391,62 +1312,6 @@ export async function createTrayItem(data: {
     if (!result) {
       console.error('[createTrayItem] No result returned from tray_items insert')
       return { data: null, error: new Error('Failed to create tray item') }
-    }
-
-    // Salvează brand-urile și serial numbers în noile tabele
-    if (data.brandSerialGroups && data.brandSerialGroups.length > 0) {
-      // console.log('[createTrayItem] Saving brandSerialGroups:', JSON.stringify(data.brandSerialGroups, null, 2))
-      for (const group of data.brandSerialGroups) {
-        const brandName = group.brand?.trim()
-        if (!brandName) {
-          console.warn('[createTrayItem] Skipping group without brand name')
-          continue
-        }
-        
-        const garantie = group.garantie || false
-        const safeSerialNumbers = Array.isArray(group.serialNumbers) ? group.serialNumbers : []
-        // IMPORTANT: Include TOATE serial numbers-urile, inclusiv cele goale (pentru a păstra pozițiile ocupate)
-        // Acest lucru asigură că toate serial numbers-urile sunt salvate și afișate în tabel
-        const serialNumbers = safeSerialNumbers.map(sn => sn && sn.trim() ? sn.trim() : '')
-        
-        // console.log(`[createTrayItem] Creating brand "${brandName}" with ${serialNumbers.length} serial numbers:`, serialNumbers)
-        
-        // Creează brand-ul în tray_item_brands
-        const { data: brandResult, error: brandError } = await supabase
-          .from('tray_item_brands')
-          .insert([{
-            tray_item_id: result.id,
-            brand: brandName,
-            garantie: garantie,
-          }])
-          .select()
-          .single()
-        
-        if (brandError) {
-          console.error('[createTrayItem] Error creating brand:', brandError?.message || 'Unknown error')
-          continue
-        }
-        
-        // Creează serial numbers pentru acest brand (inclusiv cele goale)
-        if (serialNumbers.length > 0) {
-          const serialsToInsert = serialNumbers.map(sn => ({
-            brand_id: brandResult.id,
-            serial_number: sn || '', // Salvează string gol pentru serial numbers goale (nu null)
-          }))
-          
-          // console.log(`[createTrayItem] Inserting ${serialsToInsert.length} serial numbers for brand "${brandName}"`)
-          
-          const { error: serialsError } = await supabase
-            .from('tray_item_brand_serials')
-            .insert(serialsToInsert)
-          
-          if (serialsError) {
-            console.error('[createTrayItem] Error creating serials:', serialsError?.message || 'Unknown error')
-          } else {
-            // console.log(`[createTrayItem] Successfully created ${serialsToInsert.length} serial numbers for brand "${brandName}"`)
-          }
-        }
-      }
     }
 
     return { data: result as TrayItem, error: null }
@@ -1479,8 +1344,6 @@ export async function getTrayItem(trayItemId: string): Promise<{ data: TrayItem 
 
 /**
  * Listează toate item-urile dintr-o tăviță specificată.
- * Funcția încearcă să folosească noua structură cu tray_item_brands și tray_item_brand_serials.
- * Dacă aceste tabele nu există sau apar erori, funcția face fallback la structura veche.
  * Item-urile sunt returnate în ordine crescătoare după ID (ordinea creării).
  * Funcția gestionează și cazurile în care RLS (Row Level Security) blochează join-urile cu services,
  * încărcând serviciile separat dacă este necesar.
@@ -1490,79 +1353,32 @@ export async function getTrayItem(trayItemId: string): Promise<{ data: TrayItem 
  */
 export async function listTrayItemsForTray(trayId: string): Promise<{ data: TrayItem[]; error: any }> {
   try {
-    // Încearcă mai întâi noua structură cu tray_item_brands
-    let data: any[] | null = null
-    let useNewStructure = true
+    const result = await supabase
+      .from('tray_items')
+      .select(`
+        id, 
+        tray_id, 
+        instrument_id, 
+        service_id,
+        part_id, 
+        department_id, 
+        qty, 
+        unrepaired_qty,
+        notes, 
+        pipeline, 
+        serials,
+        created_at,
+        service:services(id, name, price)
+      `)
+      .eq('tray_id', trayId)
+      .order('id', { ascending: true })
     
-    try {
-      const result = await supabase
-        .from('tray_items')
-        .select(`
-          id, 
-          tray_id, 
-          instrument_id, 
-          service_id,
-          part_id, 
-          department_id, 
-          qty, 
-          unrepaired_qty,
-          notes, 
-          pipeline, 
-          serials,
-          created_at,
-          service:services(id, name, price),
-          tray_item_brands(
-            id, 
-            brand, 
-            garantie, 
-            created_at,
-            tray_item_brand_serials(id, serial_number, created_at)
-          )
-        `)
-        .eq('tray_id', trayId)
-        .order('id', { ascending: true })
-      
-      if (result.error) {
-        // Dacă eroarea e legată de tabel inexistent, folosește structura veche
-        console.warn('[listTrayItemsForTray] New structure failed, trying old structure:', result.error.message)
-        useNewStructure = false
-      } else {
-        data = result.data
-      }
-    } catch (e) {
-      console.warn('[listTrayItemsForTray] New structure exception, trying old structure')
-      useNewStructure = false
+    if (result.error) {
+      console.error('[listTrayItemsForTray] Error:', result.error?.message || 'Unknown error')
+      throw result.error
     }
     
-    // Fallback la structura veche (fără brand tables)
-    if (!useNewStructure || !data) {
-      const result = await supabase
-        .from('tray_items')
-        .select(`
-          id, 
-          tray_id, 
-          instrument_id, 
-          service_id,
-          part_id, 
-          department_id, 
-          qty, 
-          unrepaired_qty,
-          notes, 
-          pipeline, 
-          serials,
-          created_at,
-          service:services(id, name, price)
-        `)
-        .eq('tray_id', trayId)
-        .order('id', { ascending: true })
-      
-      if (result.error) {
-        console.error('[listTrayItemsForTray] Error:', result.error?.message || 'Unknown error')
-        throw result.error
-      }
-      
-      data = result.data
-    }
+    const data = result.data
     
     // Verifică dacă RLS blochează join-ul cu services
     const itemsWithServiceIdButNoJoin = data?.filter((i: any) => i.service_id && !i.service) || []
@@ -1586,32 +1402,6 @@ export async function listTrayItemsForTray(trayId: string): Promise<{ data: Tray
       }
     }
 
-    // Normalizare: serials, brand, serial_number, garantie din tray_item_brands/tray_item_brand_serials
-    // ca pe mobile și alte view-uri să afișeze aceleași date ca pe desktop (PC)
-    data?.forEach((item: any) => {
-      const brands = Array.isArray(item.tray_item_brands) ? item.tray_item_brands : []
-      if (brands.length > 0) {
-        const allSerials: string[] = []
-        let firstSerial: string | null = null
-        let firstBrand: string | null = null
-        let firstGarantie = false
-        for (const b of brands) {
-          const serials = Array.isArray(b?.tray_item_brand_serials) ? b.tray_item_brand_serials : []
-          for (const s of serials) {
-            const sn = s?.serial_number != null ? String(s.serial_number).trim() : ''
-            if (sn) allSerials.push(sn)
-            if (firstSerial == null && sn) firstSerial = sn
-          }
-          if (firstBrand == null && b?.brand) firstBrand = String(b.brand).trim() || null
-          if (firstGarantie === false && b?.garantie) firstGarantie = true
-        }
-        if (allSerials.length > 0) item.serials = allSerials.join(', ')
-        if (firstSerial != null) item.serial_number = firstSerial
-        if (firstBrand != null) item.brand = firstBrand
-        item.garantie = firstGarantie
-      }
-    })
-
     return { data: (data ?? []) as TrayItem[], error: null }
   } catch (error: any) {
     console.error('[listTrayItemsForTray] Exception:', error?.message || 'Unknown error')
@@ -1620,27 +1410,6 @@ export async function listTrayItemsForTray(trayId: string): Promise<{ data: Tray
 }
 
 const TRAY_ITEMS_SELECT = `
-  id, 
-  tray_id, 
-  instrument_id, 
-  service_id,
-  part_id, 
-  department_id, 
-  qty, 
-  notes, 
-  pipeline, 
-  serials,
-  created_at,
-  service:services(id, name, price),
-  tray_item_brands(
-    id, 
-    brand, 
-    garantie, 
-    created_at,
-    tray_item_brand_serials(id, serial_number, created_at)
-  )
-`
-const TRAY_ITEMS_SELECT_LEGACY = `
   id, 
   tray_id, 
   instrument_id, 
@@ -1666,18 +1435,11 @@ export async function listTrayItemsForTrays(trayIds: string[]): Promise<{ data: 
   for (let i = 0; i < trayIds.length; i += CHUNK) {
     const chunk = trayIds.slice(i, i + CHUNK)
     try {
-      let result = await supabase
+      const result = await supabase
         .from('tray_items')
         .select(TRAY_ITEMS_SELECT)
         .in('tray_id', chunk)
         .order('id', { ascending: true })
-      if (result.error) {
-        result = await supabase
-          .from('tray_items')
-          .select(TRAY_ITEMS_SELECT_LEGACY)
-          .in('tray_id', chunk)
-          .order('id', { ascending: true })
-      }
       if (result.error) throw result.error
       if (result.data?.length) out.push(...result.data)
     } catch (e: any) {
@@ -1726,8 +1488,7 @@ export async function updateTrayItem(
 
 /**
  * Șterge un item de tăviță din baza de date.
- * ATENȚIE: Ștergerea unui item este ireversibilă și va șterge și toate brand-urile și
- * serial numbers asociate (dacă există noua structură).
+ * ATENȚIE: Ștergerea unui item este ireversibilă.
  * 
  * @param trayItemId - ID-ul item-ului de șters
  * @returns Obiect cu success: true dacă ștergerea a reușit, false altfel, și eroarea dacă există
@@ -1749,9 +1510,6 @@ export async function deleteTrayItem(trayItemId: string): Promise<{ success: boo
 /**
  * Împarte volumul (qty) dintr-un tray_item către alt tehnician, în aceeași tăviță.
  * Implementarea folosește RPC-ul `rpc_split_tray_items_to_technician` pentru operație atomică.
- *
- * Notă:
- * - Pentru item-uri cu serial numbers (tray_item_brands), RPC-ul blochează split-ul parțial.
  */
 export async function splitTrayItemsToTechnician(params: {
   trayId: string
@@ -1916,7 +1674,6 @@ export async function mergeSplitTraysIfAllFinalized(
 /**
  * Consolidează rândurile din tray_items pentru un tehnician: grupează după (instrument_id, service_id, part_id),
  * însumează cantitățile și păstrează un singur rând per grup (ex: Cleste x2 + Cleste x3 → Cleste x5).
- * Rândurile care au brand/serial (tray_item_brands) nu sunt incluse în consolidare.
  * Folosește RPC-ul PostgreSQL pentru o singură tranzacție atomică; la eroare face fallback pe logica client.
  *
  * Apelată după reunire (merge) ca să nu rămână înregistrări duplicate (cleste 2, cleste 3) ci una singură (cleste 5).
@@ -1941,14 +1698,11 @@ export async function consolidateTrayItemsForTechnician(
   try {
     const { data: rows, error: fetchErr } = await supabase
       .from('tray_items')
-      .select('id, instrument_id, service_id, part_id, qty, tray_item_brands(id)')
+      .select('id, instrument_id, service_id, part_id, qty')
       .eq('tray_id', trayId)
 
     if (fetchErr) return { data: { mergedCount: 0 }, error: fetchErr }
     if (!rows?.length) return { data: { mergedCount: 0 }, error: null }
-
-    const hasBrands = (r: any) =>
-      Array.isArray(r?.tray_item_brands) && r.tray_item_brands.length > 0
 
     const key = (r: any) =>
       [r.instrument_id ?? '', r.service_id ?? '', r.part_id ?? ''].join('|')
@@ -1962,12 +1716,11 @@ export async function consolidateTrayItemsForTechnician(
 
     let mergedCount = 0
     for (const [, group] of groups) {
-      const withoutBrands = group.filter((r: any) => !hasBrands(r))
-      if (withoutBrands.length < 2) continue
+      if (group.length < 2) continue
 
-      const keep = withoutBrands[0]
-      const toDelete = withoutBrands.slice(1)
-      const totalQty = withoutBrands.reduce((s: number, r: any) => s + (Number(r.qty) || 0), 0)
+      const keep = group[0]
+      const toDelete = group.slice(1)
+      const totalQty = group.reduce((s: number, r: any) => s + (Number(r.qty) || 0), 0)
 
       const { error: updateErr } = await supabase
         .from('tray_items')

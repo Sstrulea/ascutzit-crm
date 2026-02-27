@@ -749,25 +749,12 @@ const listQuoteItems = async (
   instrumentsMap?: Map<string, { id: string; name: string }>
 ): Promise<any[]> => {
   
-  // Query cu tray_item_brands; fallback fără dacă join-ul eșuează (RLS/relație)
   let data: any[] | null = null
   let error: any = null
 
   const result = await supabaseClient
     .from('tray_items')
-    .select(`
-      id,
-      tray_id,
-      instrument_id,
-      service_id,
-      part_id,
-      department_id,
-      technician_id,
-      qty,
-      notes,
-      created_at,
-      tray_item_brands(id, brand, garantie, tray_item_brand_serials(id, serial_number))
-    `)
+    .select('id, tray_id, instrument_id, service_id, part_id, department_id, technician_id, qty, notes, created_at')
     .eq('tray_id', trayId)
     .order('created_at')
 
@@ -775,19 +762,8 @@ const listQuoteItems = async (
   error = result.error
 
   if (error) {
-    const errMsg = String(error?.message ?? '')
-    const errCode = error?.code
-    // Fallback fără tray_item_brands când join-ul eșuează (RLS, relație inexistentă, etc.)
-    const fallback = await supabaseClient
-      .from('tray_items')
-      .select('id, tray_id, instrument_id, service_id, part_id, department_id, technician_id, qty, notes, created_at')
-      .eq('tray_id', trayId)
-      .order('created_at')
-    if (fallback.error) {
-      console.error('[listQuoteItems] Error:', errMsg || errCode || error)
-      return []
-    }
-    data = fallback.data
+    console.error('[listQuoteItems] Error:', error)
+    return []
   }
 
   // Procesează fiecare item - folosește services array pentru a găsi numele
@@ -873,68 +849,10 @@ const listQuoteItems = async (
       price: price || 0,
       discount_pct: notesData.discount_pct || 0,
       urgent: notesData.urgent || false,
-      // Folosește brand și serial_number din câmpurile directe (pentru compatibilitate)
-      // sau din primul brand din tray_item_brands dacă există
-      brand: item.brand || (item.tray_item_brands && item.tray_item_brands.length > 0 
-        ? item.tray_item_brands[0].brand 
-        : null) || notesData.brand || null,
-      serial_number: (() => {
-        // Extrage serial_number - poate fi string sau obiect {serial, garantie}
-        let serialValue: string | null = null
-        
-        if (item.serial_number) {
-          if (typeof item.serial_number === 'string') {
-            serialValue = item.serial_number
-          } else if (typeof item.serial_number === 'object' && item.serial_number !== null && 'serial' in item.serial_number) {
-            serialValue = (item.serial_number as any).serial || null
-          } else {
-            serialValue = String(item.serial_number)
-          }
-        }
-        
-        if (!serialValue && item.tray_item_brands && item.tray_item_brands.length > 0 
-          && item.tray_item_brands[0].tray_item_brand_serials?.length > 0) {
-          serialValue = item.tray_item_brands[0].tray_item_brand_serials[0].serial_number || null
-        }
-        
-        if (!serialValue && notesData.serial_number) {
-          if (typeof notesData.serial_number === 'string') {
-            serialValue = notesData.serial_number
-          } else if (typeof notesData.serial_number === 'object' && notesData.serial_number !== null && 'serial' in notesData.serial_number) {
-            serialValue = notesData.serial_number.serial || null
-          } else {
-            serialValue = String(notesData.serial_number)
-          }
-        }
-        
-        return serialValue
-      })(),
-      garantie: (item.tray_item_brands && item.tray_item_brands.length > 0 
-        ? item.tray_item_brands[0].garantie 
-        : false) || notesData.garantie || false,
-      // Include toate brand-urile cu serial numbers pentru afișare (noua structură)
-      brand_groups: (() => {
-        const safeBrands = Array.isArray(item.tray_item_brands) ? item.tray_item_brands : []
-        const brandGroups = safeBrands.map((b: any) => {
-          if (!b || typeof b !== 'object') {
-            return { id: '', brand: '', garantie: false, serialNumbers: [] }
-          }
-          const safeSerials = Array.isArray(b.tray_item_brand_serials) ? b.tray_item_brand_serials : []
-          // IMPORTANT: Include TOATE serial numbers-urile, inclusiv cele goale
-          // Acest lucru asigură că toate serial numbers-urile sunt afișate în tabel
-          const serialNumbers = safeSerials.map((s: any) => s?.serial_number || '')
-          // console.log(`[useLeadDetailsDataLoader] Loading brand "${b.brand}" with ${serialNumbers.length} serial numbers:`, serialNumbers)
-          return {
-            id: b.id || '',
-            brand: b.brand || '',
-            garantie: b.garantie || false,
-            serialNumbers: serialNumbers
-          }
-        })
-        // console.log(`[useLeadDetailsDataLoader] Loaded ${brandGroups.length} brand groups for item ${item.id}:`, brandGroups)
-        return brandGroups
-      })(),
-      pipeline_id: pipelineId, // Adăugat pipeline_id pentru afișare în tabel
+      brand: notesData.brand || null,
+      serial_number: notesData.serial_number || null,
+      garantie: notesData.garantie || false,
+      pipeline_id: pipelineId,
       department,
       instrument_name: instrumentName,
     }

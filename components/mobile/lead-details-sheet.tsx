@@ -1197,7 +1197,7 @@ export function LeadDetailsSheet({
     loadTrayData()
   }, [lead, open, isTechnician, isDepartmentPipeline, isReparatiiPipeline, getTrayId, shouldLoadTrayDetails, trayItemsRefreshKey])
 
-  // Helper pentru a extrage discount, urgent, brand, serial_number, garantie (notes + normalizat din tray_item_brands)
+  // Helper pentru a extrage discount, urgent, brand, serial_number, garantie din notes
   const getItemNotesData = useCallback((item: TrayItem) => {
     let notesData: any = {}
     if (item.notes) {
@@ -1212,7 +1212,6 @@ export function LeadDetailsSheet({
       discount_pct: notesData.discount_pct || 0,
       urgent: notesData.urgent || false,
       ...notesData,
-      // Pe mobil datele din tray_item_brands sunt normalizate pe item de listTrayItemsForTray – preferăm acestea ca să coincidă cu PC
       brand: notesData.brand ?? itemAny.brand ?? null,
       serial_number: notesData.serial_number ?? itemAny.serial_number ?? null,
       garantie: notesData.garantie ?? itemAny.garantie ?? false,

@@ -710,7 +710,7 @@ export function NuRaspundeOverlay({
                             const isUrgent = it.urgent || !!serviceFile?.urgent
                             const total = isUrgent ? afterDisc * (1 + URGENT_MARKUP_PCT / 100) : afterDisc
                             const name = it.name_snapshot || (it.service_id && services.find((s) => s.id === it.service_id)?.name) || '—'
-                            const hasGarantie = it.garantie ?? (it as any).brand_groups?.some((g: any) => g.garantie) ?? false
+                            const hasGarantie = it.garantie ?? false
                             const isUnrepaired = unrepaired > 0
                             const rowCls = isUnrepaired ? 'text-red-600 dark:text-red-400 font-bold' : ''
                             return (

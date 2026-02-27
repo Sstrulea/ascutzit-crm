@@ -378,112 +378,36 @@ export default function TehnicianTrayPage() {
     }
 
     try {
-      // Încearcă mai întâi cu join-ul complet (inclusiv tray_item_brands)
-      let data: any[] | null = null
-      let error: any = null
-      let useNewStructure = true
+      const result = await supabase
+        .from('tray_items')
+        .select(`
+          id,
+          tray_id,
+          instrument_id,
+          service_id,
+          part_id,
+          department_id,
+          qty,
+          notes,
+          created_at,
+          service:services(*),
+          department:departments(id, name),
+          instrument:instruments(id, name)
+        `)
+        .eq('tray_id', trayId)
+        .order('created_at')
 
-      try {
-        const result = await supabase
-          .from('tray_items')
-          .select(`
-            id,
-            tray_id,
-            instrument_id,
-            service_id,
-            part_id,
-            department_id,
-            qty,
-            notes,
-            created_at,
-            service:services(*),
-            department:departments(id, name),
-            instrument:instruments(id, name),
-            tray_item_brands(id, brand, garantie, tray_item_brand_serials(id, serial_number))
-          `)
-          .eq('tray_id', trayId)
-          .order('created_at')
-
-        if (result.error) {
-          console.error('[TrayPage] Query error:', {
-            message: result.error.message,
-            code: result.error.code,
-            details: result.error.details,
-            hint: result.error.hint,
-            fullError: result.error
-          })
-          
-          // Dacă eroarea este legată de tray_item_brands, încercă fără el
-          if (result.error.message?.includes('tray_item_brands') || 
-              result.error.code === 'PGRST116' ||
-              result.error.message?.includes('relation') && result.error.message?.includes('tray_item_brands')) {
-            console.warn('[TrayPage] tray_item_brands join failed, trying without it:', result.error.message)
-            useNewStructure = false
-          } else {
-            throw result.error
-          }
-        } else {
-          data = result.data
-          error = null
-        }
-      } catch (e: any) {
-        console.error('[TrayPage] Exception in first query attempt:', {
-          message: e?.message,
-          code: e?.code,
-          name: e?.name,
-          stack: e?.stack,
-          fullError: e
+      if (result.error) {
+        console.error('[TrayPage] Query error:', {
+          message: result.error.message,
+          code: result.error.code,
+          details: result.error.details,
+          hint: result.error.hint,
+          fullError: result.error
         })
-        
-        // Dacă este o eroare de structură, încercă fără tray_item_brands
-        if (e?.message?.includes('tray_item_brands') || 
-            e?.code === 'PGRST116' ||
-            (e?.message?.includes('relation') && e?.message?.includes('tray_item_brands'))) {
-          console.warn('[TrayPage] tray_item_brands join failed (exception), trying without it:', e?.message)
-          useNewStructure = false
-        } else {
-          throw e
-        }
+        throw result.error
       }
-
-      // Fallback: încarcă fără tray_item_brands dacă prima încercare a eșuat
-      if (!useNewStructure || !data) {
-        const result = await supabase
-          .from('tray_items')
-          .select(`
-            id,
-            tray_id,
-            instrument_id,
-            service_id,
-            part_id,
-            department_id,
-            qty,
-            notes,
-            created_at,
-            service:services(*),
-            department:departments(id, name),
-            instrument:instruments(id, name)
-          `)
-          .eq('tray_id', trayId)
-          .order('created_at')
-
-        if (result.error) {
-          console.error('[TrayPage] Fallback query error:', {
-            message: result.error.message,
-            code: result.error.code,
-            details: result.error.details,
-            hint: result.error.hint,
-            fullError: result.error
-          })
-          throw result.error
-        }
-        data = result.data
-      }
-
-      if (error) {
-        console.error('[TrayPage] Error still present after queries:', error)
-        throw error
-      }
+      const data = result.data
       
       const servicesJoined = data?.map((i: any) => ({ 
         service_id: i.service_id, 
@@ -517,9 +441,6 @@ export default function TehnicianTrayPage() {
         }
       }
 
-      // Parsează notes JSON pentru discount_pct, urgent
-      // Brand și serial_number vin acum din tray_item_brands
-      // Și asigură-te că serviciile au datele complete chiar dacă join-ul nu a funcționat
       const items = (data || []).map((item: any) => {
         let discount_pct = 0
         let urgent = false
@@ -527,43 +448,14 @@ export default function TehnicianTrayPage() {
         let serial_number = null
         let garantie = false
 
-        // Extrage brand și serial_number din tray_item_brands (noua structură)
-        if (item.tray_item_brands && Array.isArray(item.tray_item_brands) && item.tray_item_brands.length > 0) {
-          // Folosește primul brand (sau poți agrega toate)
-          const firstBrand = item.tray_item_brands[0]
-          if (firstBrand) {
-            brand = firstBrand.brand || null
-            garantie = firstBrand.garantie || false
-            
-            // Extrage serial numbers din primul brand
-            if (firstBrand.tray_item_brand_serials && Array.isArray(firstBrand.tray_item_brand_serials) && firstBrand.tray_item_brand_serials.length > 0) {
-              const serials = firstBrand.tray_item_brand_serials
-                .map((s: any) => s?.serial_number)
-                .filter((sn: any) => sn && sn.trim())
-              serial_number = serials.length > 0 ? serials.join(', ') : null
-            }
-          }
-        }
-        
-        // Fallback: dacă nu există tray_item_brands, încearcă să extragă din notes (pentru backwards compatibility)
-        if (!brand && !serial_number && item.notes) {
-          try {
-            const notesData = JSON.parse(item.notes)
-            if (notesData.brand) brand = notesData.brand
-            if (notesData.serial_number) serial_number = notesData.serial_number
-            if (notesData.garantie !== undefined) garantie = notesData.garantie
-          } catch (e) {
-            // Ignoră eroarea de parsing
-          }
-        }
-
-        // Parsează notes JSON pentru discount_pct și urgent (brand/serial_number nu mai sunt în notes)
         if (item.notes) {
           try {
             const notesData = JSON.parse(item.notes)
             discount_pct = notesData.discount_pct || 0
             urgent = notesData.urgent || false
-            // Nu mai căutăm brand și serial_number în notes, le luăm din tray_item_brands
+            if (notesData.brand) brand = notesData.brand
+            if (notesData.serial_number) serial_number = notesData.serial_number
+            if (notesData.garantie !== undefined) garantie = notesData.garantie
           } catch (e) {
             // Notes nu este JSON valid, ignoră
           }
@@ -1480,25 +1372,6 @@ export default function TehnicianTrayPage() {
         },
         serviceFileId: trayData?.service_file_id ?? undefined,
       }).catch(() => {})
-
-      // Actualizează brand și serial number în tabelele tray_item_brands și tray_item_brand_serials
-      const { deleteAllTrayItemBrands, createTrayItemBrandsWithSerials } = await import('@/lib/supabase/trayItemBrandSerials')
-      
-      // Șterge brand-urile existente
-      await deleteAllTrayItemBrands(editingServiceItem.id)
-      
-      // Creează brand și serial number dacă sunt completate
-      if (editService.brand && editService.brand.trim()) {
-        const serialNumbers = editService.serialNumber 
-          ? editService.serialNumber.split(',').map(sn => sn.trim()).filter(sn => sn)
-          : []
-        
-        await createTrayItemBrandsWithSerials(editingServiceItem.id, [{
-          brand: editService.brand.trim(),
-          serialNumbers: serialNumbers,
-          garantie: editService.garantie || false,
-        }])
-      }
 
       toast.success('Serviciu actualizat cu succes')
       setEditServiceOpen(false)

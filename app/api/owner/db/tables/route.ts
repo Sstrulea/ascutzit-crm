@@ -28,8 +28,6 @@ const TABLE_NAMES = [
   'items_events',
   'work_sessions',
   'stage_history',
-  'tray_item_brands',
-  'tray_item_brand_serials',
   'arhiva_fise_serviciu',
   'arhiva_tray_items',
 ]

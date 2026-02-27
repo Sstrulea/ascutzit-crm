@@ -91,11 +91,11 @@ export function PrintViewData({
       const technicianMap = new Map<string, string>()
       if (technicianIds.size > 0) {
         const { data: technicians } = await supabase
-          .from('members')
-          .select('user_id, display_name')
+          .from('app_members')
+          .select('user_id, name')
           .in('user_id', Array.from(technicianIds))
-        ;(technicians as Array<{ user_id: string; display_name: string | null }> | null)?.forEach(tech => {
-          if (tech.display_name) technicianMap.set(tech.user_id, tech.display_name)
+        ;(technicians as Array<{ user_id: string; name: string | null }> | null)?.forEach(tech => {
+          if (tech.name) technicianMap.set(tech.user_id, tech.name)
         })
       }
 
@@ -130,21 +130,8 @@ export function PrintViewData({
                 notesData = JSON.parse(item.notes)
               } catch (e) {}
             }
-            // Serial number: din notes.serial_number sau din notes.brandSerialGroups (toate serialNumbers)
             const getSerialFromNotes = () => {
               if (notesData.serial_number) return notesData.serial_number
-              const groups = notesData.brandSerialGroups || notesData.brand_groups
-              if (Array.isArray(groups) && groups.length > 0) {
-                const serials: string[] = []
-                groups.forEach((g: any) => {
-                  const arr = g.serialNumbers || g.serial_numbers || []
-                  arr.forEach((sn: any) => {
-                    const s = typeof sn === 'string' ? sn : (sn?.serial ?? sn?.serial_number ?? '')
-                    if (s) serials.push(String(s).trim())
-                  })
-                })
-                if (serials.length > 0) return serials.join(', ')
-              }
               return null
             }
             

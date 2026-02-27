@@ -13,7 +13,6 @@ export interface TrayPrintItem {
   name_snapshot?: string | null
   brand?: string | null
   serial_number?: string | null
-  brand_groups?: Array<{ brand?: string; serialNumbers?: string[] }>
   qty?: number
   price?: number
   discount_pct?: number
@@ -68,18 +67,6 @@ function groupItemsByInstrument(
 function getSerialBrandLabel(item: TrayPrintItem): string {
   if (item.serial_number || item.brand) {
     return [item.brand, item.serial_number].filter(Boolean).join(' – ') || '—'
-  }
-  const groups = item.brand_groups
-  if (Array.isArray(groups) && groups.length > 0) {
-    const parts: string[] = []
-    for (const g of groups) {
-      const brand = g.brand?.trim()
-      const list = Array.isArray(g.serialNumbers) ? g.serialNumbers.filter((s) => s != null && String(s).trim()) : []
-      if (brand || list.length > 0) {
-        parts.push([brand, list.join(', ')].filter(Boolean).join(' – '))
-      }
-    }
-    if (parts.length > 0) return parts.join('; ')
   }
   return '—'
 }

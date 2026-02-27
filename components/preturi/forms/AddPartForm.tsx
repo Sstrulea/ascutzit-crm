@@ -12,15 +12,11 @@ interface AddPartFormProps {
   part: {
     id: string
     qty: string
-    serialNumberId: string
   }
   partSearchQuery: string
   partSearchFocused: boolean
   parts: Part[]
   items: LeadQuoteItem[]
-  instrumentForm: {
-    brandSerialGroups: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }> }>
-  }
   canAddParts: boolean
   onPartSearchChange: (query: string) => void
   onPartSearchFocus: () => void
@@ -28,7 +24,6 @@ interface AddPartFormProps {
   onPartSelect: (partId: string, partName: string) => void
   onPartDoubleClick: (partId: string, partName: string) => void
   onQtyChange: (qty: string) => void
-  onSerialNumberChange: (serialNumberId: string) => void
   onAddPart: () => void
 }
 
@@ -38,7 +33,6 @@ export function AddPartForm({
   partSearchFocused,
   parts,
   items,
-  instrumentForm,
   canAddParts,
   onPartSearchChange,
   onPartSearchFocus,
@@ -46,25 +40,11 @@ export function AddPartForm({
   onPartSelect,
   onPartDoubleClick,
   onQtyChange,
-  onSerialNumberChange,
   onAddPart,
 }: AddPartFormProps) {
   if (!canAddParts) {
     return null
   }
-
-  // Verifică dacă există mai multe instrumente unice
-  const uniqueInstruments = new Set<string>()
-  items.forEach(item => {
-    if (item.item_type === null && item.instrument_id) {
-      uniqueInstruments.add(item.instrument_id)
-    } else if (item.item_type === 'service' && item.instrument_id) {
-      uniqueInstruments.add(item.instrument_id)
-    } else if (item.item_type === 'part' && item.instrument_id) {
-      uniqueInstruments.add(item.instrument_id)
-    }
-  })
-  const hasMultipleInstruments = uniqueInstruments.size > 1
 
   return (
     <div className="mx-2 sm:mx-4">
@@ -169,39 +149,8 @@ export function AddPartForm({
               )}
             </div>
 
-            {/* Serial Number */}
-            <div className="col-span-12 sm:col-span-4">
-              <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                Serial / Brand
-                {hasMultipleInstruments && <span className="text-red-500">*</span>}
-              </Label>
-              <select
-                className="w-full min-h-11 md:h-10 text-base md:text-sm border-2 border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 md:py-0 bg-white dark:bg-slate-900 focus:border-slate-500 focus:ring-2 focus:ring-slate-400/20 transition-all touch-manipulation"
-                value={part.serialNumberId}
-                onChange={e => onSerialNumberChange(e.target.value)}
-                required={hasMultipleInstruments}
-              >
-                <option value="">-- Selectează serial --</option>
-                {(Array.isArray(instrumentForm?.brandSerialGroups) ? instrumentForm.brandSerialGroups : []).flatMap((group, gIdx) => {
-                  if (!group) return []
-                  const serialNumbers = Array.isArray(group?.serialNumbers) ? group.serialNumbers : []
-                  return serialNumbers
-                    .map(sn => {
-                      const serial = typeof sn === 'string' ? sn : sn?.serial || ''
-                      return serial.trim()
-                    })
-                    .filter(sn => sn)
-                    .map((sn, snIdx) => (
-                      <option key={`${gIdx}-${snIdx}`} value={`${group?.brand || ''}::${sn}`}>
-                        {group?.brand ? `${group.brand} — ${sn}` : sn}
-                      </option>
-                    ))
-                })}
-              </select>
-            </div>
-
             {/* Cant */}
-            <div className="col-span-12 sm:col-span-2">
+            <div className="col-span-12 sm:col-span-6">
               <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                 Cant.
               </Label>

@@ -70,9 +70,7 @@ export function MergeTrayTechnicianDialog({
       .map(it => {
         const qtyTotal = Number(it.qty || 1)
 
-        const hasBrandGroups = Array.isArray((it as any)?.brand_groups) && (it as any).brand_groups.length > 0
-        const hasLegacyBrandOrSerial = !!it.brand || !!it.serial_number
-        const hasBrandsOrSerials = hasBrandGroups || hasLegacyBrandOrSerial
+        const hasBrandsOrSerials = false
 
         const instrumentName = it.instrument_id ? (instrumentNameById.get(it.instrument_id) || "Instrument") : "—"
         const serviceLabel =
@@ -274,11 +272,6 @@ export function MergeTrayTechnicianDialog({
                           <Badge variant="outline" className="text-[10px]">
                             {r.currentTechnicianName}
                           </Badge>
-                          {r.hasBrandsOrSerials && (
-                            <Badge variant="outline" className="text-[10px]">
-                              serial/brand
-                            </Badge>
-                          )}
                         </div>
                       </div>
                     </div>

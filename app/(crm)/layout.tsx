@@ -12,7 +12,7 @@ import { Menu, Search } from 'lucide-react'
 import { AuthStatus } from '@/components/auth'
 import { useAuth } from '@/lib/contexts/AuthContext'
 import { usePipelinesCache } from '@/hooks/usePipelinesCache'
-import { SmartTraySearch } from '@/components/search/SmartTraySearch'
+import { GlobalSearchBar } from '@/components/search/GlobalSearchBar'
 
 export default function CrmShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -67,7 +67,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
         <div className="shrink-0 w-24 min-w-0" aria-hidden />
         <div className="flex-1 max-w-md min-w-[200px]">
           <Suspense fallback={<div className="h-10 w-full rounded-md border bg-muted/50 animate-pulse" />}>
-            <SmartTraySearch className="w-full" />
+            <GlobalSearchBar className="w-full" />
           </Suspense>
         </div>
         <AuthStatus />
@@ -117,14 +117,14 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
           <SheetContent side="top" className="h-[85vh] flex flex-col p-0 gap-0">
             <div className="p-3 border-b shrink-0">
               <Suspense fallback={<div className="h-10 w-full rounded-md border bg-muted/50 animate-pulse" />}>
-                <SmartTraySearch
+                <GlobalSearchBar
                   className="w-full"
                   onAfterSelect={() => setMobileSearchOpen(false)}
                 />
               </Suspense>
             </div>
             <p className="px-3 py-2 text-xs text-muted-foreground border-b">
-              Caută după nume, email, telefon, nr. tăviță, serial, brand. La selectare ești dus direct la lead/fișă/tăviță.
+              Caută după nume, email, telefon, nr. tăviță, serial, tag, tehnician. Termeni separați prin virgulă = căutare combinată.
             </p>
           </SheetContent>
         </Sheet>

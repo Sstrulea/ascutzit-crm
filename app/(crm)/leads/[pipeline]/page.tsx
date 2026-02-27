@@ -13,7 +13,7 @@ import type { KanbanLead } from '@/lib/types/database'
 import { useParams, useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Plus, Settings2, Filter, X, UserPlus, Loader2, User, MapPin, Building2, Phone, Mail, LayoutGrid, Package, ChevronDown, SlidersHorizontal, Eye, EyeOff, Archive } from "lucide-react"
+import { Plus, Settings2, Filter, X, UserPlus, Loader2, User, MapPin, Building2, Phone, Mail, LayoutGrid, Package, ChevronDown, SlidersHorizontal, Eye, EyeOff, Archive, ChevronsLeft, ChevronsRight, Minus } from "lucide-react"
 import { useRole, useAuthContext } from '@/lib/contexts/AuthContext'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
 import { AppSidebar as Sidebar, LoadingScreen } from '@/components/layout'
@@ -126,6 +126,9 @@ export default function CRMPage() {
 
   // State pentru dialog customizare ordine stage-uri
   const [customizeOpen, setCustomizeOpen] = useState(false)
+
+  // Navigare stage (Primul / Mijloc / Ultimul) – expusă de KanbanBoard, randată în header centrat
+  const [stageNav, setStageNav] = useState<{ scrollToFirstStage: () => void; scrollToMiddleStage: () => void; scrollToLastStage: () => void } | null>(null)
 
   const { isOwner, role } = useRole()
   const { hasAccess, isMember, loading: authLoading, user } = useAuthContext()
@@ -2190,6 +2193,43 @@ export default function CRMPage() {
               </Button>
             )}
 
+            {/* Navigare stage – același rând, centrat (Primul / Mijloc / Ultimul) */}
+            {stageNav && (
+              <div className="flex-1 flex justify-center items-center gap-1 min-w-0 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={stageNav.scrollToFirstStage}
+                  title="Mergi la primul stage"
+                >
+                  <ChevronsLeft className="h-4 w-4 mr-1" />
+                  Primul stage
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={stageNav.scrollToMiddleStage}
+                  title="Mergi la mijlocul stage-urilor"
+                >
+                  <Minus className="h-4 w-4 mr-1" />
+                  Stage din mijloc
+                  <Minus className="h-4 w-4 ml-1" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={stageNav.scrollToLastStage}
+                  title="Mergi la ultimul stage"
+                >
+                  Ultimul stage
+                  <ChevronsRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            )}
+
             {/* Acțiuni – aliniate la dreapta */}
             <div className="flex items-center gap-1.5 ml-auto shrink-0">
               {pipelineSlug?.toLowerCase() === 'receptie' && arhivatStageName && (
@@ -2378,6 +2418,7 @@ export default function CRMPage() {
                     const stage = isForeignPhone(phone) ? leaduriStraineStageName : leaduriStageName
                     if (stage) handleMove(leadId, stage)
                   } : undefined}
+                  onStageNavReady={setStageNav}
                 />
                 
                 {/* Panel de detalii: rămâne deschis până la Close/Escape (nu se închide la click în afară) */}

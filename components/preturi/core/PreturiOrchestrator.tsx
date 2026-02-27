@@ -248,14 +248,6 @@ interface PreturiOrchestratorProps {
   onMarkComplete?: () => void
   onMarkWaiting?: () => void
   onSaveToHistory?: () => void
-  onAddBrandSerialGroup: () => void
-  onRemoveBrandSerialGroup: (index: number) => void
-  onUpdateBrand: (groupIndex: number, brand: string) => void
-  onUpdateBrandQty: (groupIndex: number, qty: string) => void
-  onUpdateSerialNumber: (groupIndex: number, serialIndex: number, serial: string) => void
-  onAddSerialNumber?: (groupIndex: number) => void
-  onRemoveSerialNumber?: (groupIndex: number, serialIndex: number) => void
-  onUpdateSerialGarantie: (groupIndex: number, serialIndex: number, garantie: boolean) => void
   setIsDirty?: (dirty: boolean) => void
   onCreateTray: () => Promise<void>
   onCreateTrayInline?: (number: string) => Promise<void>
@@ -284,8 +276,6 @@ interface PreturiOrchestratorProps {
   previousFormState?: any // Pentru a arăta dacă există stare de Undo
 // -----------------------------------------------------------------------------------------------------------------------------------
   onRefreshItems?: () => void
-  onBrandToggle?: (brandName: string, checked: boolean) => void
-  
   // Tehnician assignment (doar admini)
   isAdmin?: boolean
   technicians?: Array<{ id: string; name: string }>
@@ -320,7 +310,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
     instrumentId: string
     qty: number
     brand: string
-    brandSerialGroupsFromForm: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }>; qty: string }> | undefined
     instrumentName: string
     existingDeptName: string
     newDeptName: string
@@ -337,7 +326,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
     instrumentId: string,
     qty: number,
     brand: string,
-    brandSerialGroupsFromForm: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }>; qty: string }> | undefined
   ) => {
     if (!selectedQuote) {
       toast.error('⚠️ Nu există o tăviță atribuită. Te rog selectează sau creează o tăviță înainte de a adăuga un instrument.')
@@ -345,27 +333,12 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
     }
     const instrument = props.instruments?.find(i => i.id === instrumentId)
     if (!instrument) return
-    let brandSerialGroups: Array<{ brand: string | null; serialNumbers: string[]; garantie: boolean }> | undefined
-    if (brandSerialGroupsFromForm?.length) {
-      brandSerialGroups = brandSerialGroupsFromForm
-        .filter(g => g.brand?.trim())
-        .map(g => ({
-          brand: g.brand!.trim(),
-          serialNumbers: Array.isArray(g.serialNumbers) ? g.serialNumbers.map((sn: any) => (typeof sn === 'string' ? sn : sn?.serial ?? '').trim()).filter(Boolean) : [],
-          garantie: g.serialNumbers?.some((s: any) => (typeof s === 'object' && s?.garantie)) ?? false,
-        }))
-        .filter(g => g.brand || g.serialNumbers.length > 0)
-      if (!brandSerialGroups?.length && brand?.trim()) brandSerialGroups = [{ brand: brand.trim(), serialNumbers: [], garantie: false }]
-    } else if (brand?.trim()) {
-      brandSerialGroups = [{ brand: brand.trim(), serialNumbers: [], garantie: false }]
-    }
     const { data: newItem, error } = await createTrayItem({
       tray_id: selectedQuote.id,
       instrument_id: instrumentId,
       department_id: instrument.department_id || undefined,
       pipeline: instrument.pipeline || undefined,
       qty,
-      brandSerialGroups,
     })
     if (error) {
       toast.error('Eroare la adăugare instrument: ' + (error?.message || 'Necunoscut'))
@@ -383,7 +356,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
     instrumentId: string,
     qty: number,
     brand?: string,
-    brandSerialGroupsFromForm?: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }>; qty: string }>
   ) => {
     try {
       if (!selectedQuote) {
@@ -416,7 +388,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
           instrumentId,
           qty,
           brand: brand ?? '',
-          brandSerialGroupsFromForm,
           instrumentName: instrument.name,
           existingDeptName,
           newDeptName,
@@ -425,7 +396,7 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
         setAssignTrayToInstrument(false)
         return
       }
-      await doAddInstrument(instrumentId, qty, brand ?? '', brandSerialGroupsFromForm)
+      await doAddInstrument(instrumentId, qty, brand ?? '')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Necunoscut'
       toast.error('Eroare: ' + message)
@@ -644,7 +615,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
                         departmentMismatchPending.instrumentId,
                         departmentMismatchPending.qty,
                         departmentMismatchPending.brand,
-                        departmentMismatchPending.brandSerialGroupsFromForm
                       )
                       if (assignTrayToInstrument && departmentMismatchPending.newDeptId) {
                         const itemsArray = Array.isArray(props.items) ? props.items : []
@@ -771,8 +741,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
                 const byId = new Map(itemsArray.map((it: any) => [it.id, it]))
                 const movesWithMeta = moves.map((m: any) => {
                   const it = byId.get(m.trayItemId)
-                  const hasBrandGroups = Array.isArray((it as any)?.brand_groups) && (it as any).brand_groups.length > 0
-                  const hasLegacy = !!it?.brand || !!it?.serial_number
                   return {
                     trayItemId: m.trayItemId,
                     qtyMove: m.qtyMove,
@@ -783,7 +751,7 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
                     part_id: it?.part_id ?? null,
                     from_technician_id: null,
                     qty_total: it?.qty ?? null,
-                    has_brands_or_serials: hasBrandGroups || hasLegacy,
+                    has_brands_or_serials: false,
                   }
                 })
                 await props.onSplitTrayItemsToTechnician({
@@ -820,8 +788,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
                 const byId = new Map(itemsArray.map((it: any) => [it.id, it]))
                 const movesWithMeta = moves.map((m: any) => {
                   const it = byId.get(m.trayItemId)
-                  const hasBrandGroups = Array.isArray((it as any)?.brand_groups) && (it as any).brand_groups.length > 0
-                  const hasLegacy = !!it?.brand || !!it?.serial_number
                   return {
                     trayItemId: m.trayItemId,
                     qtyMove: m.qtyMove,
@@ -832,7 +798,7 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
                     part_id: it?.part_id ?? null,
                     from_technician_id: null,
                     qty_total: it?.qty ?? null,
-                    has_brands_or_serials: hasBrandGroups || hasLegacy,
+                    has_brands_or_serials: false,
                   }
                 })
                 await props.onSplitTrayItemsToTechnician({
@@ -878,7 +844,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
                         departmentMismatchPending.instrumentId,
                         departmentMismatchPending.qty,
                         departmentMismatchPending.brand,
-                        departmentMismatchPending.brandSerialGroupsFromForm
                       )
                       if (assignTrayToInstrument && departmentMismatchPending.newDeptId) {
                         for (const item of itemsArray) {
@@ -988,7 +953,6 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
                       departmentMismatchPending.instrumentId,
                       departmentMismatchPending.qty,
                       departmentMismatchPending.brand,
-                      departmentMismatchPending.brandSerialGroupsFromForm
                     )
                     if (assignTrayToInstrument && departmentMismatchPending.newDeptId) {
                       const itemsArray = Array.isArray(props.items) ? props.items : []
