@@ -38,20 +38,28 @@ function normStageName(s: string): string {
 }
 
 /**
- * Livrari = redenumirea stage-ului "Curier Ajuns Azi". Ambele au aceleași funcții (buton În Avem Comandă, filtre, etc.).
- * Returnează true pentru: LIVRARI, Livrari, Curier Ajuns Azi, orice variantă cu curier+ajuns+azi.
+ * Stage unde se afișează lead-urile cu Curier Trimis/Office Direct (≤24h).
+ * Returnează true pentru: Livrari, Curier Ajuns Azi, Curier Sent (redenumire actuală).
  */
 export function isLivrariOrCurierAjunsAziStage(stageName: string): boolean {
   const n = normStageName(stageName)
-  return n.includes('livrari') || (n.includes('curier') && n.includes('ajuns') && n.includes('azi'))
+  return (
+    n.includes('livrari') ||
+    (n.includes('curier') && n.includes('sent')) ||
+    (n.includes('curier') && n.includes('ajuns') && n.includes('azi'))
+  )
 }
 
 /**
- * Stage Livrari sau Curier Ajuns (cu sau fără "azi") – folosit pentru buton Livrare pe card.
+ * Stage Livrari / Curier Ajuns / Curier Sent – folosit pentru buton Livrare pe card.
  */
 export function isLivrariOrCurierAjunsStage(stageName: string): boolean {
   const n = normStageName(stageName)
-  return n.includes('livrari') || (n.includes('curier') && n.includes('ajuns'))
+  return (
+    n.includes('livrari') ||
+    (n.includes('curier') && n.includes('sent')) ||
+    (n.includes('curier') && n.includes('ajuns'))
+  )
 }
 
 // Cache configuration

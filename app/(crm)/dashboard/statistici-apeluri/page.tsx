@@ -337,9 +337,9 @@ export default function StatisticiApeluriPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 sm:p-6 max-w-7xl mx-auto">
+    <div className="flex flex-col min-h-0 overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 sm:p-6 border-b flex-shrink-0 sticky top-0 bg-background z-10">
         <div className="flex items-center gap-3">
           <Link href="/dashboard">
             <Button variant="ghost" size="sm" className="gap-1.5">
@@ -538,10 +538,12 @@ export default function StatisticiApeluriPage() {
             </>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+      {/* Conținut scrollabil */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        {/* Summary cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         <Card>
           <CardHeader className="pb-2 pt-4 px-4">
             <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Apeluri</CardTitle>
@@ -1119,6 +1121,7 @@ export default function StatisticiApeluriPage() {
           )}
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   )
 }

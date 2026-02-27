@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useIsMobile } from '@/hooks/use-mobile'
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -151,7 +154,9 @@ export function DeFacturatOverlay({
   const [tagsLoading, setTagsLoading] = useState(false)
   const [togglingTagId, setTogglingTagId] = useState<string | null>(null)
   const [localTags, setLocalTags] = useState<{ id: string; name: string }[]>([])
+  const [mobileTab, setMobileTab] = useState<'detalii' | 'istoric'>('detalii')
 
+  const isMobile = useIsMobile()
   const DEPARTMENT_NAMES = ['Saloane', 'Frizerii', 'Horeca', 'Reparatii']
 
   const fisaId = serviceFile?.id ?? (kanbanLead?.type === 'service_file' ? kanbanLead?.id : null)
@@ -882,9 +887,11 @@ export function DeFacturatOverlay({
                 <h3 className="text-base font-semibold text-foreground mb-2">Instrumente și servicii</h3>
                 <div className="rounded-lg border overflow-hidden min-w-0">
                   <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
-                    <table className="w-full min-w-[640px] text-sm border-collapse">
+                    <table className="w-full min-w-[800px] text-sm border-collapse">
                       <thead className="bg-muted/50 sticky top-0">
                         <tr>
+                          <th className="text-left p-2 border-b font-medium">Nr. Tăviță</th>
+                          <th className="text-left p-2 border-b font-medium">Tehnicieni</th>
                           <th className="text-left p-2 border-b font-medium">Instrument</th>
                           <th className="text-left p-2 border-b font-medium">Serviciu / Piesă</th>
                           <th className="text-right p-2 border-b font-medium">Cant.</th>
@@ -915,8 +922,16 @@ export function DeFacturatOverlay({
                               const hasGarantie = it.garantie ?? false
                               const isUnrepaired = unrepaired > 0
                               const rowCls = isUnrepaired ? 'text-red-600 dark:text-red-400 font-bold' : ''
+                              const trayNumber = sheet.quote.number || '—'
+                              const technicianName = techniciansByTrayId.get(sheet.quote.id) || '—'
                               return (
                                 <tr key={`${sheet.quote.id}-${it.id}-${idx}`} className={`border-b border-border/50 ${rowCls}`}>
+                                  <td className="p-2 align-top min-w-0">
+                                    <span className="break-words text-red-600 dark:text-red-400 font-bold">#{trayNumber}</span>
+                                  </td>
+                                  <td className="p-2 align-top min-w-0">
+                                    <span className="break-words">{technicianName}</span>
+                                  </td>
                                   <td className="p-2 align-top min-w-0">
                                     <span className="break-words">{it.instrument_name ?? instruments.find((i) => i.id === it.instrument_id)?.name ?? '—'}</span>
                                   </td>
@@ -946,50 +961,7 @@ export function DeFacturatOverlay({
                 </div>
               </section>
 
-              {/* 2. Tăvițe din fișă – afișează toate tăvițele cu tehnicienii */}
-              {quotes.length > 0 && (
-                <section className="min-w-0">
-                  <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
-                    <Package className="h-5 w-5 shrink-0" />
-                    Tăvițe din fișă ({quotes.length})
-                  </h3>
-                  <div className="rounded-lg border overflow-hidden min-w-0">
-                    <div className="overflow-x-auto max-h-[200px] overflow-y-auto">
-                      <table className="w-full min-w-[400px] text-sm border-collapse">
-                        <thead className="bg-muted/50 sticky top-0">
-                          <tr>
-                            <th className="text-left p-2 border-b font-medium">Nr. Tăviță</th>
-                            <th className="text-left p-2 border-b font-medium">Tehnicieni</th>
-                            <th className="text-right p-2 border-b font-medium">Total (RON)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {quotes.map((quote: any) => {
-                            const technicianName = techniciansByTrayId.get(quote.id) || '—'
-                            const sheetData = sheetsData.find((s) => s.quote.id === quote.id)
-                            const total = sheetData?.total || 0
-                            return (
-                              <tr key={quote.id} className="border-b border-border/50 hover:bg-muted/20">
-                                <td className="p-2 align-top min-w-0 font-medium">
-                                  <span className="break-words">#{quote.number || '—'}</span>
-                                </td>
-                                <td className="p-2 align-top min-w-0">
-                                  <span className="break-words">{technicianName}</span>
-                                </td>
-                                <td className="p-2 text-right align-top whitespace-nowrap font-medium">
-                                  {total.toFixed(2)}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* 3. Detalii Tehnician – mereu afișat; titlu roșu, bold; conținut roșu, bold, italic */}
+              {/* 2. Detalii Tehnician – mereu afișat; titlu roșu, bold; conținut roșu, bold, italic */}
               <section className="min-w-0">
                 <h3 className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 mb-2 flex items-center gap-2">
                   <MessageSquare className="h-5 w-5 shrink-0" />

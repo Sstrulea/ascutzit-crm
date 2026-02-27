@@ -1861,7 +1861,14 @@ export async function fetchTehnicianStatsForDate(
   return { stats, total, totalMinutesInLucru, totalMinutesInAsteptare, traysByTechnician, instrumentWorkByTechnician }
 }
 
-export type TehnicianDayStat = { date: string; count: number; /** Total minute tăvițe în „In lucru” în acea zi */ totalMinutesInLucru?: number }
+export type TehnicianDayStat = {
+  date: string
+  count: number
+  /** Total minute tăvițe în „In lucru" în acea zi */
+  totalMinutesInLucru?: number
+  /** Suma totală RON pentru tăvițele finalizate în acea zi */
+  totalRon?: number
+}
 
 /** Număr de tăvițe prelucrate pe fiecare zi dintr-un interval (dată -> count) + total minute „In lucru” per zi. */
 export async function fetchTehnicianStatsByDayInRange(
@@ -1897,6 +1904,96 @@ export async function fetchTehnicianStatsByDayInRange(
     dayToTrays.get(dateKey)!.add(trayId)
   }
 
+  // Obținem toate tray-urile finalizate în interval pentru a calcula total RON pe zi
+  const allTrayIds = new Set<string>()
+  for (const trays of dayToTrays.values()) {
+    trays.forEach(id => allTrayIds.add(id))
+  }
+  
+  const trayIdsArray = Array.from(allTrayIds)
+  const dayToTotalRon = new Map<string, number>()
+  
+  console.log('[fetchTehnicianStatsByDayInRange] Tray IDs finalizate:', trayIdsArray.length, trayIdsArray.slice(0, 10))
+  
+  if (trayIdsArray.length > 0) {
+    // Încărcăm tray_items pentru a calcula total RON
+    const { data: trayItems, error: trayItemsError } = await (supabase as any)
+      .from('tray_items')
+      .select('tray_id, qty, notes, service_id, part_id, service:services(price), part:parts(price)')
+      .in('tray_id', trayIdsArray)
+    
+    console.log('[fetchTehnicianStatsByDayInRange] Tray items fetch:', trayItemsError ? 'ERROR' : 'OK', 'Items count:', trayItems?.length)
+    
+    if (trayItems && trayItems.length > 0) {
+      const URGENT_MARKUP_PCT = 30
+      
+      // Grupăm tray_items pe tray_id
+      const itemsByTray = new Map<string, any[]>()
+      for (const it of trayItems as any[]) {
+        const trayId = it.tray_id
+        if (!itemsByTray.has(trayId)) itemsByTray.set(trayId, [])
+        itemsByTray.get(trayId)!.push(it)
+      }
+      
+      console.log('[fetchTehnicianStatsByDayInRange] Items by tray:', itemsByTray.size)
+      
+      // Calculăm total RON per tray
+      const trayToTotalRon = new Map<string, number>()
+      for (const [trayId, items] of itemsByTray) {
+        let totalRon = 0
+        for (const it of items) {
+          const qty = Number(it?.qty ?? 0) || 0
+          if (qty <= 0) continue
+          
+          let notes: any = {}
+          if (it?.notes) {
+            try { notes = JSON.parse(it.notes) } catch { notes = {} }
+          }
+          
+          const explicitPrice = Number(notes?.price)
+          const itemType = notes?.item_type || (it?.part_id ? 'part' : it?.service_id ? 'service' : null)
+          const price =
+            Number.isFinite(explicitPrice) && explicitPrice > 0
+              ? explicitPrice
+              : itemType === 'service'
+                ? Number(it?.service?.price ?? 0) || 0
+                : Number(it?.part?.price ?? 0) || 0
+          
+          const discPctRaw = Number(notes?.discount_pct ?? 0) || 0
+          const discPct = Math.min(100, Math.max(0, discPctRaw)) / 100
+          const urgent = Boolean(notes?.urgent)
+          const base = qty * price
+          const disc = base * discPct
+          const afterDisc = base - disc
+          const urgentAmount = urgent ? afterDisc * (URGENT_MARKUP_PCT / 100) : 0
+          const lineTotal = afterDisc + urgentAmount
+          
+          totalRon += lineTotal
+        }
+        if (totalRon > 0) {
+          trayToTotalRon.set(trayId, Math.round(totalRon * 100) / 100)
+          console.log('[fetchTehnicianStatsByDayInRange] Tray', trayId, 'totalRon:', totalRon)
+        }
+      }
+      
+      console.log('[fetchTehnicianStatsByDayInRange] Tray totals calculated:', trayToTotalRon.size)
+      
+      // Calculăm total RON per zi pe baza tăvițelor finalizate în acea zi
+      for (const [dateKey, trays] of dayToTrays) {
+        let dayTotal = 0
+        for (const trayId of trays) {
+          dayTotal += trayToTotalRon.get(trayId) ?? 0
+        }
+        if (dayTotal > 0) {
+          dayToTotalRon.set(dateKey, Math.round(dayTotal * 100) / 100)
+          console.log('[fetchTehnicianStatsByDayInRange] Day', dateKey, 'totalRon:', dayTotal)
+        }
+      }
+      
+      console.log('[fetchTehnicianStatsByDayInRange] Day totals calculated:', dayToTotalRon.size)
+    }
+  }
+
   const allDates = new Set<string>([...dayToTrays.keys(), ...minutesByDay.keys()])
   const result: TehnicianDayStat[] = []
   for (const date of allDates) {
@@ -1905,6 +2002,7 @@ export async function fetchTehnicianStatsByDayInRange(
       date,
       count: trays?.size ?? 0,
       totalMinutesInLucru: minutesByDay.get(date) ?? 0,
+      totalRon: dayToTotalRon.get(date) ?? 0,
     })
   }
   result.sort((a, b) => a.date.localeCompare(b.date))
@@ -1953,9 +2051,11 @@ export async function listTechniciansForDashboard(): Promise<TehnicianOption[]> 
 
 /** Parametri pentru încărcarea consolidată a dashboard-ului. */
 export type TehnicianDashboardFullParams = {
-  period: 'day' | 'week' | 'month' | 'month-custom'
+  period: 'day' | 'week' | 'month' | 'month-custom' | 'custom-range'
   selectedDate: Date
   selectedMonthKey: string
+  customRangeStart?: Date
+  customRangeEnd?: Date
   includeTechnicians: boolean
   /** Dacă true, ignoră cache-ul sessionStorage (ex. la click pe Refresh) */
   forceRefresh?: boolean
