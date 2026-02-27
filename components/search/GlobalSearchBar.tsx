@@ -214,7 +214,13 @@ export function GlobalSearchBar({
   }, [setQuery, performSearch, onLeadsPage, updateUrlWithQuery])
 
   const handleSelect = useCallback((result: UnifiedSearchResult) => {
-    const payload = buildOpenPayload(result, currentPipelineSlug)
+    // Pentru tăvițe: deschidem detaliile fișei de serviciu (Recepție sau Arhivare), nu pipeline-ul departamentului
+    const openAsServiceFile =
+      result.type === 'tray' && result.serviceFileId
+    const serviceFilePipeline = result.serviceFilePipelineSlug || 'receptie'
+    const payload = openAsServiceFile
+      ? { pipelineSlug: serviceFilePipeline, openType: 'service_file' as const, openId: result.serviceFileId }
+      : buildOpenPayload(result, currentPipelineSlug)
     try {
       sessionStorage.setItem(TRAY_SEARCH_OPEN_KEY, JSON.stringify(payload))
       sessionStorage.setItem(PENDING_SEARCH_OPEN_KEY, JSON.stringify({ ...payload, at: Date.now() }))
@@ -275,6 +281,7 @@ export function GlobalSearchBar({
     return () => {
       if (abortRef.current) abortRef.current.abort()
       if (debounceRef.current) clearTimeout(debounceRef.current)
+      if (urlDebounceRef.current) clearTimeout(urlDebounceRef.current)
     }
   }, [])
 
@@ -383,6 +390,11 @@ export function GlobalSearchBar({
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-sm truncate">{highlightText(r.title, highlightTerms)}</p>
                               {r.subtitle && <p className="text-xs text-muted-foreground truncate mt-0.5">{highlightText(r.subtitle, highlightTerms)}</p>}
+                              {(r.pipelineName || r.stageName) && (
+                                <p className="text-[11px] text-muted-foreground/90 truncate mt-0.5">
+                                  {[r.pipelineName, r.stageName].filter(Boolean).join(' · ')}
+                                </p>
+                              )}
                             </div>
                             <span className="flex-shrink-0 text-[10px] font-medium px-2 py-1 rounded-md bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Lead</span>
                             <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -422,6 +434,11 @@ export function GlobalSearchBar({
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-sm truncate">{highlightText(r.title, highlightTerms)}</p>
                               {r.subtitle && <p className="text-xs text-muted-foreground truncate mt-0.5">{highlightText(r.subtitle, highlightTerms)}</p>}
+                              {(r.pipelineName || r.stageName) && (
+                                <p className="text-[11px] text-muted-foreground/90 truncate mt-0.5">
+                                  {[r.pipelineName, r.stageName].filter(Boolean).join(' · ')}
+                                </p>
+                              )}
                             </div>
                             <span className="flex-shrink-0 text-[10px] font-medium px-2 py-1 rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Fișă</span>
                             <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -461,6 +478,11 @@ export function GlobalSearchBar({
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-sm truncate">{highlightText(r.title, highlightTerms)}</p>
                               {r.subtitle && <p className="text-xs text-muted-foreground truncate mt-0.5">{highlightText(r.subtitle, highlightTerms)}</p>}
+                              {(r.pipelineName || r.stageName) && (
+                                <p className="text-[11px] text-muted-foreground/90 truncate mt-0.5">
+                                  {[r.pipelineName, r.stageName].filter(Boolean).join(' · ')}
+                                </p>
+                              )}
                             </div>
                             <span className="flex-shrink-0 text-[10px] font-medium px-2 py-1 rounded-md bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">Tăviță</span>
                             <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />

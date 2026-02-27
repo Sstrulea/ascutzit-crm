@@ -29,6 +29,10 @@ export interface UnifiedSearchResult {
   leadId?: string
   /** Criteriul care a generat match-ul */
   matchedBy?: MatchedByType
+  /** Pentru type=tray: id-ul fișei de serviciu care conține tăvița (deschidem detaliile fișei, nu pipeline departament) */
+  serviceFileId?: string
+  /** Pipeline-ul în care se află fișa (receptie / arhivare etc.) – pentru deschidere corectă și fișe arhivate */
+  serviceFilePipelineSlug?: string
 }
 
 const LIMIT = 25
@@ -168,6 +172,7 @@ type RawSearchRow = {
   fallbackName: string
   leadId: string
   matchedBy?: MatchedByType
+  serviceFileId?: string
 }
 
 async function searchViaDirectQueries(
@@ -312,7 +317,8 @@ async function searchViaDirectQueries(
         const leadName = lead?.full_name || lead?.company_name || ''
         const title = `Tăviță ${t.number || ''}`.trim() || `Tăviță ${tid}`
         const subtitle = [leadName, sf?.number].filter(Boolean).join(' · ')
-        push({ type: 'tray', id: tid, title, subtitle: subtitle || undefined, openId: tid, fallbackSlug: 'saloane', fallbackName: 'Saloane', leadId, matchedBy: 'technician' })
+        const sfId = (t as any).service_file_id as string | undefined
+        push({ type: 'tray', id: tid, title, subtitle: subtitle || undefined, openId: tid, fallbackSlug: 'saloane', fallbackName: 'Saloane', leadId, matchedBy: 'technician', serviceFileId: sfId })
         allMatchedLeadIds.add(leadId)
       }
     }
@@ -362,7 +368,8 @@ async function searchViaDirectQueries(
           const sfNum = sf?.number || ''
           const title = `Tăviță ${t.number || ''}`.trim() || `Tăviță ${id}`
           const subtitle = [leadName, sfNum].filter(Boolean).join(' · ')
-          push({ type: 'tray', id, title, subtitle: subtitle || undefined, openId: id, fallbackSlug: 'saloane', fallbackName: 'Saloane', leadId: leadId || id })
+          const sfId = (t as any).service_file_id as string | undefined
+          push({ type: 'tray', id, title, subtitle: subtitle || undefined, openId: id, fallbackSlug: 'saloane', fallbackName: 'Saloane', leadId: leadId || id, serviceFileId: sfId })
         }
       }
     }
@@ -374,14 +381,25 @@ async function searchViaDirectQueries(
       if (!id || seenKeys.has(`tray:${id}`)) continue
       const matchBy: MatchedByType = t.matchType === 'serial_number' ? 'serial' : 'number'
       const subtitle = t.matchDetails ? [t.leadName, t.serviceFileNumber, t.matchDetails].filter(Boolean).join(' · ') : [t.leadName, t.serviceFileNumber].filter(Boolean).join(' · ')
-      push({ type: 'tray', id, title: `Tăviță ${t.trayNumber}`, subtitle: subtitle || undefined, openId: id, fallbackSlug: 'saloane', fallbackName: 'Saloane', leadId: t.leadId, matchedBy })
+      push({ type: 'tray', id, title: `Tăviță ${t.trayNumber}`, subtitle: subtitle || undefined, openId: id, fallbackSlug: 'saloane', fallbackName: 'Saloane', leadId: t.leadId, matchedBy, serviceFileId: t.serviceFileId })
     }
 
-    // 6. REZOLVARE PIPELINE
+    // 6. REZOLVARE PIPELINE (tray, lead, service_file)
     const pipelineInfo = await resolvePipelineInfo(supabase, rawResults.map((r) => ({ type: r.type, id: r.id })))
+
+    // 7. Pentru tăvițe: rezolvăm pipeline-ul FIȘEI de serviciu (unde se deschide – inclusiv Arhivare)
+    const trayWithSf = rawResults.filter((r): r is RawSearchRow & { serviceFileId: string } => r.type === 'tray' && Boolean(r.serviceFileId))
+    const pipelineInfoForServiceFile =
+      trayWithSf.length > 0
+        ? await resolvePipelineInfo(
+            supabase,
+            trayWithSf.map((r) => ({ type: 'service_file' as const, id: r.serviceFileId }))
+          )
+        : new Map<string, { slug: string; name: string; stageName?: string }>()
 
     const results: UnifiedSearchResult[] = rawResults.slice(0, LIMIT).map((r) => {
       const pi = pipelineInfo.get(r.id)
+      const sfPipelineSlug = r.type === 'tray' && r.serviceFileId ? pipelineInfoForServiceFile.get(r.serviceFileId)?.slug : undefined
       return {
         type: r.type,
         id: r.id,
@@ -393,6 +411,8 @@ async function searchViaDirectQueries(
         stageName: pi?.stageName,
         leadId: r.leadId,
         matchedBy: r.matchedBy,
+        serviceFileId: r.serviceFileId,
+        serviceFilePipelineSlug: sfPipelineSlug,
       }
     })
     return { data: results, error: null }
