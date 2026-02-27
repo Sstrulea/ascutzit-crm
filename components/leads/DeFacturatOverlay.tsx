@@ -908,7 +908,7 @@ export function DeFacturatOverlay({
                             .filter((it: any) => it.item_type)
                             .map((it: any, idx: number) => {
                               const qty = it.qty ?? 1
-                              const unrepaired = Number((it as any).unrepaired_qty ?? it.non_repairable_qty) || 0
+                              const unrepaired = Number((it as any).unrepaired_qty) || 0
                               const repairableQty = Math.max(0, qty - unrepaired)
                               const price = it.price ?? 0
                               const disc = Math.min(100, Math.max(0, it.discount_pct || 0))
