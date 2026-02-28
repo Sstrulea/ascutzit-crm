@@ -590,6 +590,62 @@ function sumExecutionMinutesUniqueTrays(traysByTechnician: Map<string, Map<strin
   return sum
 }
 
+/** Calculează total RON pentru o listă de tăvițe. */
+function computeTotalRonForTrays(trayIds: Set<string>, bulk: BulkRawData): number {
+  const URGENT_MARKUP_PCT = 30
+  const trayIdSet = trayIds
+  const safeItems = bulk.tray_items.filter(ti => trayIdSet.has(String(ti.tray_id)))
+  
+  // Grupăm item-urile pe tray_id
+  const itemsByTray = new Map<string, any[]>()
+  for (const ti of safeItems) {
+    const trayId = String(ti.tray_id)
+    if (!itemsByTray.has(trayId)) itemsByTray.set(trayId, [])
+    itemsByTray.get(trayId)!.push(ti)
+  }
+  
+  // Calculăm total RON per tray
+  const trayToTotalRon = new Map<string, number>()
+  for (const [trayId, items] of itemsByTray) {
+    let totalRon = 0
+    for (const it of items) {
+      const qty = Number(it?.qty ?? 0) || 0
+      if (qty <= 0) continue
+      
+      let notes: any = {}
+      if (it?.notes) {
+        try { notes = JSON.parse(it.notes) } catch { notes = {} }
+      }
+      
+      const explicitPrice = Number(notes?.price)
+      const itemType = notes?.item_type || (it?.part_id ? 'part' : it?.service_id ? 'service' : null)
+      const price =
+        Number.isFinite(explicitPrice) && explicitPrice > 0
+          ? explicitPrice
+          : itemType === 'service'
+            ? Number(it?.service_id ? bulk.services.find(s => String(s.id) === String(it.service_id))?.price ?? 0 : 0) || 0
+            : Number(it?.part_id ? (bulk.parts || []).find(p => String(p.id) === String(it.part_id))?.price ?? 0 : 0) || 0
+      
+      const discPctRaw = Number(notes?.discount_pct ?? 0) || 0
+      const discPct = Math.min(100, Math.max(0, discPctRaw)) / 100
+      const urgent = Boolean(notes?.urgent)
+      const base = qty * price
+      const disc = base * discPct
+      const afterDisc = base - disc
+      const urgentAmount = urgent ? afterDisc * (URGENT_MARKUP_PCT / 100) : 0
+      const lineTotal = afterDisc + urgentAmount
+      
+      totalRon += lineTotal
+    }
+    if (totalRon > 0) {
+      trayToTotalRon.set(trayId, Math.round(totalRon * 100) / 100)
+    }
+  }
+  
+  // Sumăm total RON pentru toate tăvițele
+  return Array.from(trayToTotalRon.values()).reduce((sum, val) => sum + val, 0)
+}
+
 function buildStatsForRange(
   dateStart: Date,
   dateEnd: Date,
@@ -684,11 +740,14 @@ function buildStatsForRange(
   const result: TehnicianTrayStat[] = []
   for (const techId of techIds) {
     const trays = techToTrays.get(techId)!
+    // Calculăm total RON pentru tăvițele acestui tehnician
+    const totalRon = computeTotalRonForTrays(trays, bulk)
     result.push({
       technicianId: techId,
       technicianName: nameById.get(techId) || `Tehnician ${techId.slice(0, 8)}`,
       count: trays.size,
       minutesInLucru: minutesByTechnician.get(techId) ?? 0,
+      totalRon: Math.round(totalRon * 100) / 100,
     })
   }
   result.sort((a, b) => {
@@ -728,11 +787,77 @@ function buildDayStatsList(
     dayToTrays.get(dateKey)!.add(trayId)
   }
 
+  // Calculăm total RON per zi pe baza tăvițelor finalizate în acea zi
+  const URGENT_MARKUP_PCT = 30
+  const dayToTotalRon = new Map<string, number>()
+  
+  // Grupăm tray_items pe tray_id
+  const itemsByTray = new Map<string, any[]>()
+  for (const ti of bulk.tray_items) {
+    const trayId = String(ti.tray_id)
+    if (!itemsByTray.has(trayId)) itemsByTray.set(trayId, [])
+    itemsByTray.get(trayId)!.push(ti)
+  }
+  
+  // Calculăm total RON per tray
+  const trayToTotalRon = new Map<string, number>()
+  for (const [trayId, items] of itemsByTray) {
+    let totalRon = 0
+    for (const it of items) {
+      const qty = Number(it?.qty ?? 0) || 0
+      if (qty <= 0) continue
+      
+      let notes: any = {}
+      if (it?.notes) {
+        try { notes = JSON.parse(it.notes) } catch { notes = {} }
+      }
+      
+      const explicitPrice = Number(notes?.price)
+      const itemType = notes?.item_type || (it?.part_id ? 'part' : it?.service_id ? 'service' : null)
+      const price =
+        Number.isFinite(explicitPrice) && explicitPrice > 0
+          ? explicitPrice
+          : itemType === 'service'
+            ? Number(it?.service_id ? bulk.services.find(s => String(s.id) === String(it.service_id))?.price ?? 0 : 0) || 0
+            : Number(it?.part_id ? (bulk.parts || []).find(p => String(p.id) === String(it.part_id))?.price ?? 0 : 0) || 0
+      
+      const discPctRaw = Number(notes?.discount_pct ?? 0) || 0
+      const discPct = Math.min(100, Math.max(0, discPctRaw)) / 100
+      const urgent = Boolean(notes?.urgent)
+      const base = qty * price
+      const disc = base * discPct
+      const afterDisc = base - disc
+      const urgentAmount = urgent ? afterDisc * (URGENT_MARKUP_PCT / 100) : 0
+      const lineTotal = afterDisc + urgentAmount
+      
+      totalRon += lineTotal
+    }
+    if (totalRon > 0) {
+      trayToTotalRon.set(trayId, Math.round(totalRon * 100) / 100)
+    }
+  }
+  
+  // Calculăm total RON per zi pe baza tăvițelor finalizate în acea zi
+  for (const [dateKey, trays] of dayToTrays) {
+    let dayTotal = 0
+    for (const trayId of trays) {
+      dayTotal += trayToTotalRon.get(trayId) ?? 0
+    }
+    if (dayTotal > 0) {
+      dayToTotalRon.set(dateKey, Math.round(dayTotal * 100) / 100)
+    }
+  }
+
   const allDates = new Set<string>([...dayToTrays.keys(), ...minutesByDay.keys()])
   const result: TehnicianDayStat[] = []
   for (const date of allDates) {
     const trays = dayToTrays.get(date)
-    result.push({ date, count: trays?.size ?? 0, totalMinutesInLucru: minutesByDay.get(date) ?? 0 })
+    result.push({
+      date,
+      count: trays?.size ?? 0,
+      totalMinutesInLucru: minutesByDay.get(date) ?? 0,
+      totalRon: dayToTotalRon.get(date) ?? 0,
+    })
   }
   result.sort((a, b) => a.date.localeCompare(b.date))
   return result
@@ -1143,7 +1268,7 @@ function buildDetailedDayData(
         for (const key of allKeys) {
           const svcInLucruMap = svcQtyInLucruByInstrument.get(key) ?? new Map()
           const svcInAsteptareMap = svcQtyInAsteptareByInstrument.get(key) ?? new Map()
-          const services = Array.from((svcMap.get(key) ?? new Map()).entries())
+          const services = Array.from((svcMap.get(key) ?? new Map()).entries() as [string, { name: string; qty: number }][])
             .map(([serviceId, v]) => ({ serviceId, serviceName: v.name, qty: v.qty, qtyInLucru: svcInLucruMap.get(serviceId) ?? 0, qtyInAsteptare: svcInAsteptareMap.get(serviceId) ?? 0 }))
             .sort((a, b) => (b.qty ?? 0) - (a.qty ?? 0))
           rows.push({
@@ -1273,9 +1398,9 @@ async function callBulkRpc(monthStart: Date, monthEnd: Date): Promise<BulkRawDat
 export async function fetchTehnicianDashboardBulk(
   params: TehnicianDashboardFullParams
 ): Promise<TehnicianDashboardFullResponse | null> {
-  const { period, selectedDate, selectedMonthKey, includeTechnicians } = params
+  const { period, selectedDate, selectedMonthKey, includeTechnicians, customRangeStart, customRangeEnd } = params
 
-  // Determine the largest date range needed (month)
+  // Determineaza largest date range needed (month)
   const mb = monthBounds()
   let rangeStart = mb.start
   let rangeEnd = mb.end
@@ -1288,6 +1413,16 @@ export async function fetchTehnicianDashboardBulk(
       if (customStart < rangeStart) rangeStart = customStart
       if (customEnd > rangeEnd) rangeEnd = customEnd
     }
+  }
+
+  // Interval personalizat
+  if (period === 'custom-range' && customRangeStart && customRangeEnd) {
+    const customStart = new Date(customRangeStart)
+    customStart.setHours(0, 0, 0, 0)
+    const customEnd = new Date(customRangeEnd)
+    customEnd.setHours(23, 59, 59, 999)
+    if (customStart < rangeStart) rangeStart = customStart
+    if (customEnd > rangeEnd) rangeEnd = customEnd
   }
 
   // Also include selected date range
@@ -1354,6 +1489,18 @@ export async function fetchTehnicianDashboardBulk(
         total: mStats.stats.reduce((acc, x) => acc + x.count, 0),
         totalMinutesInLucru: sumExecutionMinutesUniqueTrays(mTime.traysByTechnician),
       }
+    }
+  } else if (period === 'custom-range' && customRangeStart && customRangeEnd) {
+    const rangeStart = new Date(customRangeStart)
+    rangeStart.setHours(0, 0, 0, 0)
+    const rangeEnd = new Date(customRangeEnd)
+    rangeEnd.setHours(23, 59, 59, 999)
+    const mTime = computeFullTimeInLucru(rangeStart, rangeEnd, stageIds, bulk)
+    const mStats = buildStatsForRange(rangeStart, rangeEnd, stageIds, bulk, mTime)
+    monthData = {
+      stats: mStats.stats,
+      total: mStats.stats.reduce((acc, x) => acc + x.count, 0),
+      totalMinutesInLucru: sumExecutionMinutesUniqueTrays(mTime.traysByTechnician),
     }
   } else if (period === 'week' || period === 'month') {
     const b = period === 'week' ? weekBounds() : monthBounds()

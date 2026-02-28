@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Users, AlertTriangle, X } from "lucide-react"
+import { Loader2, Users, X } from "lucide-react"
 import type { LeadQuoteItem, Technician } from "@/lib/types/preturi"
 import type { Service } from "@/lib/supabase/serviceOperations"
 import { parseServiceTimeToSeconds } from "@/lib/utils/service-time"
@@ -100,13 +100,9 @@ export function SplitTrayTechnicianDialog({
         Math.max(0, ...list.map((x) => Number(x.qty ?? 0) || 0))
       const qtyBase = Math.max(1, Math.floor(qtyBaseRaw || 1))
 
-      const hasBrandsOrSerials = list.some((it) => {
-        const hasBrandGroups = Array.isArray((it as any)?.brand_groups) && (it as any).brand_groups.length > 0
-        const hasLegacyBrandOrSerial = !!it.brand || !!it.serial_number
-        return hasBrandGroups || hasLegacyBrandOrSerial
-      })
+      const hasBrandsOrSerials = false
 
-      const canSplitPartially = !hasBrandsOrSerials && qtyBase > 1
+      const canSplitPartially = qtyBase > 1
 
       const lines = list
         .map((it) => {
@@ -364,11 +360,6 @@ export function SplitTrayTechnicianDialog({
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <Badge variant="secondary" className="text-xs">x{g.qtyBase}</Badge>
-                          {g.hasBrandsOrSerials && (
-                            <Badge variant="outline" className="text-[10px]">
-                              serial/brand
-                            </Badge>
-                          )}
                         </div>
                       </div>
 
@@ -381,12 +372,6 @@ export function SplitTrayTechnicianDialog({
                           disabled={!checked || submitting || !g.canSplitPartially}
                           onChange={(e) => setQtyMove(g.key, Number(e.target.value || 1), g.qtyBase, g.canSplitPartially)}
                         />
-                        {!g.canSplitPartially && g.qtyBase > 1 && (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground w-full sm:w-auto">
-                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                            <span>Se mută doar integral (are brand/serial sau nu suportă split parțial)</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>

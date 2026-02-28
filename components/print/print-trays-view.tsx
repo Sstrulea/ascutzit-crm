@@ -85,23 +85,9 @@ function groupItemsByInstrument(items: LeadQuoteItem[], instrumentsMap: Map<stri
   return Array.from(groups.values())
 }
 
-/** Serial / Brand: din câmpurile plate sau din brand_groups (tray_item_brands). */
 function getSerialBrandLabel(item: LeadQuoteItem): string {
   if (item.serial_number || item.brand) {
     return [item.brand, item.serial_number].filter(Boolean).join(' – ') || '—'
-  }
-  const groups = item.brand_groups
-  if (Array.isArray(groups) && groups.length > 0) {
-    const parts: string[] = []
-    for (const g of groups) {
-      const brand = (g as { brand?: string }).brand?.trim()
-      const serials = (g as { serialNumbers?: string[] }).serialNumbers
-      const list = Array.isArray(serials) ? serials.filter((s) => s != null && String(s).trim()) : []
-      if (brand || list.length > 0) {
-        parts.push([brand, list.join(', ')].filter(Boolean).join(' – '))
-      }
-    }
-    if (parts.length > 0) return parts.join('; ')
   }
   return '—'
 }

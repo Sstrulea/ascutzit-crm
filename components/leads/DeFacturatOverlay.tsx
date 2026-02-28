@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useIsMobile } from '@/hooks/use-mobile'
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +40,7 @@ import {
   Tag,
   Plus,
   ChevronDown,
+  Package,
 } from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
 import {
@@ -150,7 +154,9 @@ export function DeFacturatOverlay({
   const [tagsLoading, setTagsLoading] = useState(false)
   const [togglingTagId, setTogglingTagId] = useState<string | null>(null)
   const [localTags, setLocalTags] = useState<{ id: string; name: string }[]>([])
+  const [mobileTab, setMobileTab] = useState<'detalii' | 'istoric'>('detalii')
 
+  const isMobile = useIsMobile()
   const DEPARTMENT_NAMES = ['Saloane', 'Frizerii', 'Horeca', 'Reparatii']
 
   const fisaId = serviceFile?.id ?? (kanbanLead?.type === 'service_file' ? kanbanLead?.id : null)
@@ -881,9 +887,11 @@ export function DeFacturatOverlay({
                 <h3 className="text-base font-semibold text-foreground mb-2">Instrumente și servicii</h3>
                 <div className="rounded-lg border overflow-hidden min-w-0">
                   <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
-                    <table className="w-full min-w-[640px] text-sm border-collapse">
+                    <table className="w-full min-w-[800px] text-sm border-collapse">
                       <thead className="bg-muted/50 sticky top-0">
                         <tr>
+                          <th className="text-left p-2 border-b font-medium">Nr. Tăviță</th>
+                          <th className="text-left p-2 border-b font-medium">Tehnicieni</th>
                           <th className="text-left p-2 border-b font-medium">Instrument</th>
                           <th className="text-left p-2 border-b font-medium">Serviciu / Piesă</th>
                           <th className="text-right p-2 border-b font-medium">Cant.</th>
@@ -900,7 +908,7 @@ export function DeFacturatOverlay({
                             .filter((it: any) => it.item_type)
                             .map((it: any, idx: number) => {
                               const qty = it.qty ?? 1
-                              const unrepaired = Number((it as any).unrepaired_qty ?? it.non_repairable_qty) || 0
+                              const unrepaired = Number((it as any).unrepaired_qty) || 0
                               const repairableQty = Math.max(0, qty - unrepaired)
                               const price = it.price ?? 0
                               const disc = Math.min(100, Math.max(0, it.discount_pct || 0))
@@ -911,11 +919,19 @@ export function DeFacturatOverlay({
                                 it.name_snapshot ||
                                 (it.service_id && services.find((s) => s.id === it.service_id)?.name) ||
                                 '—'
-                              const hasGarantie = it.garantie ?? (it as any).brand_groups?.some((g: any) => g.garantie) ?? false
+                              const hasGarantie = it.garantie ?? false
                               const isUnrepaired = unrepaired > 0
                               const rowCls = isUnrepaired ? 'text-red-600 dark:text-red-400 font-bold' : ''
+                              const trayNumber = sheet.quote.number || '—'
+                              const technicianName = techniciansByTrayId.get(sheet.quote.id) || '—'
                               return (
                                 <tr key={`${sheet.quote.id}-${it.id}-${idx}`} className={`border-b border-border/50 ${rowCls}`}>
+                                  <td className="p-2 align-top min-w-0">
+                                    <span className="break-words text-red-600 dark:text-red-400 font-bold">#{trayNumber}</span>
+                                  </td>
+                                  <td className="p-2 align-top min-w-0">
+                                    <span className="break-words">{technicianName}</span>
+                                  </td>
                                   <td className="p-2 align-top min-w-0">
                                     <span className="break-words">{it.instrument_name ?? instruments.find((i) => i.id === it.instrument_id)?.name ?? '—'}</span>
                                   </td>

@@ -32,18 +32,6 @@ function serialsFromInstrumentOrList(inst: V4Instrument | undefined, forSerialNu
   return null
 }
 
-/** Construiește brandSerialGroups pentru createTrayItem (pentru salvare garantie și eventual S/N). */
-function buildBrandSerialGroupsForGarantie(
-  inst: V4Instrument | undefined,
-  forSerialNumbers?: string[]
-): Array<{ brand: string | null; serialNumbers: string[]; garantie?: boolean }> {
-  const serials = forSerialNumbers?.length
-    ? forSerialNumbers
-    : parseSerialNumbers(inst?.serialNumber ?? '')
-  const garantie = inst?.garantie ?? false
-  if (!garantie && serials.length === 0) return []
-  return [{ brand: '—', serialNumbers: serials, garantie }]
-}
 
 export interface V4Instrument {
   localId: string
@@ -163,15 +151,6 @@ export async function saveVanzariViewV4ToDb(
           console.warn(`[saveVanzariViewV4ToDb] NU golesc tăvița "${tray.number}" (id: ${tray.id}) – payload fără itemi pentru ea, dar tăvița are ${items.length} itemi.`)
           continue
         }
-      }
-      const { data: items } = await listTrayItemsForTray(tray.id)
-      const itemsList = items ?? []
-      const toDelete = filterDepartmentId
-        ? itemsList.filter((i: any) => i.department_id === filterDepartmentId)
-        : itemsList
-      const itemIds = toDelete.map((i: any) => i.id)
-      if (itemIds.length > 0) {
-        await supabase.from('tray_item_brands').delete().in('tray_item_id', itemIds)
       }
       if (filterDepartmentId) {
         await supabase.from('tray_items').delete().eq('tray_id', tray.id).eq('department_id', filterDepartmentId)
@@ -306,7 +285,6 @@ export async function saveVanzariViewV4ToDb(
         garantie: inst.garantie ?? false,
       }
       const serialsSummary = serialsFromInstrumentOrList(inst, svc.forSerialNumbers)
-      const brandGroups = buildBrandSerialGroupsForGarantie(inst, svc.forSerialNumbers)
       const { error: itemErr } = await createTrayItem({
         tray_id: trayId,
         instrument_id: inst.instrumentId,
@@ -318,7 +296,6 @@ export async function saveVanzariViewV4ToDb(
         notes: JSON.stringify(notes),
         pipeline: null,
         serials: serialsSummary ?? undefined,
-        brandSerialGroups: brandGroups.length > 0 ? brandGroups : undefined,
       })
       if (itemErr) throw itemErr
     }
@@ -340,7 +317,6 @@ export async function saveVanzariViewV4ToDb(
         garantie: inst.garantie ?? false,
       }
       const serialsSummary = serialsFromInstrumentOrList(inst, part.forSerialNumbers)
-      const brandGroups = buildBrandSerialGroupsForGarantie(inst, part.forSerialNumbers)
       const { error: itemErr } = await createTrayItem({
         tray_id: trayId,
         instrument_id: inst.instrumentId,
@@ -351,7 +327,6 @@ export async function saveVanzariViewV4ToDb(
         notes: JSON.stringify(notes),
         pipeline: null,
         serials: serialsSummary ?? undefined,
-        brandSerialGroups: brandGroups.length > 0 ? brandGroups : undefined,
       })
       if (itemErr) throw itemErr
     }
@@ -377,7 +352,6 @@ export async function saveVanzariViewV4ToDb(
         garantie: inst.garantie ?? false,
       }
       const serialsSummary = serialsFromInstrumentOrList(inst)
-      const brandGroups = buildBrandSerialGroupsForGarantie(inst)
       const { error: itemErr } = await createTrayItem({
         tray_id: trayId,
         instrument_id: inst.instrumentId,
@@ -388,7 +362,6 @@ export async function saveVanzariViewV4ToDb(
         notes: JSON.stringify(notes),
         pipeline: null,
         serials: serialsSummary ?? undefined,
-        brandSerialGroups: brandGroups.length > 0 ? brandGroups : undefined,
       })
       if (itemErr) throw itemErr
     }

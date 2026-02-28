@@ -101,7 +101,7 @@ function formatRon(value?: number | null): string {
   return ronFmt.format(v)
 }
 
-type Period = 'day' | 'week' | 'month' | 'month-custom'
+type Period = 'day' | 'week' | 'month' | 'month-custom' | 'custom-range'
 
 function getWeekBounds(): { start: Date; end: Date } {
   const end = new Date()
@@ -158,6 +158,8 @@ export default function DashboardTehnicianPage() {
   const [period, setPeriod] = useState<Period>('day')
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
   const [selectedTechnicianId, setSelectedTechnicianId] = useState<string>('')
+  const [customRangeStart, setCustomRangeStart] = useState<Date>(() => new Date())
+  const [customRangeEnd, setCustomRangeEnd] = useState<Date>(() => new Date())
   const [technicianOptions, setTechnicianOptions] = useState<TehnicianOption[]>([])
   const [dayData, setDayData] = useState<{
     stats: TehnicianTrayStat[]
@@ -237,6 +239,8 @@ export default function DashboardTehnicianPage() {
       selectedDate,
       selectedMonthKey,
       includeTechnicians: canSelectTechnician,
+      customRangeStart: period === 'custom-range' ? customRangeStart : undefined,
+      customRangeEnd: period === 'custom-range' ? customRangeEnd : undefined,
     })
       .then((res) => {
         setStats(res.stats)
@@ -255,7 +259,7 @@ export default function DashboardTehnicianPage() {
         setMonthDataLoading(false)
         setByDayLoading(false)
       })
-  }, [authLoading, period, selectedDate?.toISOString(), selectedMonthKey, canSelectTechnician])
+  }, [authLoading, period, selectedDate?.toISOString(), selectedMonthKey, canSelectTechnician, customRangeStart, customRangeEnd])
 
   // Reset expand la schimbare perioadă / dată
   useEffect(() => {
@@ -284,25 +288,25 @@ export default function DashboardTehnicianPage() {
 
 
   const refreshDayData = useCallback(() => {
-    if (period === 'day' && selectedDate) {
-      setDayDataLoading(true)
-      fetchTehnicianDashboardFull({
-        period,
-        selectedDate,
-        selectedMonthKey,
-        includeTechnicians: canSelectTechnician,
-        forceRefresh: true,
+    setDayDataLoading(true)
+    fetchTehnicianDashboardFull({
+      period,
+      selectedDate,
+      selectedMonthKey,
+      includeTechnicians: canSelectTechnician,
+      forceRefresh: true,
+      customRangeStart: period === 'custom-range' ? customRangeStart : undefined,
+      customRangeEnd: period === 'custom-range' ? customRangeEnd : undefined,
+    })
+      .then((res) => {
+        setStats(res.stats)
+        setDayData(res.dayData)
+        setMonthData(res.monthData)
+        setByDayList(res.byDayList || [])
       })
-        .then((res) => {
-          setStats(res.stats)
-          setDayData(res.dayData)
-          setMonthData(res.monthData)
-          setByDayList(res.byDayList || [])
-        })
-        .catch(() => setDayData(null))
-        .finally(() => setDayDataLoading(false))
-    }
-  }, [period, selectedDate, selectedMonthKey, canSelectTechnician])
+      .catch(() => setDayData(null))
+      .finally(() => setDayDataLoading(false))
+  }, [period, selectedDate, selectedMonthKey, canSelectTechnician, customRangeStart, customRangeEnd])
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -313,6 +317,8 @@ export default function DashboardTehnicianPage() {
         selectedMonthKey,
         includeTechnicians: canSelectTechnician,
         forceRefresh: true,
+        customRangeStart: period === 'custom-range' ? customRangeStart : undefined,
+        customRangeEnd: period === 'custom-range' ? customRangeEnd : undefined,
       })
       setStats(res.stats)
       if (canSelectTechnician && Array.isArray(res.technicians)) setTechnicianOptions(res.technicians)
@@ -359,6 +365,10 @@ export default function DashboardTehnicianPage() {
   const total = selectedTechnicianId
     ? list.reduce((acc, r) => acc + r.count, 0)
     : rawStats.total
+  
+  // Suma totală în RON pentru perioada curentă
+  const totalRonForPeriod = list.reduce((acc, r) => acc + (r.totalRon ?? 0), 0)
+  
   const workingHours = getWorkingHoursForPeriod(period, selectedDate ?? new Date(), selectedMonthKey)
   const totalMinutesInLucruForPeriod =
     period === 'day' && dayData
@@ -411,6 +421,7 @@ export default function DashboardTehnicianPage() {
                   <SelectItem value="week">Săptămâna</SelectItem>
                   <SelectItem value="month">Luna</SelectItem>
                   <SelectItem value="month-custom">Alege luna</SelectItem>
+                  <SelectItem value="custom-range">Interval personalizat</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -457,6 +468,50 @@ export default function DashboardTehnicianPage() {
               </div>
             )}
 
+            {/* Interval personalizat */}
+            {period === 'custom-range' && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground w-20">De la:</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="flex-1 h-10 justify-start">
+                        <CalendarDays className="mr-2 h-4 w-4" />
+                        {customRangeStart ? format(customRangeStart, 'd MMM yyyy', { locale: ro }) : 'Alege data'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={customRangeStart}
+                        onSelect={(d) => d && setCustomRangeStart(d)}
+                        locale={ro}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground w-20">Până la:</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="flex-1 h-10 justify-start">
+                        <CalendarDays className="mr-2 h-4 w-4" />
+                        {customRangeEnd ? format(customRangeEnd, 'd MMM yyyy', { locale: ro }) : 'Alege data'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={customRangeEnd}
+                        onSelect={(d) => d && setCustomRangeEnd(d)}
+                        locale={ro}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            )}
+
             {/* Selector tehnician (doar pentru admin/owner) */}
             {canSelectTechnician && (
               <div className="flex items-center gap-2">
@@ -478,6 +533,25 @@ export default function DashboardTehnicianPage() {
 
           {/* Card-uri KPI */}
           <div className="p-4 space-y-4">
+            {/* Total săptămână + lună (mereu vizibile când avem stats) */}
+            {stats && (
+              <div className="grid grid-cols-2 gap-2">
+                <Card>
+                  <CardContent className="p-3">
+                    <p className="text-xs text-muted-foreground">Săpt. curentă</p>
+                    <p className="text-lg font-bold">{stats.totalWeek}</p>
+                    <p className="text-[10px] text-muted-foreground">{formatMinutesAsHoursMinutes(stats.totalMinutesInLucruWeek ?? 0)} ore</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-3">
+                    <p className="text-xs text-muted-foreground">Luna curentă</p>
+                    <p className="text-lg font-bold">{stats.totalMonth}</p>
+                    <p className="text-[10px] text-muted-foreground">{formatMinutesAsHoursMinutes(stats.totalMinutesInLucruMonth ?? 0)} ore</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
             {isLoading ? (
               <div className="space-y-3">
                 <Skeleton className="h-24 w-full" />
@@ -497,6 +571,22 @@ export default function DashboardTehnicianPage() {
                       </div>
                       <div className="h-12 w-12 rounded-full bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center">
                         <Package className="h-6 w-6 text-sky-600 dark:text-sky-400" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Total RON */}
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">{periodLabel} - Total în RON</p>
+                        <p className="text-3xl font-bold text-green-600 dark:text-green-400">{formatRon(totalRonForPeriod)}</p>
+                        <p className="text-xs text-muted-foreground">valoare totală lucrări</p>
+                      </div>
+                      <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                        <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-400" />
                       </div>
                     </div>
                   </CardContent>
@@ -729,8 +819,8 @@ export default function DashboardTehnicianPage() {
 
   // ==================== DESKTOP UI ====================
   return (
-    <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-      <header className="border-b border-border p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+      <header className="border-b border-border p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 flex-shrink-0 sticky top-0 bg-background z-10">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold text-foreground">Tehnician</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
@@ -743,7 +833,7 @@ export default function DashboardTehnicianPage() {
         </Button>
       </header>
 
-      <div className="flex-1 p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
         {/* Perioadă */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground">Perioadă:</span>
@@ -759,6 +849,7 @@ export default function DashboardTehnicianPage() {
               <SelectItem value="week">Săptămâna curentă</SelectItem>
               <SelectItem value="month">Luna curentă</SelectItem>
               <SelectItem value="month-custom">Lună (selectează)</SelectItem>
+              <SelectItem value="custom-range">Interval personalizat</SelectItem>
             </SelectContent>
           </Select>
           {period === 'day' && (
@@ -796,6 +887,42 @@ export default function DashboardTehnicianPage() {
               </SelectContent>
             </Select>
           )}
+          {period === 'custom-range' && (
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[200px] justify-start text-left font-normal">
+                    <CalendarDays className="mr-2 h-4 w-4" />
+                    {customRangeStart ? format(customRangeStart, 'd MMM yyyy', { locale: ro }) : 'De la'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={customRangeStart}
+                    onSelect={(d) => d && setCustomRangeStart(d)}
+                    locale={ro}
+                  />
+                </PopoverContent>
+              </Popover>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[200px] justify-start text-left font-normal">
+                    <CalendarDays className="mr-2 h-4 w-4" />
+                    {customRangeEnd ? format(customRangeEnd, 'd MMM yyyy', { locale: ro }) : 'Până la'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={customRangeEnd}
+                    onSelect={(d) => d && setCustomRangeEnd(d)}
+                    locale={ro}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
           {canSelectTechnician && (
             <>
               <span className="text-sm text-muted-foreground ml-2 sm:ml-4">Tehnician:</span>
@@ -819,7 +946,41 @@ export default function DashboardTehnicianPage() {
           )}
         </div>
 
-        {/* Total */}
+        {/* Total săptămână + lună (mereu vizibile când avem stats) */}
+        {stats && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total — Săptămâna curentă</CardTitle>
+                <Package className="h-4 w-4 text-sky-500/70" />
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="text-xl font-bold">{stats.totalWeek}</span>
+                  <span className="text-sm text-muted-foreground">
+                    tăvițe · <span className="font-medium text-foreground">{formatMinutesAsHoursMinutes(stats.totalMinutesInLucruWeek ?? 0)}</span> ore lucru
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total — Luna curentă</CardTitle>
+                <Package className="h-4 w-4 text-sky-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="text-xl font-bold">{stats.totalMonth}</span>
+                  <span className="text-sm text-muted-foreground">
+                    tăvițe · <span className="font-medium text-foreground">{formatMinutesAsHoursMinutes(stats.totalMinutesInLucruMonth ?? 0)}</span> ore lucru
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Total per perioada selectată */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -917,7 +1078,8 @@ export default function DashboardTehnicianPage() {
                       <th className="text-right p-3 font-medium">Ore lucru</th>
                       <th className="text-right p-3 font-medium">Timp în lucru</th>
                       <th className="text-right p-3 font-medium">Timp în așteptare</th>
-                      <th className="text-right p-3 font-medium">Total</th>
+                      <th className="text-right p-3 font-medium text-green-600 dark:text-green-400">Total RON</th>
+                      <th className="text-right p-3 font-medium">Total (zi)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -976,6 +1138,9 @@ export default function DashboardTehnicianPage() {
                             </td>
                             <td className="p-3 text-right text-orange-500 tabular-nums">
                               {formatMinutesInLucru(row.minutesInAsteptare ?? 0)}
+                            </td>
+                            <td className="p-3 text-right font-medium text-green-600 dark:text-green-400 tabular-nums">
+                              {formatRon(row.totalRon ?? trayTotal)}
                             </td>
                             <td className="p-3 text-right text-muted-foreground tabular-nums">
                               {isDay ? formatRon(row.totalRon ?? trayTotal) : '—'}
@@ -1372,6 +1537,41 @@ export default function DashboardTehnicianPage() {
                         </Fragment>
                       )
                     })}
+                    {/* Rând total pentru toți tehnicienii */}
+                    <tr className="border-t bg-muted/20 font-semibold">
+                      <td className="p-3">TOTAL</td>
+                      <td className="p-3 text-right tabular-nums">{total}</td>
+                      <td className="p-3 text-right tabular-nums">
+                        {(() => {
+                          if (period === 'day' && dayData) {
+                            const totalInstruments = Array.from(new Set(list.map((r) => r.technicianId)))
+                              .reduce((acc, tid) => {
+                                const instruments = (dayData.instrumentWorkByTechnician?.[tid] || []) as TehnicianInstrumentWork[]
+                                return acc + instruments.reduce((a, r) => a + (Number(r?.qty) || 0), 0)
+                              }, 0)
+                            return totalInstruments > 0 ? totalInstruments : '—'
+                          }
+                          return '—'
+                        })()}
+                      </td>
+                      <td className="p-3 text-right tabular-nums text-muted-foreground">{formatDecimalHoursAsHoursMinutes(workingHours)}</td>
+                      <td className="p-3 text-right tabular-nums text-muted-foreground">
+                        {formatMinutesInLucru(
+                          list.reduce((acc, r) => acc + (r.minutesInLucru ?? 0), 0)
+                        )}
+                      </td>
+                      <td className="p-3 text-right tabular-nums text-orange-500">
+                        {formatMinutesInLucru(
+                          list.reduce((acc, r) => acc + (r.minutesInAsteptare ?? 0), 0)
+                        )}
+                      </td>
+                      <td className="p-3 text-right tabular-nums text-green-600 dark:text-green-400">
+                        {formatRon(totalRonForPeriod)}
+                      </td>
+                      <td className="p-3 text-right tabular-nums text-muted-foreground">
+                        {period === 'day' ? formatRon(totalRonForPeriod) : '—'}
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -1498,19 +1698,32 @@ export default function DashboardTehnicianPage() {
                         <th className="text-left p-3 font-medium">Data</th>
                         <th className="text-right p-3 font-medium">Nr. tăvițe</th>
                         <th className="text-right p-3 font-medium">Timp în lucru</th>
+                        <th className="text-right p-3 font-medium text-green-600 dark:text-green-400">Total RON</th>
                       </tr>
                     </thead>
                     <tbody>
                       {byDayList.map((row) => (
                         <tr key={row.date} className="border-b last:border-0">
-<td className="p-3 flex items-center gap-2">
-                              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                              {format(new Date(row.date + 'T12:00:00'), 'EEEE, d MMM yyyy', { locale: ro })}
-                            </td>
-                            <td className="p-3 text-right font-medium">{row.count}</td>
-                            <td className="p-3 text-right text-muted-foreground tabular-nums">{formatMinutesInLucru(row.totalMinutesInLucru ?? 0)}</td>
-                          </tr>
+                          <td className="p-3 flex items-center gap-2">
+                            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                            {format(new Date(row.date + 'T12:00:00'), 'EEEE, d MMM yyyy', { locale: ro })}
+                          </td>
+                          <td className="p-3 text-right font-medium">{row.count}</td>
+                          <td className="p-3 text-right text-muted-foreground tabular-nums">{formatMinutesInLucru(row.totalMinutesInLucru ?? 0)}</td>
+                          <td className="p-3 text-right font-medium text-green-600 dark:text-green-400 tabular-nums">{formatRon(row.totalRon ?? 0)}</td>
+                        </tr>
                       ))}
+                      {/* Rând total pentru prelucrările pe zile */}
+                      <tr className="border-t bg-muted/20 font-semibold">
+                        <td className="p-3">TOTAL</td>
+                        <td className="p-3 text-right tabular-nums">{byDayList.reduce((acc, r) => acc + r.count, 0)}</td>
+                        <td className="p-3 text-right tabular-nums text-muted-foreground">
+                          {formatMinutesInLucru(byDayList.reduce((acc, r) => acc + (r.totalMinutesInLucru ?? 0), 0))}
+                        </td>
+                        <td className="p-3 text-right tabular-nums text-green-600 dark:text-green-400">
+                          {formatRon(byDayList.reduce((acc, r) => acc + (r.totalRon ?? 0), 0))}
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>

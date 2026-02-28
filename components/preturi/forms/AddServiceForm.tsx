@@ -3,9 +3,8 @@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Sparkles, Plus, X as XIcon, Search, Percent, Undo2, User } from 'lucide-react'
+import { Sparkles, Plus, X as XIcon, Search, Undo2, User } from 'lucide-react'
 import type { Service } from '@/lib/supabase/serviceOperations'
 import { cn } from '@/lib/utils'
 
@@ -15,20 +14,14 @@ interface AddServiceFormProps {
     qty: string
     discount: string
     instrumentId: string
-    selectedBrands?: string[]
-    serialNumberId?: string
     technicianId?: string
   }
   serviceSearchQuery: string
   serviceSearchFocused: boolean
   currentInstrumentId: string | null
   availableServices: Service[]
-  instrumentForm?: {
-    brandSerialGroups?: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }> | string[] }>
-  }
   isVanzariPipeline?: boolean
   canEditUrgentAndSubscription?: boolean
-  // Props pentru selectarea tehnicianului (doar admini)
   isAdmin?: boolean
   technicians?: Array<{ id: string; name: string }>
   onTechnicianChange?: (technicianId: string) => void
@@ -41,8 +34,6 @@ interface AddServiceFormProps {
   onDiscountChange: (discount: string) => void
   onAddService: () => void
   onClearForm?: () => void
-  onBrandToggle?: (brandName: string, checked: boolean) => void
-  onSerialNumberChange?: (serialNumberId: string) => void
 }
 
 export function AddServiceForm({
@@ -51,7 +42,6 @@ export function AddServiceForm({
   serviceSearchFocused,
   currentInstrumentId,
   availableServices,
-  instrumentForm,
   isVanzariPipeline = false,
   canEditUrgentAndSubscription = true,
   isAdmin = false,
@@ -66,8 +56,6 @@ export function AddServiceForm({
   onDiscountChange,
   onAddService,
   onClearForm,
-  onBrandToggle,
-  onSerialNumberChange,
 }: AddServiceFormProps) {
   return (
     <div className="mx-2 sm:mx-4">
@@ -182,7 +170,7 @@ export function AddServiceForm({
             </div>
 
             {/* Cantitate */}
-            <div className={cn("col-span-6", isAdmin && technicians.length > 0 ? "sm:col-span-2" : "sm:col-span-2")}>
+            <div className={cn("col-span-6", isAdmin && technicians.length > 0 ? "sm:col-span-3" : "sm:col-span-3")}>
               <Label className="text-[10px] font-bold text-blue-800/90 dark:text-blue-200 uppercase tracking-wider mb-1.5 block">
                 Cant.
               </Label>
@@ -198,7 +186,7 @@ export function AddServiceForm({
 
             {/* Selector Tehnician - doar pentru admini */}
             {isAdmin && technicians.length > 0 && (
-              <div className="col-span-6 sm:col-span-2">
+              <div className="col-span-6 sm:col-span-3">
                 <Label className="text-[10px] font-bold text-blue-800/90 dark:text-blue-200 uppercase tracking-wider mb-1.5 flex items-center gap-1">
                   <User className="h-3 w-3" /> Tehnician
                 </Label>
@@ -222,48 +210,6 @@ export function AddServiceForm({
                 </Select>
               </div>
             )}
-
-            {/* Serial Numbers cu Brand — full width pe mobile, touch-friendly */}
-            <div className={cn("col-span-12", isAdmin && technicians.length > 0 ? "sm:col-span-2" : "sm:col-span-3")}>
-              <Label className="text-[10px] font-bold text-blue-800/90 dark:text-blue-200 uppercase tracking-wider mb-1.5 block">
-                Serial / Brand
-              </Label>
-              <div className="max-h-32 md:max-h-28 overflow-y-auto overscroll-contain border-2 border-blue-200/80 dark:border-blue-700/50 rounded-lg p-2 bg-white dark:bg-slate-900 space-y-0.5">
-                {(Array.isArray(instrumentForm?.brandSerialGroups) ? instrumentForm.brandSerialGroups : []).flatMap((group, gIdx) => {
-                  if (!group) return []
-                  const brandName = group?.brand?.trim() || ''
-                  const serialNumbers = Array.isArray(group?.serialNumbers) ? group.serialNumbers : []
-                  return serialNumbers.map((sn, snIdx) => {
-                    const serial = typeof sn === 'string' ? sn : (sn && typeof sn === 'object' ? sn?.serial || '' : '')
-                    const serialDisplay = serial && serial.trim() ? serial.trim() : `Serial ${snIdx + 1}`
-                    const displayText = brandName ? `${brandName} — ${serialDisplay}` : serialDisplay
-                    const valueKey = `${brandName}::${serial || `empty-${gIdx}-${snIdx}`}`
-                    const selectedSerials = Array.isArray(svc?.selectedBrands) ? svc.selectedBrands : []
-                    const isSelected = selectedSerials.includes(valueKey)
-                    return (
-                      <label
-                        key={`${gIdx}-${snIdx}`}
-                        className="flex items-center gap-2 min-h-11 md:min-h-0 py-2 md:py-0.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded px-1 transition-colors touch-manipulation"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={(checked) => {
-                            onBrandToggle?.(valueKey, !!checked)
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="h-5 w-5 md:h-4 md:w-4 data-[state=checked]:bg-slate-600 data-[state=checked]:border-slate-600 flex-shrink-0"
-                        />
-                        <span className="text-xs font-medium truncate">{displayText}</span>
-                      </label>
-                    )
-                  })
-                })}
-                {(Array.isArray(instrumentForm?.brandSerialGroups) ? instrumentForm.brandSerialGroups : []).length === 0 && (
-                  <p className="text-[10px] text-muted-foreground text-center py-2">Nu există serial numbers</p>
-                )}
-              </div>
-            </div>
           </div>
         </div>
       </div>

@@ -64,18 +64,11 @@ export type LeadQuoteItem = TrayItem & {
   garantie?: boolean
   pipeline_id?: string | null
   service_id?: string | null
-  instrument_id?: string | null // OBLIGATORIU în DB
-  department_id?: string | null // OBLIGATORIU în DB - se preia din instrument
+  instrument_id?: string | null
+  department_id?: string | null
   qty?: number
-  department?: string | null // Numele departamentului (derivat din pipeline)
-  /** Câte bucăți din cantitatea acestei linii nu se pot repara (0..qty); ex. la Cant. 2 poți seta 1 */
+  department?: string | null
   non_repairable_qty?: number
-  brand_groups?: Array<{ 
-    id: string
-    brand: string
-    serialNumbers: string[]
-    garantie: boolean 
-  }>
 }
 
 // Tip pentru tăvițe în UI (extins din Tray)

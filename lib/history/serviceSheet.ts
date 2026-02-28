@@ -1015,12 +1015,6 @@ export async function persistAndLogServiceSheet(params: {
           qty: Number(it.qty ?? 1),
           notes: JSON.stringify(notesData),
           pipeline: pipelineNameForInstrumentAlt,
-          // Brand și serial_number se salvează în tabelul tray_item_brand_serials
-          brandSerialGroups: it.brand || it.serial_number ? [{
-            brand: it.brand || null,
-            serialNumbers: it.serial_number ? [it.serial_number] : [],
-            garantie: it.garantie || false
-          }] : undefined,
         })
         if (error) {
           console.error('Error creating instrument tray item:', error)

@@ -32,7 +32,6 @@ interface DepartmentViewProps {
   instrumentForm: { 
     instrument: string
     qty: string
-    brandSerialGroups?: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }>; qty: string }>
     garantie?: boolean
   }
   instrumentSettings?: Record<string, any>
@@ -79,17 +78,6 @@ interface DepartmentViewProps {
   onDelete: (id: string) => void
   onRowClick?: (item: LeadQuoteItem) => void
   onClearForm?: () => void
-  onBrandToggle?: (brandKey: string, checked: boolean) => void
-  
-  // Callbacks pentru brandSerialGroups (opționale)
-  onAddBrandSerialGroup?: () => void
-  onRemoveBrandSerialGroup?: (groupIndex: number) => void
-  onUpdateBrand?: (groupIndex: number, value: string) => void
-  onUpdateBrandQty?: (groupIndex: number, qty: string) => void
-  onUpdateSerialNumber?: (groupIndex: number, serialIndex: number, value: string) => void
-  onAddSerialNumber?: (groupIndex: number) => void
-  onRemoveSerialNumber?: (groupIndex: number, serialIndex: number) => void
-  onUpdateSerialGarantie?: (groupIndex: number, serialIndex: number, garantie: boolean) => void
   setIsDirty?: (dirty: boolean) => void
   
   // Pipeline flags
@@ -225,15 +213,6 @@ export function DepartmentView({
   onDelete,
   onRowClick,
   onClearForm,
-  onBrandToggle,
-  onAddBrandSerialGroup,
-  onRemoveBrandSerialGroup,
-  onUpdateBrand,
-  onUpdateBrandQty,
-  onUpdateSerialNumber,
-  onAddSerialNumber,
-  onRemoveSerialNumber,
-  onUpdateSerialGarantie,
   setIsDirty,
   onAddInstrumentDirect,
   currentInstrumentId,
@@ -308,16 +287,6 @@ export function DepartmentView({
   const mobileInstrumentForm = {
     instrument: currentInstrument ? { id: currentInstrument.id, name: currentInstrument.name } : null,
     qty: parseInt(instrumentForm.qty) || 1,
-    brandSerialGroups: (instrumentForm.brandSerialGroups || []).map((g, idx) => ({
-      id: `group-${idx}`,
-      brand: g.brand || '',
-      qty: parseInt(g.qty) || 1,
-      serialNumbers: (g.serialNumbers || []).map((s, sIdx) => ({
-        id: `serial-${idx}-${sIdx}`,
-        serial: s.serial || '',
-        garantie: s.garantie || false,
-      })),
-    })),
   }
 
   // ÎNTOTDEAUNA rezolvăm lead_id din lanțul tray → service_file → lead
@@ -629,38 +598,6 @@ export function DepartmentView({
               onInstrumentDoubleClick?.(inst.id)
             }}
             onQtyChange={(qty) => onQtyChange(String(qty))}
-            onAddBrandSerialGroup={onAddBrandSerialGroup}
-            onRemoveBrandSerialGroup={(groupId) => {
-              const idx = parseInt(groupId.replace('group-', ''))
-              onRemoveBrandSerialGroup?.(idx)
-            }}
-            onUpdateBrand={(groupId, brand) => {
-              const idx = parseInt(groupId.replace('group-', ''))
-              onUpdateBrand?.(idx, brand)
-            }}
-            onUpdateBrandQty={(groupId, qty) => {
-              const idx = parseInt(groupId.replace('group-', ''))
-              onUpdateBrandQty?.(idx, String(qty))
-            }}
-            onAddSerialNumber={(groupId) => {
-              const idx = parseInt(groupId.replace('group-', ''))
-              onAddSerialNumber?.(idx)
-            }}
-            onRemoveSerialNumber={(groupId, serialId) => {
-              const groupIdx = parseInt(groupId.replace('group-', ''))
-              const serialIdx = parseInt(serialId.split('-')[2] || '0')
-              onRemoveSerialNumber?.(groupIdx, serialIdx)
-            }}
-            onUpdateSerialNumber={(groupId, serialId, serial) => {
-              const groupIdx = parseInt(groupId.replace('group-', ''))
-              const serialIdx = parseInt(serialId.split('-')[2] || '0')
-              onUpdateSerialNumber?.(groupIdx, serialIdx, serial)
-            }}
-            onUpdateSerialGarantie={(groupId, serialId, garantie) => {
-              const groupIdx = parseInt(groupId.replace('group-', ''))
-              const serialIdx = parseInt(serialId.split('-')[2] || '0')
-              onUpdateSerialGarantie?.(groupIdx, serialIdx, garantie)
-            }}
             onClearForm={onClearForm}
           />
           
@@ -691,14 +628,6 @@ export function DepartmentView({
               onInstrumentChange={onInstrumentChange}
               onInstrumentDoubleClick={onInstrumentDoubleClick}
               onQtyChange={onQtyChange}
-              onAddBrandSerialGroup={onAddBrandSerialGroup}
-              onRemoveBrandSerialGroup={onRemoveBrandSerialGroup}
-              onUpdateBrand={onUpdateBrand}
-              onUpdateBrandQty={onUpdateBrandQty}
-              onUpdateSerialNumber={onUpdateSerialNumber}
-              onAddSerialNumber={onAddSerialNumber}
-              onRemoveSerialNumber={onRemoveSerialNumber}
-              onUpdateSerialGarantie={onUpdateSerialGarantie}
               setIsDirty={setIsDirty}
               isAddInstrumentDisabled={false}
               onAddInstrumentDirect={onAddInstrumentDirect}
@@ -711,7 +640,7 @@ export function DepartmentView({
               serviceSearchFocused={serviceSearchFocused}
               currentInstrumentId={currentInstrumentId}
               availableServices={availableServices}
-              instrumentForm={{ ...instrumentForm, brandSerialGroups: instrumentForm.brandSerialGroups || [] }}
+              instrumentForm={instrumentForm}
               isAdmin={isAdmin}
               technicians={technicians}
               onTechnicianChange={onTechnicianChange}
@@ -724,7 +653,6 @@ export function DepartmentView({
               onDiscountChange={onSvcDiscountChange}
               onAddService={onAddService}
               onClearForm={onClearForm}
-              onBrandToggle={onBrandToggle}
             />
             </div>
             {isReparatiiPipeline && canAddParts && (
@@ -735,7 +663,7 @@ export function DepartmentView({
                 partSearchFocused={partSearchFocused}
                 parts={parts}
                 items={items}
-                instrumentForm={{ ...instrumentForm, brandSerialGroups: instrumentForm.brandSerialGroups || [] }}
+                instrumentForm={instrumentForm}
                 canAddParts={canAddParts}
                 onPartSearchChange={onPartSearchChange}
                 onPartSearchFocus={onPartSearchFocus}
@@ -799,8 +727,6 @@ export function DepartmentView({
             const byId = new Map(items.map(it => [it.id, it]))
             const movesWithMeta = moves.map(m => {
               const it = byId.get(m.trayItemId)
-              const hasBrandGroups = Array.isArray((it as any)?.brand_groups) && (it as any).brand_groups.length > 0
-              const hasLegacy = !!it?.brand || !!it?.serial_number
               return {
                 trayItemId: m.trayItemId,
                 qtyMove: m.qtyMove,
@@ -811,7 +737,7 @@ export function DepartmentView({
                 part_id: it?.part_id ?? null,
                 from_technician_id: null,
                 qty_total: it?.qty ?? null,
-                has_brands_or_serials: hasBrandGroups || hasLegacy,
+                has_brands_or_serials: false,
               }
             })
 
@@ -856,8 +782,6 @@ export function DepartmentView({
             const byId = new Map(items.map(it => [it.id, it]))
             const movesWithMeta = moves.map(m => {
               const it = byId.get(m.trayItemId)
-              const hasBrandGroups = Array.isArray((it as any)?.brand_groups) && (it as any).brand_groups.length > 0
-              const hasLegacy = !!it?.brand || !!it?.serial_number
               return {
                 trayItemId: m.trayItemId,
                 qtyMove: m.qtyMove,
@@ -868,7 +792,7 @@ export function DepartmentView({
                 part_id: it?.part_id ?? null,
                 from_technician_id: null,
                 qty_total: it?.qty ?? null,
-                has_brands_or_serials: hasBrandGroups || hasLegacy,
+                has_brands_or_serials: false,
               }
             })
 

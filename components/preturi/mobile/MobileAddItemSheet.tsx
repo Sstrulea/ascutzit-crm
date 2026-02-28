@@ -9,7 +9,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type { Service } from '@/lib/supabase/serviceOperations'
-import { MobileBrandSerialSection } from './MobileBrandSerialSection'
 
 interface MobileAddItemSheetProps {
   open: boolean
@@ -23,25 +22,11 @@ interface MobileAddItemSheetProps {
   instrumentForm?: {
     instrument: { id: string; name: string } | null
     qty: number
-    brandSerialGroups: Array<{
-      id: string
-      brand: string
-      qty: number
-      serialNumbers: Array<{ id: string; serial: string; garantie: boolean }>
-    }>
   }
   onInstrumentChange?: (instrument: { id: string; name: string } | null) => void
   onInstrumentDoubleClick?: (instrument: { id: string; name: string }) => void
   onQtyChange?: (qty: number) => void
-  onAddBrandSerialGroup?: () => void
-  onRemoveBrandSerialGroup?: (groupId: string) => void
-  onUpdateBrand?: (groupId: string, brand: string) => void
-  onUpdateBrandQty?: (groupId: string, qty: number) => void
-  onAddSerialNumber?: (groupId: string) => void
-  onRemoveSerialNumber?: (groupId: string, serialId: string) => void
-  onUpdateSerialNumber?: (groupId: string, serialId: string, serial: string) => void
-  onUpdateSerialGarantie?: (groupId: string, serialId: string, garantie: boolean) => void
-  onAddService?: (service: Service, qty: number, brandSerialIds?: string[]) => void
+  onAddService?: (service: Service, qty: number) => void
   onAddPart?: (part: { id: string; name: string; price: number }, qty: number, serialNumber?: string) => void
   onClearForm?: () => void
   /** Optional: set discount % before adding service (Receptie parity with desktop) */
@@ -61,14 +46,6 @@ export function MobileAddItemSheet({
   onInstrumentChange,
   onInstrumentDoubleClick,
   onQtyChange,
-  onAddBrandSerialGroup,
-  onRemoveBrandSerialGroup,
-  onUpdateBrand,
-  onUpdateBrandQty,
-  onAddSerialNumber,
-  onRemoveSerialNumber,
-  onUpdateSerialNumber,
-  onUpdateSerialGarantie,
   onAddService,
   onAddPart,
   onClearForm,
@@ -285,20 +262,6 @@ export function MobileAddItemSheet({
               </div>
             </ScrollArea>
 
-            {/* Brand/Serial pentru Reparații */}
-            {isReparatiiPipeline && currentInstrument && instrumentForm && (
-              <MobileBrandSerialSection
-                brandSerialGroups={instrumentForm.brandSerialGroups}
-                onAddGroup={onAddBrandSerialGroup}
-                onRemoveGroup={onRemoveBrandSerialGroup}
-                onUpdateBrand={onUpdateBrand}
-                onUpdateQty={onUpdateBrandQty}
-                onAddSerial={onAddSerialNumber}
-                onRemoveSerial={onRemoveSerialNumber}
-                onUpdateSerial={onUpdateSerialNumber}
-                onUpdateGarantie={onUpdateSerialGarantie}
-              />
-            )}
           </TabsContent>
 
           {/* Tab Serviciu */}

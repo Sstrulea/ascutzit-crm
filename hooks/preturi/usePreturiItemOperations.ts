@@ -223,245 +223,7 @@ export function usePreturiItemOperations({
     const deptNameForService = instrumentDeptForService?.name?.toLowerCase() || ''
     const isAscutitInstrument = deptNameForService.includes('ascutit') || deptNameForService.includes('ascuțit')
     
-    // IMPORTANT: Salvează automat toate brand-urile și serial number-urile înainte de a adăuga serviciul
-    // Verifică dacă există brand-uri și serial number-uri de salvat
-    // EXCEPTIE: Nu salvează brand/serial pentru instrumente din departamentul "Ascutit"
-    const brandSerialGroupsArray = Array.isArray(instrumentForm.brandSerialGroups) ? instrumentForm.brandSerialGroups : []
-    const groupsToSave = brandSerialGroupsArray.length > 0 
-      ? brandSerialGroupsArray
-      : [{ brand: '', serialNumbers: [{ serial: '', garantie: false }], qty: '1' }]
     
-    // FOLOSIM FOR LOOP ÎN LOC DE .some() - MAI SIGUR
-    let hasValidBrandSerialData = false
-    if (!isAscutitInstrument && Array.isArray(groupsToSave)) {
-      for (let i = 0; i < groupsToSave.length; i++) {
-        const g = groupsToSave[i]
-        if (!g) continue
-        const hasBrand = g.brand && g.brand.trim()
-        const serialNumbers = Array.isArray(g.serialNumbers) ? g.serialNumbers : []
-        
-        // Verifică serial numbers cu for loop în loc de .some()
-        let hasSerialNumbers = false
-        for (let j = 0; j < serialNumbers.length; j++) {
-          const sn = serialNumbers[j]
-          const serial = typeof sn === 'string' ? sn : (sn && typeof sn === 'object' ? sn?.serial || '' : '')
-          if (serial && serial.trim()) {
-            hasSerialNumbers = true
-            break
-          }
-        }
-        
-        if (hasBrand || hasSerialNumbers) {
-          hasValidBrandSerialData = true
-          break
-        }
-      }
-    }
-
-    // IMPORTANT: În pipeline Vânzare, NU salvăm brand/serial înainte de serviciu
-    // deoarece serviciul va fi creat cu brand/serial direct, și nu vrem să creăm item-uri goale
-    // Pentru alte pipeline-uri, salvăm brand/serial înainte de serviciu pentru compatibilitate
-    const shouldSaveBrandSerialBeforeService = hasValidBrandSerialData && selectedQuote && !isAscutitInstrument && !isVanzariPipeline
-    
-    // Dacă există date de brand/serial, salvează-le automat înainte de a adăuga serviciul
-    // NU salva dacă instrumentul este din departamentul "Ascutit" SAU dacă suntem în pipeline Vânzare
-    if (shouldSaveBrandSerialBeforeService) {
-      try {
-        // Găsește item-ul existent pentru instrument sau creează unul nou
-        const existingItem = items.find((i: any) => i.instrument_id === currentInstrumentId && i.item_type === null)
-        
-        const qty = Number(instrumentForm?.qty || 1)
-        
-        // Transformă structura pentru salvare: grupăm serial numbers-urile după garanție
-        // Dacă avem serial numbers cu garanții diferite, creăm brand-uri separate
-        const brandSerialGroupsToSend: Array<{ brand: string | null; serialNumbers: string[]; garantie: boolean }> = []
-        
-        for (const group of groupsToSave) {
-          const brandName = group.brand?.trim()
-          if (!brandName) continue
-          
-          // Grupează serial numbers-urile după garanție
-          const serialsByGarantie = new Map<boolean, string[]>()
-          
-          // IMPORTANT: Include toate serial numbers-urile, inclusiv cele goale
-          group.serialNumbers.forEach((snData) => {
-            const serial = typeof snData === 'string' ? snData : snData.serial || ''
-            const snGarantie = typeof snData === 'object' ? (snData.garantie || false) : false
-            const serialValue = serial && serial.trim() ? serial.trim() : ''
-            
-            if (!serialsByGarantie.has(snGarantie)) {
-              serialsByGarantie.set(snGarantie, [])
-            }
-            serialsByGarantie.get(snGarantie)!.push(serialValue)
-          })
-          
-          // Creează un grup pentru fiecare nivel de garanție (inclusiv cu serial numbers goale)
-          serialsByGarantie.forEach((serials, snGarantie) => {
-            if (serials.length > 0) {
-              brandSerialGroupsToSend.push({
-                brand: brandName,
-                serialNumbers: serials,
-                garantie: snGarantie
-              })
-            }
-          })
-        }
-        
-        const filteredGroups = brandSerialGroupsToSend.filter(g => g.brand || g.serialNumbers.length > 0)
-
-        if (filteredGroups.length > 0) {
-          if (existingItem && existingItem.id) {
-            // Actualizează item-ul existent cu brand-urile și serial number-urile
-            // Șterge brand-urile vechi
-            const { error: deleteError } = await supabase
-              .from('tray_item_brands')
-              .delete()
-              .eq('tray_item_id', existingItem.id)
-            
-            if (deleteError && deleteError.code !== '42P01') {
-              console.error('Error deleting old brands:', deleteError)
-            }
-            
-            // OPTIMIZARE: Batch operations pentru reducerea call-urilor
-            // Grupează toate brand-urile pentru batch INSERT
-            // IMPORTANT: Elimină duplicatele (același brand + garanție) pentru a evita erori la INSERT
-            const brandsToInsertMap = new Map<string, { tray_item_id: string; brand: string; garantie: boolean }>()
-            filteredGroups.forEach(group => {
-              const brandName = group.brand?.trim()
-              if (!brandName) return
-              const garantie = group.garantie || false
-              const key = `${brandName}::${garantie}`
-              // Dacă nu există deja, adaugă-l
-              if (!brandsToInsertMap.has(key)) {
-                brandsToInsertMap.set(key, {
-                  tray_item_id: existingItem.id,
-                  brand: brandName,
-                  garantie: garantie,
-                })
-              }
-            })
-            const brandsToInsert = Array.from(brandsToInsertMap.values())
-
-            if (brandsToInsert.length > 0) {
-              // Batch INSERT pentru toate brand-urile (un singur call în loc de N)
-              const { data: brandResults, error: brandsError } = await supabase
-                .from('tray_item_brands')
-                .insert(brandsToInsert)
-                .select()
-
-              if (brandsError) {
-                console.error('Error creating brands:', brandsError)
-                // Continuă fără să arunce eroare pentru a nu bloca adăugarea serviciului
-              } else if (brandResults && brandResults.length > 0) {
-                // Grupează toate serial numbers-urile pentru batch INSERT
-                const serialsToInsert: Array<{ brand_id: string; serial_number: string }> = []
-                
-                // Creează mapare între brand name + garantie și brand_id
-                // Folosim datele din rezultat (br) pentru siguranță, nu indexarea array-ului
-                const brandMap = new Map<string, string>()
-                brandResults.forEach((br: any) => {
-                  const brandName = br.brand?.trim()
-                  const garantie = br.garantie || false
-                  const key = `${brandName}::${garantie}`
-                  brandMap.set(key, br.id)
-                })
-
-                // Colectează toate serial numbers-urile
-                filteredGroups.forEach(group => {
-                  const brandName = group.brand?.trim()
-                  if (!brandName) return
-                  
-                  const garantie = group.garantie || false
-                  const key = `${brandName}::${garantie}`
-                  const brandId = brandMap.get(key)
-                  
-                  if (brandId) {
-                    const serialNumbers = group.serialNumbers
-                      .map(sn => {
-                        const serial = typeof sn === 'string' ? sn : sn.serial || ''
-                        return serial.trim()
-                      })
-                      .filter(sn => sn)
-                    
-                    serialNumbers.forEach(sn => {
-                      serialsToInsert.push({
-                        brand_id: brandId,
-                        serial_number: sn.trim(),
-                      })
-                    })
-                  }
-                })
-
-                // Batch INSERT pentru toate serial numbers-urile (un singur call în loc de N)
-                if (serialsToInsert.length > 0) {
-                  const { error: serialsError } = await supabase
-                    .from('tray_item_brand_serials')
-                    .insert(serialsToInsert)
-
-                  if (serialsError) {
-                    console.error('Error creating serials:', serialsError)
-                  }
-                }
-              }
-            }
-          } else {
-            // IMPORTANT: Verifică dacă există deja servicii pentru acest instrument
-            // Dacă există servicii, nu crea un item nou cu item_type: null
-            // Brand-urile vor fi salvate în serviciile existente
-            const existingServices = items.filter((item: any) => 
-              item.instrument_id === currentInstrumentId && 
-              item.item_type === 'service' &&
-              item.service_id
-            )
-            
-            // Dacă nu există servicii, creează un item nou pentru instrument
-            if (existingServices.length === 0) {
-              const instrument = instruments.find(i => i.id === currentInstrumentId)
-              if (instrument) {
-                let autoPipelineId: string | null = null
-                const instrumentDept = departments.find(d => d.id === instrument.department_id)
-                const deptName = instrumentDept?.name?.toLowerCase() || instrument.department_id?.toLowerCase()
-                if (deptName === 'reparatii') {
-                  const reparatiiPipeline = pipelinesWithIds.find(p => p.name.toLowerCase() === 'reparatii')
-                  if (reparatiiPipeline) autoPipelineId = reparatiiPipeline.id
-                }
-                
-                await addInstrumentItem(targetQuote.id, instrument.name, {
-                  instrument_id: instrument.id,
-                  department_id: instrument.department_id,
-                  qty: qty,
-                  discount_pct: 0,
-                  urgent: false,
-                  technician_id: null,
-                  pipeline_id: autoPipelineId,
-                  brandSerialGroups: brandSerialGroupsToSend
-                })
-                logTrayItemChange({
-                  trayId: targetQuote.id,
-                  message: `Instrument adăugat: ${instrument.name} (cantitate ${qty})`,
-                  eventType: 'tray_item_added',
-                  payload: {
-                    instrument_id: instrument.id,
-                    item_name: instrument.name,
-                    item_type: 'instrument',
-                    qty,
-                  },
-                  serviceFileId: fisaId ?? undefined,
-                }).catch(() => {})
-                // OPTIMIZARE: Nu mai reîncărcăm items-urile aici - vor fi reîncărcate după crearea serviciului
-                // Aceasta reduce numărul de call-uri de la 2 la 1
-                // Reîncărcarea finală se face după createTrayItem() pentru serviciu (linia ~755)
-              }
-            }
-            // Dacă există servicii, nu creăm item nou - brand-urile vor fi salvate în serviciile existente
-          }
-        }
-      } catch (error) {
-        console.error('Error saving brand/serial data before adding service:', error)
-        toast.error('Eroare la salvare date brand/serial. Te rog încearcă din nou.')
-        return
-      }
-    }
   
     // IMPORTANT: Folosește întotdeauna cantitatea din instrumentForm.qty dacă există, altfel din svc.qty
     // Astfel, când se adaugă mai multe servicii, toate vor folosi aceeași cantitate din formularul instrumentului
@@ -491,173 +253,11 @@ export function usePreturiItemOperations({
       }
     }
     
-      // LOGICĂ: Permite selecția serial numbers-urilor pentru serviciu
-      // Utilizatorul poate selecta toate sau doar unele serial numbers-uri
-      // Serviciul va conține doar serial numbers-urile selectate, afișate clar în tabel
       if (isVanzariPipeline) {
-        // Colectează serial numbers-urile selectate
-        const brandsToProcess = Array.isArray(svc.selectedBrands) ? svc.selectedBrands : []
-        const brandSerialGroupsArray = Array.isArray(instrumentForm?.brandSerialGroups) 
-          ? instrumentForm.brandSerialGroups 
-          : []
-        
-        // DEBUG: Verifică datele de intrare
-        console.log('[onAddService] brandsToProcess:', brandsToProcess)
-        console.log('[onAddService] brandSerialGroupsArray:', JSON.stringify(brandSerialGroupsArray, null, 2))
-        
-        // Dacă nu sunt selectate serial numbers-uri, folosește toate pentru INSTRUMENTUL CURENT (comportament implicit)
-        const useAllSerials = brandsToProcess.length === 0
+        const finalQty = qty
       
-      const brandSerialGroupsToSave: Array<{ brand: string | null; serialNumbers: string[]; garantie: boolean }> = []
-      let totalQtyFromBrands = 0
-      
-      if (useAllSerials) {
-        // IMPORTANT: Folosește DOAR serial numbers-urile pentru instrumentul CURENT selectat
-        // Nu folosi toate serial-urile tuturor instrumentelor, ci doar cele pentru instrumentul curent
-        // Verifică dacă există items în tabel pentru instrumentul curent și folosește serial-urile acelora
-        const currentInstrumentItems = items.filter((item: any) => 
-          item.instrument_id === currentInstrumentId && 
-          (item.item_type === 'service' || item.item_type === null)
-        )
-        
-        // Dacă există items pentru instrumentul curent, folosește serial-urile din acestea
-        if (currentInstrumentItems.length > 0) {
-          // Colectează toate brand-urile și serial-urile din items-urile existente pentru instrumentul curent
-          for (const item of currentInstrumentItems) {
-            if (item.brand_groups && Array.isArray(item.brand_groups)) {
-              for (const bg of item.brand_groups) {
-                if (!bg || typeof bg !== 'object') continue
-                const brandName = bg.brand?.trim() || '—'
-                const serialNumbers = Array.isArray(bg.serialNumbers) 
-                  ? bg.serialNumbers.map((sn: any) => {
-                      const serial = typeof sn === 'string' ? sn : (sn?.serial || '')
-                      return serial.trim()
-                    })
-                  : []
-                
-                const validSerialNumbers = serialNumbers.filter(sn => sn && sn.trim())
-                if (validSerialNumbers.length > 0) {
-                  totalQtyFromBrands += validSerialNumbers.length
-                  brandSerialGroupsToSave.push({
-                    brand: brandName,
-                    serialNumbers: serialNumbers,
-                    garantie: bg.garantie || false
-                  })
-                }
-              }
-            }
-          }
-        } else {
-          // Dacă nu există items pentru instrumentul curent, folosește serial-urile din formular
-          // (acestea ar trebui să fie doar pentru instrumentul curent)
-          for (const group of brandSerialGroupsArray) {
-            // IMPORTANT: Permite brand-uri goale - folosește un brand default dacă este gol
-            const brandName = group?.brand?.trim() || '—' // Folosește '—' ca brand default dacă este gol
-            
-            const serialNumbers = Array.isArray(group.serialNumbers)
-              ? group.serialNumbers.map((sn: any) => {
-                  const serial = typeof sn === 'string' ? sn : (sn?.serial || '')
-                  return serial.trim()
-                })
-              : []
-            
-            const validSerialNumbers = serialNumbers.filter(sn => sn && sn.trim())
-            
-            // IMPORTANT: Salvează grupul chiar dacă brand-ul este gol, dacă există serial numbers-uri valide
-            if (validSerialNumbers.length > 0) {
-              totalQtyFromBrands += validSerialNumbers.length
-              // IMPORTANT: Salvează TOATE serial numbers-urile (inclusiv cele goale) pentru a păstra pozițiile
-              // Acest lucru asigură că toate serial numbers-urile sunt afișate în tabel
-              brandSerialGroupsToSave.push({
-                brand: brandName, // Folosește brand-ul (sau '—' dacă este gol)
-                serialNumbers: serialNumbers, // Toate serial numbers-urile, inclusiv cele goale
-                garantie: group.garantie || false
-              })
-            }
-          }
-        }
-      } else {
-        // Folosește DOAR serial numbers-urile selectate
-        // Grupează selecțiile după brand
-        const brandGroupsMap = new Map<string, string[]>()
-        
-        for (const selectedKey of brandsToProcess) {
-          const [brandName, serialValue] = selectedKey.split('::')
-          if (!brandName) continue
-          
-          if (!brandGroupsMap.has(brandName)) {
-            brandGroupsMap.set(brandName, [])
-          }
-          brandGroupsMap.get(brandName)!.push(serialValue || '')
-        }
-        
-        // Procesează fiecare brand și serial numbers-urile selectate
-        for (const [brandName, selectedSerials] of brandGroupsMap.entries()) {
-          const brandGroup = brandSerialGroupsArray.find(
-            g => {
-              const gBrand = g?.brand?.trim() || ''
-              const searchBrand = brandName.trim() || ''
-              return gBrand === searchBrand
-            }
-          )
-          
-          const serialNumbers: string[] = []
-          const allSerials = brandGroup && Array.isArray(brandGroup.serialNumbers) 
-            ? brandGroup.serialNumbers 
-            : []
-          
-          // Colectează serial numbers-urile selectate
-          for (const selectedSerial of selectedSerials) {
-            if (selectedSerial.startsWith('empty-')) {
-              const match = selectedSerial.match(/empty-(\d+)-(\d+)/)
-              if (match && brandGroup) {
-                const snIdx = parseInt(match[2])
-                if (snIdx < allSerials.length) {
-                  const snData = allSerials[snIdx]
-                  const serial = typeof snData === 'string' ? snData : (snData?.serial || '')
-                  serialNumbers.push(serial || '')
-                }
-              }
-            } else if (selectedSerial && selectedSerial.trim()) {
-              if (brandGroup && allSerials.length > 0) {
-                const found = allSerials.find((snData: any) => {
-                  const serial = typeof snData === 'string' ? snData : (snData?.serial || '')
-                  return serial === selectedSerial
-                })
-                if (found) {
-                  const serial = typeof found === 'string' ? found : (found?.serial || '')
-                  serialNumbers.push(serial || '')
-                } else {
-                  serialNumbers.push(selectedSerial)
-                }
-              } else {
-                serialNumbers.push(selectedSerial)
-              }
-            }
-          }
-          
-          const validSerialNumbers = serialNumbers.filter(sn => sn && sn.trim())
-          if (validSerialNumbers.length > 0) {
-            totalQtyFromBrands += validSerialNumbers.length
-            brandSerialGroupsToSave.push({
-              brand: brandName.trim() || null,
-              serialNumbers: validSerialNumbers,
-              garantie: brandGroup?.garantie || false
-            })
-          }
-        }
-      }
-      
-      // Folosește cantitatea totală calculată
-      const finalQty = totalQtyFromBrands > 0 ? totalQtyFromBrands : qty
-      
-      // console.log('[onAddService] brandSerialGroupsToSave:', JSON.stringify(brandSerialGroupsToSave, null, 2))
-      // console.log('[onAddService] Total brands to save:', brandSerialGroupsToSave.length)
-      
-      // IMPORTANT: Verifică dacă există deja un serviciu pentru acest instrument
-      // Dacă există, actualizează-l cu toate brand-urile și serial numbers-urile
-      // Dacă nu există, verifică dacă există un item goal (item_type: null) pentru a-l actualiza
-      // PRIORITATE: Dacă există editingItemId în svc, folosește-l pentru actualizare
+      // Verifică dacă există deja un serviciu pentru acest instrument
+      // Dacă nu, verifică dacă există un item goal (item_type: null) pentru a-l actualiza
       const existingServiceItem = (svc as any)?.editingItemId
         ? items.find((it: any) => it.id === (svc as any).editingItemId)
         : items.find((it: any) => 
@@ -673,19 +273,15 @@ export function usePreturiItemOperations({
             it.instrument_id === currentInstrumentForService.id
           )
       
-      // IMPORTANT: Creează un SINGUR serviciu cu TOATE brand-urile asociate
       try {
-        // Pregătește notes JSON cu toate detaliile serviciului
-        // Pentru compatibilitate, folosește primul brand ca brand principal
-        const firstBrand = brandSerialGroupsToSave[0]
         const notesData = {
           item_type: 'service',
           name: svcDef.name,
           price: Number(svcDef.price),
           discount_pct: discount,
           urgent: urgentAllServices,
-          brand: firstBrand?.brand || null,
-          serial_number: firstBrand?.serialNumbers?.[0] || null,
+          brand: null,
+          serial_number: null,
           garantie: garantie || false,
         }
         
@@ -697,7 +293,6 @@ export function usePreturiItemOperations({
           // Astfel tehnicianul nu dispare de pe dashboard când se înlocuiește instrumentul
           const technicianIdToUse = svc.technicianId || (existingServiceItem as any).technician_id || null
           
-          // Actualizează serviciul existent cu toate brand-urile și serial numbers-urile
           const { data: updatedItem, error: updateError } = await updateTrayItem(
             existingServiceItem.id,
             {
@@ -724,125 +319,6 @@ export function usePreturiItemOperations({
           }
           
           createdItem = updatedItem
-          
-          // DEBUG: Verifică dacă brandSerialGroupsToSave este populat
-          console.log('[onAddService] Updating existing service item:', existingServiceItem.id)
-          console.log('[onAddService] brandSerialGroupsToSave:', JSON.stringify(brandSerialGroupsToSave, null, 2))
-          
-          // Actualizează brand-urile pentru serviciul existent cu TOATE serial numbers-urile
-          if (brandSerialGroupsToSave.length > 0) {
-            // IMPORTANT: Obține brand_id-urile vechi înainte de a șterge brand-urile
-            const { data: oldBrands } = await supabase
-              .from('tray_item_brands')
-              .select('id')
-              .eq('tray_item_id', existingServiceItem.id)
-            
-            const oldBrandIds = oldBrands?.map((b: any) => b.id) || []
-            
-            // Șterge serial numbers-urile vechi
-            if (oldBrandIds.length > 0) {
-              const { error: deleteSerialsError } = await supabase
-                .from('tray_item_brand_serials')
-                .delete()
-                .in('brand_id', oldBrandIds)
-              
-              if (deleteSerialsError && deleteSerialsError.code !== '42P01') {
-                console.error('Error deleting old serials:', deleteSerialsError)
-              }
-            }
-            
-            // Șterge brand-urile vechi
-            const { error: deleteError } = await supabase
-              .from('tray_item_brands')
-              .delete()
-              .eq('tray_item_id', existingServiceItem.id)
-            
-            if (deleteError && deleteError.code !== '42P01') {
-              console.error('Error deleting old brands:', deleteError)
-            }
-            
-            // Adaugă brand-urile noi cu TOATE serial numbers-urile
-            const brandsToInsertMap = new Map<string, { tray_item_id: string; brand: string; garantie: boolean }>()
-            brandSerialGroupsToSave.forEach(group => {
-              // IMPORTANT: Permite brand-uri goale - folosește un brand default dacă este gol
-              const brandName = (group.brand?.trim() || '—') // Folosește '—' ca brand default dacă este gol
-              const garantie = group.garantie || false
-              const key = `${brandName}::${garantie}`
-              if (!brandsToInsertMap.has(key)) {
-                brandsToInsertMap.set(key, {
-                  tray_item_id: existingServiceItem.id,
-                  brand: brandName, // Folosește brand-ul (sau '—' dacă este gol)
-                  garantie: garantie,
-                })
-              }
-            })
-            const brandsToInsert = Array.from(brandsToInsertMap.values())
-
-            if (brandsToInsert.length > 0) {
-              const { data: brandResults, error: brandsError } = await supabase
-                .from('tray_item_brands')
-                .insert(brandsToInsert)
-                .select()
-
-              if (brandsError) {
-                console.error('Error creating brands:', brandsError)
-              } else if (brandResults && brandResults.length > 0) {
-                // Adaugă TOATE serial numbers-urile pentru fiecare brand
-                const serialsToInsert: Array<{ brand_id: string; serial_number: string }> = []
-                const brandMap = new Map<string, string>()
-                brandResults.forEach((br: any) => {
-                  const key = `${br.brand}::${br.garantie}`
-                  brandMap.set(key, br.id)
-                })
-
-                brandSerialGroupsToSave.forEach(group => {
-                  // IMPORTANT: Permite brand-uri goale - folosește un brand default dacă este gol
-                  const brandName = (group.brand?.trim() || '—') // Folosește '—' ca brand default dacă este gol
-                  const garantie = group.garantie || false
-                  const key = `${brandName}::${garantie}`
-                  const brandId = brandMap.get(key)
-                  
-                  if (brandId) {
-                    // IMPORTANT: Include TOATE serial numbers-urile (inclusiv cele goale) pentru serviciu
-                    // Acest lucru asigură că toate serial numbers-urile sunt salvate și afișate
-                    const serialsForBrand = group.serialNumbers || []
-                    console.log(`[onAddService] Adding ${serialsForBrand.length} serial numbers for brand "${brandName}":`, serialsForBrand)
-                    serialsForBrand.forEach(sn => {
-                      const serial = typeof sn === 'string' ? sn : (sn?.serial || '')
-                      serialsToInsert.push({
-                        brand_id: brandId,
-                        serial_number: serial || '', // Salvează și serial numbers-urile goale
-                      })
-                    })
-                  } else {
-                    console.warn(`[onAddService] Brand ID not found for brand "${brandName}" with key "${key}"`)
-                  }
-                })
-
-                if (serialsToInsert.length > 0) {
-                  console.log(`[onAddService] Inserting ${serialsToInsert.length} serial numbers for existing service item:`, serialsToInsert)
-                  const { error: serialsError } = await supabase
-                    .from('tray_item_brand_serials')
-                    .insert(serialsToInsert)
-
-                  if (serialsError) {
-                    console.error('Error creating serials for existing service:', serialsError)
-                    toast.error(`Eroare la salvare serial numbers: ${serialsError.message}`)
-                  } else {
-                    console.log('[onAddService] Serial numbers saved successfully for existing service item')
-                  }
-                } else {
-                  console.warn('[onAddService] No serial numbers to insert for existing service item - brandSerialGroupsToSave may be empty')
-                }
-              } else {
-                console.warn('[onAddService] No brands created for existing service item')
-              }
-            } else {
-              console.warn('[onAddService] No brands to insert for existing service item')
-            }
-          } else {
-            console.warn('[onAddService] brandSerialGroupsToSave is empty for existing service item')
-          }
         } else if (existingEmptyItem && existingEmptyItem.id) {
           // IMPORTANT: Păstrăm technician_id de la item-ul vechi dacă nu e specificat unul nou
           const technicianIdForEmpty = svc.technicianId || (existingEmptyItem as any).technician_id || null
@@ -874,115 +350,7 @@ export function usePreturiItemOperations({
           }
           
           createdItem = updatedItem
-          
-          // IMPORTANT: Pentru serviciu, folosim DOAR serial numbers-urile selectate (brandSerialGroupsToSave)
-          // Nu folosim toate serial numbers-urile din formular, ci doar cele selectate pentru acest serviciu
-          // Acest lucru permite afișarea clară a serial numbers-urilor asociate cu fiecare serviciu
-          
-          // Actualizează brand-urile pentru serviciul existent cu DOAR serial numbers-urile selectate
-          if (brandSerialGroupsToSave.length > 0) {
-            // IMPORTANT: Obține brand_id-urile vechi înainte de a șterge brand-urile
-            const { data: oldBrands } = await supabase
-              .from('tray_item_brands')
-              .select('id')
-              .eq('tray_item_id', existingEmptyItem.id)
-            
-            const oldBrandIds = oldBrands?.map((b: any) => b.id) || []
-            
-            // Șterge serial numbers-urile vechi
-            if (oldBrandIds.length > 0) {
-              const { error: deleteSerialsError } = await supabase
-                .from('tray_item_brand_serials')
-                .delete()
-                .in('brand_id', oldBrandIds)
-              
-              if (deleteSerialsError && deleteSerialsError.code !== '42P01') {
-                console.error('Error deleting old serials:', deleteSerialsError)
-              }
-            }
-            
-            // Șterge brand-urile vechi
-            const { error: deleteError } = await supabase
-              .from('tray_item_brands')
-              .delete()
-              .eq('tray_item_id', existingEmptyItem.id)
-            
-            if (deleteError && deleteError.code !== '42P01') {
-              console.error('Error deleting old brands:', deleteError)
-            }
-            
-            // Adaugă brand-urile noi cu DOAR serial numbers-urile selectate pentru serviciu
-            const brandsToInsertMap = new Map<string, { tray_item_id: string; brand: string; garantie: boolean }>()
-            brandSerialGroupsToSave.forEach(group => {
-              // IMPORTANT: Permite brand-uri goale - folosește un brand default dacă este gol
-              const brandName = (group.brand?.trim() || '—') // Folosește '—' ca brand default dacă este gol
-              const garantie = group.garantie || false
-              const key = `${brandName}::${garantie}`
-              if (!brandsToInsertMap.has(key)) {
-                brandsToInsertMap.set(key, {
-                  tray_item_id: existingEmptyItem.id,
-                  brand: brandName, // Folosește brand-ul (sau '—' dacă este gol)
-                  garantie: garantie,
-                })
-              }
-            })
-            const brandsToInsert = Array.from(brandsToInsertMap.values())
-
-            if (brandsToInsert.length > 0) {
-              const { data: brandResults, error: brandsError } = await supabase
-                .from('tray_item_brands')
-                .insert(brandsToInsert)
-                .select()
-
-              if (brandsError) {
-                console.error('Error creating brands:', brandsError)
-              } else if (brandResults && brandResults.length > 0) {
-                // Adaugă DOAR serial numbers-urile selectate pentru serviciu
-                const serialsToInsert: Array<{ brand_id: string; serial_number: string }> = []
-                const brandMap = new Map<string, string>()
-                brandResults.forEach((br: any) => {
-                  const key = `${br.brand}::${br.garantie}`
-                  brandMap.set(key, br.id)
-                })
-
-                brandSerialGroupsToSave.forEach(group => {
-                  // IMPORTANT: Permite brand-uri goale - folosește un brand default dacă este gol
-                  const brandName = (group.brand?.trim() || '—') // Folosește '—' ca brand default dacă este gol
-                  const garantie = group.garantie || false
-                  const key = `${brandName}::${garantie}`
-                  const brandId = brandMap.get(key)
-                  
-                  if (brandId) {
-                    // IMPORTANT: Include TOATE serial numbers-urile (inclusiv cele goale) pentru serviciu
-                    // Acest lucru asigură că toate serial numbers-urile sunt salvate și afișate
-                    const serialsForBrand = group.serialNumbers || []
-                    console.log(`[onAddService] Adding ${serialsForBrand.length} serial numbers for brand "${brandName}":`, serialsForBrand)
-                    serialsForBrand.forEach(sn => {
-                      const serial = typeof sn === 'string' ? sn : (sn?.serial || '')
-                      serialsToInsert.push({
-                        brand_id: brandId,
-                        serial_number: serial || '', // Salvează și serial numbers-urile goale
-                      })
-                    })
-                  } else {
-                    console.warn(`[onAddService] Brand ID not found for brand "${brandName}" with key "${key}"`)
-                  }
-                })
-
-                if (serialsToInsert.length > 0) {
-                  const { error: serialsError } = await supabase
-                    .from('tray_item_brand_serials')
-                    .insert(serialsToInsert)
-
-                  if (serialsError) {
-                    console.error('Error creating serials:', serialsError)
-                  }
-                }
-              }
-            }
-          }
         } else {
-          // Creează serviciul în DB cu toate brand-urile
           const { data: newItem, error: createError } = await createTrayItem({
             tray_id: targetQuote.id,
             service_id: svcDef.id,
@@ -992,7 +360,6 @@ export function usePreturiItemOperations({
             qty: finalQty,
             notes: JSON.stringify(notesData),
             pipeline: pipelineId ? pipelinesWithIds.find(p => p.id === pipelineId)?.name || null : null,
-            brandSerialGroups: brandSerialGroupsToSave.length > 0 ? brandSerialGroupsToSave : undefined
           })
           
           if (createError) {
@@ -1033,29 +400,7 @@ export function usePreturiItemOperations({
           return
         }
         
-        // Transformă item-ul creat/actualizat în LeadQuoteItem pentru afișare
-        // IMPORTANT: brand_groups conține DOAR serial numbers-urile selectate pentru acest serviciu
-        // Acest lucru permite afișarea clară a serial numbers-urilor asociate cu fiecare serviciu
-        const brandGroupsForDisplay = brandSerialGroupsToSave.map(bg => {
-          // IMPORTANT: Include TOATE serial numbers-urile (inclusiv cele goale) pentru afișare
-          // Acest lucru asigură că toate serial numbers-urile sunt afișate în tabel
-          const allSerials = Array.isArray(bg.serialNumbers) 
-            ? bg.serialNumbers.map((sn: any) => {
-                const serial = typeof sn === 'string' ? sn : (sn?.serial || '')
-                return serial || '' // Păstrează și serial numbers-urile goale
-              })
-            : []
-          
-          return {
-            id: '', // Nu avem ID-ul încă, dar nu este necesar pentru afișare
-            brand: bg.brand || '',
-            serialNumbers: allSerials, // Toate serial numbers-urile, inclusiv cele goale
-            garantie: bg.garantie || false
-          }
-        })
-        
-        
-        const serviceItem: LeadQuoteItem & { brand_groups?: Array<{ id: string; brand: string; serialNumbers: string[]; garantie: boolean }> } = {
+        const serviceItem: LeadQuoteItem = {
           id: createdItem.id,
           item_type: 'service',
           service_id: svcDef.id,
@@ -1068,11 +413,10 @@ export function usePreturiItemOperations({
           urgent: urgentAllServices,
           technician_id: svc.technicianId || null,
           pipeline_id: pipelineId,
-          brand: firstBrand?.brand || null,
-          serial_number: firstBrand?.serialNumbers?.[0] || null,
+          brand: null,
+          serial_number: null,
           garantie: garantie,
-          brand_groups: brandGroupsForDisplay,
-        } as unknown as LeadQuoteItem & { brand_groups?: Array<{ id: string; brand: string; serialNumbers: string[]; garantie: boolean }> }
+        } as unknown as LeadQuoteItem
         
         // Actualizează sau adaugă serviciul în state
         if (existingServiceItem && existingServiceItem.id) {
@@ -1095,52 +439,14 @@ export function usePreturiItemOperations({
         return
       }
       
-      // Actualizează cantitatea în formular cu cantitatea totală calculată
-      if (totalQtyFromBrands > 0) {
-        setInstrumentForm(prev => ({
-          ...prev,
-          qty: String(totalQtyFromBrands)
-        }))
-        setSvc(prev => ({
-          ...prev,
-          qty: String(totalQtyFromBrands)
-        }))
-      }
-      
-      // IMPORTANT: Păstrează brand-urile în formular și în instrumentSettings
-      // pentru a preveni resetarea lor după reîncărcarea items-urilor
-      // Folosește brandSerialGroupsArray deja definit mai sus
-      const currentBrandGroups = [...brandSerialGroupsArray] // Creează o copie pentru a preveni mutații
-      const currentQtyValue = String(totalQtyFromBrands > 0 ? totalQtyFromBrands : (instrumentForm?.qty || '1'))
-      
-      // Salvează în instrumentSettings imediat
-      setInstrumentSettings(prev => ({
-        ...prev,
-        [currentInstrumentId]: {
-          qty: currentQtyValue,
-          brandSerialGroups: currentBrandGroups
-        }
-      }))
-      
-      // De asemenea, actualizează formularul imediat pentru a preveni resetarea
-      setInstrumentForm(prev => ({
-        ...prev,
-        instrument: currentInstrumentId,
-        brandSerialGroups: currentBrandGroups,
-        qty: currentQtyValue
-      }))
-      
-      // Resetează doar câmpurile serviciului, dar PĂSTREAZĂ brand-urile în instrumentForm
       setSvc(prev => ({ 
         ...prev, 
         id: '', 
-        qty: String(totalQtyFromBrands > 0 ? totalQtyFromBrands : (instrumentForm.qty || '1')),
+        qty: String(instrumentForm.qty || '1'),
         discount: '0', 
         urgent: false, 
         technicianId: '',
         pipelineId: '',
-        serialNumberId: '',
-        selectedBrands: [] as string[], // Resetează brand-urile selectate pentru serviciu
       }))
       setServiceSearchQuery('')
       setIsDirty(true)
@@ -1190,71 +496,9 @@ export function usePreturiItemOperations({
             setItems(newItems)
           }
           
-          // Actualizează snapshot-ul după reîncărcarea items-urilor din DB
           if (newItems.length > 0 && initializeSnapshot) {
             initializeSnapshot(newItems)
           }
-          
-          // Restaurează brand-urile imediat după reîncărcare pentru a preveni resetarea de către useEffect
-          setTimeout(() => {
-            setInstrumentForm(prev => {
-              // Dacă formularul încă are brand-urile valide, le păstrăm
-              const prevBrandSerialGroups = Array.isArray(prev.brandSerialGroups) ? prev.brandSerialGroups : []
-              if (prev.instrument === currentInstrumentId && prevBrandSerialGroups.length > 0) {
-                // FOLOSIM FOR LOOP ÎN LOC DE .some() - MAI SIGUR
-                let hasValidBrands = false
-                for (let i = 0; i < prevBrandSerialGroups.length; i++) {
-                  const g = prevBrandSerialGroups[i]
-                  if (!g) continue
-                  const hasBrand = g.brand && g.brand.trim()
-                  const serialNumbers = Array.isArray(g.serialNumbers) ? g.serialNumbers : []
-                  
-                  // Verifică serial numbers cu for loop în loc de .some()
-                  let hasSerialNumbers = false
-                  for (let j = 0; j < serialNumbers.length; j++) {
-                    const sn = serialNumbers[j]
-                    const serial = typeof sn === 'string' ? sn : (sn && typeof sn === 'object' ? sn?.serial || '' : '')
-                    if (serial && serial.trim()) {
-                      hasSerialNumbers = true
-                      break
-                    }
-                  }
-                  
-                  if (hasBrand || hasSerialNumbers) {
-                    hasValidBrands = true
-                    break
-                  }
-                }
-                
-                if (hasValidBrands) {
-                  return prev
-                }
-              }
-              
-              // Restaurează din instrumentSettings (care a fost salvat înainte)
-              const savedSettings = instrumentSettings[currentInstrumentId]
-              if (savedSettings && savedSettings.brandSerialGroups && savedSettings.brandSerialGroups.length > 0) {
-                return {
-                  ...prev,
-                  instrument: currentInstrumentId,
-                  brandSerialGroups: savedSettings.brandSerialGroups,
-                  qty: savedSettings.qty || prev.qty || '1'
-                }
-              }
-              
-              // Dacă nu există în instrumentSettings, folosește brand-urile salvate anterior
-              if (currentBrandGroups && currentBrandGroups.length > 0) {
-                return {
-                  ...prev,
-                  instrument: currentInstrumentId,
-                  brandSerialGroups: currentBrandGroups,
-                  qty: currentQtyValue || prev.qty || '1'
-                }
-              }
-              
-              return prev
-            })
-          }, 200)
         } catch (error) {
           console.error('Error reloading items:', error)
         }
@@ -1276,19 +520,6 @@ export function usePreturiItemOperations({
         const parts = svc.serialNumberId.split('::')
         brand = parts[0] || null
         serialNumber = parts[1] || null
-      } else {
-        // Folosește primul serial number disponibil din primul grup
-        const brandSerialGroupsArray = Array.isArray(instrumentForm?.brandSerialGroups) ? instrumentForm.brandSerialGroups : []
-        const firstGroup = brandSerialGroupsArray[0] || { brand: '', serialNumbers: [{ serial: '', garantie: false }] }
-        brand = (firstGroup.brand && firstGroup.brand.trim()) 
-          ? firstGroup.brand.trim() 
-          : null
-        // Folosește primul serial number valid din primul grup
-        const firstValidSerial = firstGroup.serialNumbers.find(sn => {
-          const serial = typeof sn === 'string' ? sn : sn.serial || ''
-          return serial && serial.trim()
-        })
-        serialNumber = firstValidSerial ? (typeof firstValidSerial === 'string' ? firstValidSerial : firstValidSerial.serial || '').trim() : null
       }
     }
   
@@ -1442,21 +673,16 @@ export function usePreturiItemOperations({
       urgent: false, 
       technicianId: '',
       pipelineId: '',
-      serialNumberId: '',
-      selectedBrands: [],
       instrumentId: ''
     }))
-    setServiceSearchQuery('') // Resetează căutarea serviciului
+    setServiceSearchQuery('')
     
-    // Resetează formularul de instrument
     setInstrumentForm({
       instrument: '',
       qty: '1',
-      brandSerialGroups: [],
       garantie: false
     })
     
-    // Resetează instrumentSettings
     setInstrumentSettings({})
     
     setIsDirty(true)
@@ -1578,18 +804,6 @@ export function usePreturiItemOperations({
         const [b, sn] = part.serialNumberId.split('::')
         partBrand = b || null
         partSerialNumber = sn || null
-      } else {
-        // Un singur instrument - atribuie automat brand-ul și serial number-ul
-        const brandSerialGroupsArray = Array.isArray(instrumentForm?.brandSerialGroups) ? instrumentForm.brandSerialGroups : []
-        if (brandSerialGroupsArray.length > 0) {
-          const firstGroup = brandSerialGroupsArray[0]
-          if (firstGroup.brand && firstGroup.serialNumbers.length > 0 && firstGroup.serialNumbers[0]) {
-            partBrand = firstGroup.brand
-            // Extrage serial number - poate fi string sau obiect {serial, garantie}
-            const firstSerial = firstGroup.serialNumbers[0]
-            partSerialNumber = typeof firstSerial === 'string' ? firstSerial : (firstSerial.serial || '')
-          }
-        }
       }
     }
   
@@ -1692,11 +906,9 @@ export function usePreturiItemOperations({
     setInstrumentForm({
       instrument: '',
       qty: '1',
-      brandSerialGroups: [],
       garantie: false
     })
     
-    // Resetează formularul de serviciu
     setSvc(prev => ({
       ...prev,
       id: '',
@@ -1707,8 +919,6 @@ export function usePreturiItemOperations({
       urgent: false,
       technicianId: '',
       pipelineId: '',
-      serialNumberId: '',
-      selectedBrands: [],
       instrumentId: ''
     }))
     setServiceSearchQuery('')

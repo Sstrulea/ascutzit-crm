@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Trash2, Minus, Plus, AlertTriangle, Tag, Check } from 'lucide-react'
+import { Trash2, Minus, Plus, AlertTriangle, Check } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -60,8 +60,6 @@ export function MobileEditItemSheet({
   const [localQty, setLocalQty] = useState(1)
   const [localPrice, setLocalPrice] = useState(0)
   const [localNameSnapshot, setLocalNameSnapshot] = useState('')
-  const [localBrand, setLocalBrand] = useState('')
-  const [localSerialNumber, setLocalSerialNumber] = useState('')
   const [localNonRepairableQty, setLocalNonRepairableQty] = useState(0)
   const [localUrgent, setLocalUrgent] = useState(false)
 
@@ -71,8 +69,6 @@ export function MobileEditItemSheet({
       setLocalQty(item.qty || 1)
       setLocalPrice(item.price || 0)
       setLocalNameSnapshot(item.name_snapshot || '')
-      setLocalBrand(item.brand || '')
-      setLocalSerialNumber(item.serial_number || '')
       setLocalNonRepairableQty(Number((item as any).unrepaired_qty ?? (item as any).non_repairable_qty) || 0)
       setLocalUrgent(item.urgent || false)
     }
@@ -110,11 +106,6 @@ export function MobileEditItemSheet({
     }
   }
 
-  // Brand/Serial groups
-  const brandGroups = Array.isArray((item as any)?.brand_groups) ? (item as any).brand_groups : []
-  const hasBrandGroups = brandGroups.length > 0
-  const canEditBrandSerial = !hasBrandGroups // Poate edita brand/serial doar dacă nu are brand_groups
-
   // Calculează totalul
   const repairableQty = Math.max(0, localQty - localNonRepairableQty)
   const lineTotal = repairableQty * localPrice
@@ -130,11 +121,6 @@ export function MobileEditItemSheet({
     if (isPart) {
       patch.price = localPrice
       patch.name_snapshot = localNameSnapshot
-    }
-
-    if (canEditBrandSerial) {
-      patch.brand = localBrand || null
-      patch.serial_number = localSerialNumber || null
     }
 
     patch.non_repairable_qty = localNonRepairableQty
@@ -254,84 +240,6 @@ export function MobileEditItemSheet({
                   placeholder="Nume piesă..."
                 />
               </div>
-            )}
-
-            {/* Brand/Serial (dacă nu are brand_groups) */}
-            {canEditBrandSerial && (
-              <>
-                <Separator />
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Tag className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Brand & Serial</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label className="text-xs">Brand</Label>
-                      <Input
-                        value={localBrand}
-                        onChange={(e) => setLocalBrand(e.target.value)}
-                        className="h-10"
-                        placeholder="Brand..."
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs">Serial</Label>
-                      <Input
-                        value={localSerialNumber}
-                        onChange={(e) => setLocalSerialNumber(e.target.value)}
-                        className="h-10"
-                        placeholder="Serial..."
-                      />
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Brand groups (readonly display) */}
-            {hasBrandGroups && (
-              <>
-                <Separator />
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Tag className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Brand & Serial</span>
-                  </div>
-                  <div className="space-y-2">
-                    {brandGroups.map((bg: any, idx: number) => (
-                      <div 
-                        key={idx}
-                        className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg"
-                      >
-                        <div className="font-medium text-sm">{bg.brand || 'Brand'}</div>
-                        {bg.serialNumbers?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {bg.serialNumbers.map((sn: any, snIdx: number) => {
-                              const serial = typeof sn === 'string' ? sn : sn?.serial || ''
-                              const garantie = typeof sn === 'object' ? sn?.garantie : false
-                              return (
-                                <span
-                                  key={snIdx}
-                                  className={cn(
-                                    "px-1.5 py-0.5 rounded text-xs",
-                                    garantie 
-                                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                                      : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-                                  )}
-                                >
-                                  {serial || `Serial ${snIdx + 1}`}
-                                  {garantie && ' ✓'}
-                                </span>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
             )}
 
             {/* Cantitate nereparabilă — dezactivată pentru rând consolidat */}

@@ -144,41 +144,6 @@ export function usePreturiEffects({
   }, [svc.instrumentId, svc.qty, instrumentSettings, instrumentForm.instrument, setInstrumentForm])
 // -----------------------------------------------------------------------------------------------------------------------------------
 
-  // Actualizează automat cantitatea instrumentului în funcție de numărul de serial number-uri
-  // IMPORTANT: Nu resetează cantitatea la 1 dacă nu există serial numbers - păstrează cantitatea existentă
-  useEffect(() => {
-    if (!instrumentForm.instrument) return
-    
-    const totalSerialNumbers = instrumentForm.brandSerialGroups.reduce((total: number, group: any) => {
-      const validSerials = group.serialNumbers.filter((sn: any) => {
-        const serial = typeof sn === 'string' ? sn : sn.serial || ''
-        return serial && serial.trim()
-      })
-      return total + validSerials.length
-    }, 0)
-    
-    // Actualizează cantitatea doar dacă există serial numbers valide
-    // Dacă nu există serial numbers, păstrează cantitatea existentă (nu o reseta la 1)
-    if (totalSerialNumbers > 0) {
-      const newQty = String(totalSerialNumbers)
-      if (instrumentForm.qty !== newQty) {
-        setInstrumentForm((prev: any) => ({ ...prev, qty: newQty }))
-        if (instrumentForm.instrument) {
-          setInstrumentSettings((prev: any) => ({
-            ...prev,
-            [instrumentForm.instrument]: {
-              ...prev[instrumentForm.instrument],
-              qty: newQty,
-              brandSerialGroups: instrumentForm.brandSerialGroups,
-              garantie: instrumentForm.garantie
-            }
-          }))
-        }
-      }
-    }
-    // Dacă nu există serial numbers, NU reseta cantitatea - păstrează valoarea existentă
-  }, [instrumentForm.brandSerialGroups, instrumentForm.instrument, instrumentForm.qty, setInstrumentForm, setInstrumentSettings])
-
   // Aplică urgent tuturor serviciilor și pieselor când urgentAllServices e bifat
   useEffect(() => {
     setItems(prev => {

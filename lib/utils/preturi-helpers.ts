@@ -210,34 +210,7 @@ export const listQuoteItems = async (
       }
     }
     
-    // Obține brand-urile și serial numbers din noua structură: tray_item_brands -> tray_item_brand_serials
-    const brands = (item as any).tray_item_brands || []
-    
-    // Transformă în formatul pentru UI: Array<{ brand, serialNumbers[], garantie }>
-    const safeBrands = Array.isArray(brands) ? brands : []
-    const brandGroups = safeBrands.map((b: any) => {
-      if (!b || typeof b !== 'object') {
-        return { id: '', brand: '', garantie: false, serialNumbers: [] }
-      }
-      const safeSerials = Array.isArray(b.tray_item_brand_serials) ? b.tray_item_brand_serials : []
-      // IMPORTANT: Include TOATE serial numbers-urile, inclusiv cele goale
-      // Acest lucru asigură că toate serial numbers-urile sunt afișate în tabel
-      const serialNumbers = safeSerials.map((s: any) => s?.serial_number || '')
-      
-      return {
-        id: b.id || '',
-        brand: b.brand || '',
-        garantie: b.garantie || false,
-        serialNumbers: serialNumbers // Toate serial numbers-urile, inclusiv cele goale
-      }
-    })
-    
-    // Pentru compatibilitate, primul brand
-    const firstBrand = brands.length > 0 ? brands[0] : null
-    const firstSerial = firstBrand?.tray_item_brand_serials?.[0]?.serial_number || null
-    
     // IMPORTANT: Nu folosim ...item pentru a evita copierea proprietăților care pot conține referințe circulare
-    // (ex: tray_item_brands cu obiecte complexe, sau proprietăți adăugate de React/Supabase)
     // Extragem explicit doar proprietățile primitive necesare
     return {
       // Proprietăți din TrayItem - doar cele primitive
@@ -256,19 +229,15 @@ export const listQuoteItems = async (
       discount_pct: notesData.discount_pct || 0,
       urgent: notesData.urgent || false,
       name_snapshot: notesData.name_snapshot || notesData.name || '',
-      // Compatibilitate cu câmpurile vechi
-      brand: firstBrand?.brand || (item as any).brand || notesData.brand || null,
-      serial_number: firstSerial || (item as any).serial_number || notesData.serial_number || null,
-      garantie: firstBrand?.garantie || notesData.garantie || false,
-      // Include toate brand-urile cu serial numbers pentru popularea formularului
-      // IMPORTANT: brandGroups este deja procesat și conține doar date primitive
-      brand_groups: brandGroups,
+      brand: notesData.brand || null,
+      serial_number: notesData.serial_number || null,
+      garantie: notesData.garantie || false,
       pipeline_id: notesData.pipeline_id || null,
       department,
       qty: item.qty || 1,
       non_repairable_qty: typeof notesData.non_repairable_qty === 'number' ? Math.max(0, notesData.non_repairable_qty) : 0,
       unrepaired_qty: typeof (item as any).unrepaired_qty === 'number' ? Math.max(0, (item as any).unrepaired_qty) : (typeof notesData.non_repairable_qty === 'number' ? Math.max(0, notesData.non_repairable_qty) : 0),
-    } as LeadQuoteItem & { price: number; department?: string | null; brand_groups?: Array<{ id: string; brand: string; serialNumbers: string[]; garantie: boolean }>; unrepaired_qty?: number }
+    } as LeadQuoteItem & { price: number; department?: string | null; unrepaired_qty?: number }
   })
 }
 
@@ -312,12 +281,6 @@ export const addInstrumentItem = async (quoteId: string, instrumentName: string,
     qty: opts?.qty || 1,
     notes: JSON.stringify(notesData),
     pipeline: opts?.pipeline_id || null,
-    // Brand și serial_number se salvează acum în tabelul tray_item_brand_serials
-    brandSerialGroups: opts?.brandSerialGroups || (opts?.brand || opts?.serial_number ? [{
-      brand: opts?.brand || null,
-      serialNumbers: opts?.serial_number ? [opts.serial_number] : [],
-      garantie: opts?.garantie || false
-    }] : undefined),
   })
   if (error) throw error
 }

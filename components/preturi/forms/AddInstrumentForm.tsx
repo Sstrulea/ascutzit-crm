@@ -3,8 +3,7 @@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Wrench, Plus, Trash2, Tag, Hash, RotateCcw, Zap } from 'lucide-react'
+import { Wrench, Plus, Trash2, RotateCcw, Zap } from 'lucide-react'
 import { useMemo, useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -12,7 +11,6 @@ interface AddInstrumentFormProps {
   instrumentForm: {
     instrument: string
     qty: string
-    brandSerialGroups?: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }>; qty: string }>
     garantie?: boolean
   }
   availableInstruments: Array<{ id: string; name: string; department_id?: string | null }>
@@ -26,21 +24,13 @@ interface AddInstrumentFormProps {
   onInstrumentChange: (instrumentId: string) => void
   onInstrumentDoubleClick?: (instrumentId: string) => void
   onQtyChange: (qty: string) => void
-  onAddBrandSerialGroup?: () => void
-  onRemoveBrandSerialGroup?: (groupIndex: number) => void
-  onUpdateBrand?: (groupIndex: number, value: string) => void
-  onUpdateBrandQty?: (groupIndex: number, qty: string) => void
-  onUpdateSerialNumber?: (groupIndex: number, serialIndex: number, value: string) => void
-  onAddSerialNumber?: (groupIndex: number) => void
-  onRemoveSerialNumber?: (groupIndex: number, serialIndex: number) => void
-  onUpdateSerialGarantie?: (groupIndex: number, serialIndex: number, garantie: boolean) => void
   setIsDirty?: (dirty: boolean) => void
-  isAddInstrumentDisabled?: boolean // Flag pentru a dezactiva adăugarea de instrumente
-  onAddInstrumentDirect?: (instrumentId: string, qty: number, brand?: string, brandSerialGroups?: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }>; qty: string }>) => void // Callback pentru adăugare instrument direct (fără serviciu)
-  onClearForm?: () => void // Callback pentru resetare formulare
+  isAddInstrumentDisabled?: boolean
+  onAddInstrumentDirect?: (instrumentId: string, qty: number) => void
+  onClearForm?: () => void
 // -------------------------------------------------- COD PENTRU POPULARE CASETE -----------------------------------------------------
-  onUndo?: () => void // Callback pentru undo (restaurare stare anterioară)
-  previousFormState?: any // Stare anterioară pentru a arăta dacă există undo disponibil
+  onUndo?: () => void
+  previousFormState?: any
 // -----------------------------------------------------------------------------------------------------------------------------------
 }
 
@@ -57,14 +47,6 @@ export function AddInstrumentForm({
   onInstrumentChange,
   onInstrumentDoubleClick,
   onQtyChange,
-  onAddBrandSerialGroup,
-  onRemoveBrandSerialGroup,
-  onUpdateBrand,
-  onUpdateBrandQty,
-  onUpdateSerialNumber,
-  onAddSerialNumber,
-  onRemoveSerialNumber,
-  onUpdateSerialGarantie,
   setIsDirty,
   isAddInstrumentDisabled = false,
   onAddInstrumentDirect,
@@ -233,36 +215,6 @@ export function AddInstrumentForm({
     )
     return inst?.name || ''
   }, [availableInstruments, instrumentForm.instrument])
-
-  const isReparatiiInstrument = useMemo(() => {
-    if (!instrumentForm.instrument) return false
-    const instrument = instruments.find(i => i.id === instrumentForm.instrument)
-    if (!instrument) return false
-    
-    const deptId = instrument.department_id?.toLowerCase() || ''
-    if (deptId.includes('reparatii') || deptId.includes('reparații')) return true
-    
-    if (instrument.department_id) {
-      const department = departments.find(d => d.id === instrument.department_id)
-      const deptName = department?.name?.toLowerCase() || ''
-      if (deptName.includes('reparatii') || deptName.includes('reparații')) return true
-    }
-    
-    const instrumentAny = instrument as any
-    const pipeline = instrumentAny?.pipeline?.toLowerCase() || ''
-    if (pipeline.includes('reparatii') || pipeline.includes('reparații')) return true
-    
-    return false
-  }, [instrumentForm.instrument, instruments, departments])
-
-  const showBrandSerialGroups = isReparatiiInstrument && 
-    onAddBrandSerialGroup &&
-    onRemoveBrandSerialGroup &&
-    onUpdateBrand &&
-    onUpdateBrandQty &&
-    onUpdateSerialNumber &&
-    onAddSerialNumber &&
-    onUpdateSerialGarantie
 
   return (
     <div className="mx-2 sm:mx-4">
@@ -444,155 +396,6 @@ export function AddInstrumentForm({
             </div>
           </div>
 
-          {/* Brand/Serial Groups — layout responsive: stack pe mobile/tabletă */}
-          {showBrandSerialGroups && (
-            <div className="mt-4 space-y-3">
-              {(() => {
-                const brandSerialGroupsArray = Array.isArray(instrumentForm.brandSerialGroups) ? instrumentForm.brandSerialGroups : []
-                const groupsToRender = brandSerialGroupsArray.length > 0 
-                  ? brandSerialGroupsArray 
-                  : [{ brand: '', serialNumbers: [{ serial: '', garantie: false }], qty: '1' }]
-                return groupsToRender
-              })().map((group, groupIndex) => {
-                if (!group) return null
-                const serialNumbers = Array.isArray(group?.serialNumbers) ? group.serialNumbers : []
-                const serialNumbersArray = serialNumbers.length > 0 ? serialNumbers : [{ serial: '', garantie: false }]
-                
-                return (
-                  <div key={groupIndex} className="rounded-lg border border-emerald-200/60 dark:border-emerald-700/40 bg-white/60 dark:bg-slate-900/40 p-3 space-y-2">
-                    {serialNumbersArray.map((serialData, serialIndex) => (
-                      <div
-                        key={serialIndex}
-                        className={cn(
-                          "flex flex-col gap-2 max-md:gap-2",
-                          "md:flex-row md:items-center md:gap-2"
-                        )}
-                      >
-                        {/* Brand — doar la primul serial; pe mobile full width */}
-                        <div className="w-full md:w-[180px] flex-shrink-0">
-                          {serialIndex === 0 ? (
-                            <div>
-                              <Label className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
-                                <Tag className="h-3 w-3" /> Brand
-                              </Label>
-                              <Input
-                                className="min-h-11 md:h-9 text-base md:text-sm touch-manipulation"
-                                value={group?.brand || ''}
-                                onChange={e => onUpdateBrand!(groupIndex, e.target.value)}
-                                placeholder="Brand"
-                              />
-                            </div>
-                          ) : (
-                            <div className="hidden md:block h-9 mt-[18px]" />
-                          )}
-                        </div>
-
-                        {/* Cantitate — doar la primul serial */}
-                        <div className="w-full max-w-[90px] md:w-[70px] flex-shrink-0">
-                          {serialIndex === 0 ? (
-                            <div>
-                              <Label className="text-[10px] text-muted-foreground mb-1 block">Cant.</Label>
-                              <Input
-                                className="min-h-11 md:h-9 text-base md:text-sm text-center touch-manipulation"
-                                type="number"
-                                min="1"
-                                inputMode="numeric"
-                                value={group.qty || '1'}
-                                onChange={e => {
-                                  const qtyNum = Math.max(1, Number(e.target.value) || 1)
-                                  onUpdateBrandQty!(groupIndex, String(qtyNum))
-                                  if (setIsDirty) setIsDirty(true)
-                                }}
-                                onFocus={e => e.currentTarget.select()}
-                              />
-                            </div>
-                          ) : (
-                            <div className="hidden md:block h-9 mt-[18px]" />
-                          )}
-                        </div>
-
-                        {/* Serial Number */}
-                        <div className="flex-1 min-w-0 w-full">
-                          <Label className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
-                            <Hash className="h-3 w-3" /> Serial ({serialIndex + 1})
-                          </Label>
-                          <Input
-                            className="min-h-11 md:h-9 w-full text-base md:text-sm touch-manipulation"
-                            value={serialData.serial || ''}
-                            onChange={e => onUpdateSerialNumber!(groupIndex, serialIndex, e.target.value)}
-                            placeholder={`Serial ${serialIndex + 1}`}
-                          />
-                        </div>
-
-                        {/* Garanție Checkbox — touch-friendly */}
-                        <div className="flex items-center gap-2 md:gap-1.5 px-3 min-h-11 md:h-9 md:mt-[18px] rounded-md border border-emerald-200/60 dark:border-emerald-700/40 bg-slate-50 dark:bg-slate-800/50 touch-manipulation">
-                          <Checkbox
-                            id={`serial-garantie-${groupIndex}-${serialIndex}`}
-                            checked={serialData.garantie || false}
-                            onCheckedChange={(c: any) => onUpdateSerialGarantie!(groupIndex, serialIndex, !!c)}
-                            className="h-5 w-5 md:h-4 md:w-4 data-[state=checked]:bg-slate-600 data-[state=checked]:border-slate-600"
-                          />
-                          <Label htmlFor={`serial-garantie-${groupIndex}-${serialIndex}`} className="text-[11px] cursor-pointer font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap select-none">
-                            Garanție
-                          </Label>
-                        </div>
-
-                        {/* Butoane Acțiuni — touch-friendly pe mobile */}
-                        <div className="flex flex-wrap items-center gap-1.5 md:gap-1 md:mt-[18px]">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => onAddSerialNumber!(groupIndex)}
-                            className="min-h-11 min-w-11 md:h-9 md:min-h-0 md:min-w-0 md:px-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/50 touch-manipulation"
-                            title="Adaugă serial"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                          {onRemoveSerialNumber && serialNumbersArray.length > 1 && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => onRemoveSerialNumber(groupIndex, serialIndex)}
-                              className="min-h-11 min-w-11 md:h-9 md:min-h-0 md:min-w-0 md:px-2 text-red-500 hover:text-red-600 hover:bg-red-50 touch-manipulation"
-                              title="Șterge serial"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {serialIndex === 0 && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={onAddBrandSerialGroup}
-                              className="min-h-11 md:h-9 md:min-h-0 px-3 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 whitespace-nowrap touch-manipulation"
-                            >
-                              <Plus className="h-3.5 w-3.5 mr-1" />
-                              Brand
-                            </Button>
-                          )}
-                          {serialIndex === 0 && instrumentForm.brandSerialGroups && instrumentForm.brandSerialGroups.length > 1 && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => onRemoveBrandSerialGroup!(groupIndex)}
-                              className="min-h-11 min-w-11 md:h-9 md:min-h-0 md:min-w-0 md:px-2 text-red-500 hover:text-red-600 hover:bg-red-50 touch-manipulation"
-                              title="Șterge acest brand"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              })}
-            </div>
-          )}
         </div>
 
         {/* Butoane Acțiuni — full width pe mobile */}
@@ -604,10 +407,7 @@ export function AddInstrumentForm({
               variant="outline"
               onClick={() => {
                 const qty = Math.max(1, Number(instrumentForm.qty) || 1)
-                const brandSerialGroups = Array.isArray(instrumentForm.brandSerialGroups) 
-                  ? instrumentForm.brandSerialGroups 
-                  : []
-                onAddInstrumentDirect(instrumentForm.instrument, qty, '', brandSerialGroups)
+                onAddInstrumentDirect(instrumentForm.instrument, qty)
               }}
               className="w-full md:w-auto max-md:min-h-11 border-slate-600 bg-slate-600 text-white hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-700 touch-manipulation"
             >

@@ -517,48 +517,6 @@ export function usePreturiBusiness({
     const itemToDelete = items.find(it => it.id === id)
     if (!itemToDelete) return
     
-    const currentInstrumentId = instrumentForm?.instrument || svc?.instrumentId
-    if (currentInstrumentId && itemToDelete.item_type === 'service') {
-      const brandSerialGroups = Array.isArray(instrumentForm.brandSerialGroups) ? instrumentForm.brandSerialGroups : []
-      
-      // FOLOSIM FOR LOOP ÎN LOC DE .some() - MAI SIGUR
-      let hasBrandsInForm = false
-      if (Array.isArray(brandSerialGroups)) {
-        for (let i = 0; i < brandSerialGroups.length; i++) {
-          const g = brandSerialGroups[i]
-          if (!g) continue
-          const hasBrand = g.brand && g.brand.trim()
-          const serialNumbers = Array.isArray(g.serialNumbers) ? g.serialNumbers : []
-          
-          // Verifică serial numbers cu for loop în loc de .some()
-          let hasSerialNumbers = false
-          for (let j = 0; j < serialNumbers.length; j++) {
-            const sn = serialNumbers[j]
-            const serial = typeof sn === 'string' ? sn : (sn && typeof sn === 'object' ? sn?.serial || '' : '')
-            if (serial && serial.trim()) {
-              hasSerialNumbers = true
-              break
-            }
-          }
-          
-          if (hasBrand || hasSerialNumbers) {
-            hasBrandsInForm = true
-            break
-          }
-        }
-      }
-      
-      if (hasBrandsInForm) {
-        setInstrumentSettings((prev: any) => ({
-          ...prev,
-          [currentInstrumentId]: {
-            qty: instrumentForm.qty || '1',
-            brandSerialGroups: instrumentForm.brandSerialGroups
-          }
-        }))
-      }
-    }
-    
     const itemName = itemToDelete.name_snapshot || (itemToDelete as any).service?.name || (itemToDelete as any).name || 'Item'
     const itemType = itemToDelete.item_type ?? (itemToDelete.part_id ? 'part' : 'service')
     const inst = itemToDelete.instrument_id && instruments.find((i: { id: string }) => i.id === itemToDelete.instrument_id)
@@ -615,7 +573,6 @@ export function usePreturiBusiness({
         setInstrumentForm((prev: any) => ({ 
           ...prev, 
           instrument: '',
-          brandSerialGroups: [{ brand: '', serialNumbers: [{ serial: '', garantie: false }], qty: '1' }]
         }))
       }
       
@@ -720,11 +677,6 @@ export function usePreturiBusiness({
   // - handleTrayImageDelete
   // - handleDownloadAllImages
   // - sendAllTraysToPipeline
-  // - onAddBrandSerialGroup
-  // - onRemoveBrandSerialGroup
-  // - onUpdateBrand
-  // - onUpdateSerialNumber
-  // - onUpdateSerialGarantie
   // - handleResetServiceForm
   // - handleResetPartForm
   // - populateInstrumentFormFromItems
@@ -736,7 +688,6 @@ export function usePreturiBusiness({
   // - validateTraysBeforeSend
   // - checkTraysInDepartments
   // - onRowClick
-  // - onBrandToggle
   // - onInstrumentChange
   // - onQtyChange
   // - onServiceSelect
@@ -811,111 +762,41 @@ export function usePreturiBusiness({
   }, [setUrgentAllServices, setIsDirty])
   
   const onInstrumentChange = useCallback((instrumentId: string) => {
-    // IMPORTANT: Prioritizează instrumentSettings peste items
-    // instrumentSettings conține toate serial numbers-urile originale, nu doar cele folosite
     const savedSettings = instrumentSettings[instrumentId]
-    const hasSavedBrands = savedSettings && savedSettings.brandSerialGroups && savedSettings.brandSerialGroups.length > 0
     
-    if (hasSavedBrands) {
-      // Folosește brandSerialGroups din instrumentSettings (conține TOATE serial numbers-urile)
-      const brandSerialGroups = savedSettings.brandSerialGroups.map((group: any) => ({
-        brand: group.brand || '',
-        serialNumbers: Array.isArray(group.serialNumbers)
-          ? group.serialNumbers.map((sn: any) => 
-              typeof sn === 'string' 
-                ? { serial: sn, garantie: group.garantie || false }
-                : { serial: sn?.serial || '', garantie: sn?.garantie || group.garantie || false }
-            )
-          : [],
-        qty: group.qty || String(Array.isArray(group.serialNumbers) ? group.serialNumbers.length : 1)
-      }))
-      
-      // Calculează cantitatea totală din serial numbers
-      const totalQty = brandSerialGroups.reduce((sum: number, group: any) => {
-        const serialCount = Array.isArray(group.serialNumbers) ? group.serialNumbers.length : 0
-        return sum + (serialCount > 0 ? serialCount : Number(group.qty || 1))
-      }, 0)
-      
-      // Populează formularul cu datele din instrumentSettings
+    if (savedSettings) {
       setInstrumentForm({
         instrument: instrumentId,
-        qty: String(totalQty || savedSettings.qty || 1),
-        brandSerialGroups: brandSerialGroups
+        qty: savedSettings.qty || '1',
       })
     } else {
-      // Nu există în instrumentSettings - verifică items
       const existingItem = items.find((item: any) => 
         item.instrument_id === instrumentId && item.item_type === null
       )
       
       if (existingItem) {
-        // Există deja un item cu acest instrument - populează datele
-        const brandGroups = (existingItem as any).brand_groups || []
-        
-        // Transformă brand_groups în formatul pentru formular
-        const brandSerialGroups = brandGroups.length > 0
-          ? brandGroups.map((bg: any) => ({
-              brand: bg.brand || '',
-              serialNumbers: Array.isArray(bg.serialNumbers)
-                ? bg.serialNumbers.map((sn: any) => 
-                    typeof sn === 'string' 
-                      ? { serial: sn, garantie: bg.garantie || false }
-                      : { serial: sn?.serial || '', garantie: sn?.garantie || bg.garantie || false }
-                  )
-                : [],
-              qty: String(existingItem.qty || 1)
-            }))
-          : existingItem.brand || existingItem.serial_number
-            ? [{
-                brand: existingItem.brand || '',
-                serialNumbers: existingItem.serial_number 
-                  ? [{ serial: existingItem.serial_number, garantie: existingItem.garantie || false }]
-                  : [],
-                qty: String(existingItem.qty || 1)
-              }]
-            : [{ brand: '', serialNumbers: [{ serial: '', garantie: false }], qty: String(existingItem.qty || 1) }]
-        
-        // Calculează cantitatea totală din serial numbers
-        const totalQty = brandSerialGroups.reduce((sum: number, group: any) => {
-          const serialCount = Array.isArray(group.serialNumbers) ? group.serialNumbers.length : 0
-          return sum + (serialCount > 0 ? serialCount : Number(group.qty || 1))
-        }, 0)
-        
-        // Populează formularul cu datele din item-ul existent
         setInstrumentForm({
           instrument: instrumentId,
-          qty: String(totalQty || existingItem.qty || 1),
-          brandSerialGroups: brandSerialGroups
+          qty: String(existingItem.qty || 1),
         })
       } else {
-        // Nu există item - folosește logica normală de populare
-        // IMPORTANT: Verifică dacă există setări salvate pentru noul instrument
-        const newInstrumentSettings = instrumentSettings[instrumentId]
-        const shouldResetBrands = instrumentForm.instrument !== instrumentId
-        const preservedQty = shouldResetBrands 
-          ? (newInstrumentSettings?.qty || '1')  // Folosește cantitatea din setări sau 1
-          : (instrumentForm.qty || '1')  // Păstrează cantitatea existentă dacă instrumentul nu s-a schimbat
+        const preservedQty = instrumentForm.instrument !== instrumentId
+          ? '1'
+          : (instrumentForm.qty || '1')
         
         setInstrumentForm((prev: any) => ({
           ...prev,
           instrument: instrumentId,
-          // Pentru instrumente noi din Reparații, inițializează un grup brand/serial gol
-          brandSerialGroups: shouldResetBrands
-            ? [{ brand: '', serialNumbers: [{ serial: '', garantie: false }], qty: '1' }]
-            : prev?.brandSerialGroups || [],
-          // Folosește cantitatea din setări sau păstrează cantitatea existentă
           qty: preservedQty
         }))
         
-        // Populează brand-urile din items existente (dacă există în servicii)
         formOperations.populateInstrumentFormFromItems(items, instrumentId, false)
       }
     }
     
-    // Actualizează și svc.instrumentId pentru sincronizare
     setSvc((prev: any) => ({ ...prev, instrumentId }))
     setIsDirty(true)
-  }, [items, formOperations.populateInstrumentFormFromItems, setSvc, setIsDirty, setInstrumentForm])
+  }, [items, instrumentSettings, formOperations.populateInstrumentFormFromItems, setSvc, setIsDirty, setInstrumentForm])
   
   const onQtyChange = useCallback((qty: string) => {
     setInstrumentForm((prev: any) => ({ ...prev, qty }))
@@ -1011,15 +892,11 @@ export function usePreturiBusiness({
   
   // Resetează toate formularele la starea inițială
   const onClearForm = useCallback(() => {
-    // Resetează formularul de instrument
     setInstrumentForm({
       instrument: '',
       qty: '1',
-      brandSerialGroups: [],
-      garantie: false
     })
     
-    // Resetează formularul de serviciu
     setSvc({
       id: '',
       name: '',
@@ -1031,7 +908,6 @@ export function usePreturiBusiness({
       technicianId: '',
       pipelineId: '',
       serialNumberId: '',
-      selectedBrands: []
     })
     setServiceSearchQuery('')
     setServiceSearchFocused(false)
@@ -1061,24 +937,6 @@ export function usePreturiBusiness({
     
     setIsDirty(true)
   }, [setSvc, setServiceSearchQuery, setServiceSearchFocused, setPart, setPartSearchQuery, setPartSearchFocused, setInstrumentForm, instrumentForm.instrument, setInstrumentSettings, setIsDirty])
-  
-  const onBrandToggle = useCallback((brandKey: string, checked: boolean) => {
-    setSvc((prev: any) => {
-      const currentBrands = Array.isArray(prev?.selectedBrands) ? prev.selectedBrands : []
-      let newBrands: string[]
-      
-      if (checked) {
-        // Adaugă brand-ul dacă nu există deja
-        newBrands = currentBrands.includes(brandKey) ? currentBrands : [...currentBrands, brandKey]
-      } else {
-        // Elimină brand-ul
-        newBrands = currentBrands.filter((b: string) => b !== brandKey)
-      }
-      
-      return { ...prev, selectedBrands: newBrands }
-    })
-    setIsDirty(true)
-  }, [setSvc, setIsDirty])
   
   // Handler pentru schimbarea tehnicianului (doar pentru admini)
   const onTechnicianChange = useCallback((technicianId: string) => {
@@ -1112,14 +970,6 @@ export function usePreturiBusiness({
     handleAssignTrayImage,
     
     // Hook-uri combinate - Form Operations
-    onAddBrandSerialGroup: formOperations.onAddBrandSerialGroup,
-    onRemoveBrandSerialGroup: formOperations.onRemoveBrandSerialGroup,
-    onUpdateBrand: formOperations.onUpdateBrand,
-    onUpdateBrandQty: formOperations.onUpdateBrandQty,
-    onUpdateSerialNumber: formOperations.onUpdateSerialNumber,
-    onAddSerialNumber: formOperations.onAddSerialNumber,
-    onRemoveSerialNumber: formOperations.onRemoveSerialNumber,
-    onUpdateSerialGarantie: formOperations.onUpdateSerialGarantie,
     handleResetServiceForm: formOperations.handleResetServiceForm,
     handleResetPartForm: formOperations.handleResetPartForm,
     populateInstrumentFormFromItems: formOperations.populateInstrumentFormFromItems,
@@ -1164,7 +1014,6 @@ export function usePreturiBusiness({
     onPartDoubleClick,
     onRowClick,
     onClearForm,
-    onBrandToggle,
     onTechnicianChange,
     
     // TrayTabs callbacks

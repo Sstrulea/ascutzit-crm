@@ -75,6 +75,8 @@ interface KanbanBoardProps {
   onSunaTagAdded?: (leadId: string) => void
   /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
   onSunaTagRemoved?: (leadId: string, phone: string | undefined) => void
+  /** Când layout e vertical/compact, expune navigarea stage (pentru a o randa în header centrat). */
+  onStageNavReady?: (nav: { scrollToFirstStage: () => void; scrollToMiddleStage: () => void; scrollToLastStage: () => void } | null) => void
 }
 
 export function KanbanBoard({ 
@@ -100,6 +102,7 @@ export function KanbanBoard({
   onBulkMoveCurierAjunsAziToAvemComanda,
   onSunaTagAdded,
   onSunaTagRemoved,
+  onStageNavReady,
 }: KanbanBoardProps) {
   const { role } = useRole()
   const canMovePipeline = role === 'owner' || role === 'admin'
@@ -160,6 +163,17 @@ export function KanbanBoard({
     const el = scrollContainerRef.current
     if (el) el.scrollTo({ left: el.scrollWidth - el.clientWidth, behavior: 'smooth' })
   }, [])
+
+  // Expune navigarea stage în header (același rând, centrat) când layout e vertical/compact
+  useEffect(() => {
+    if (!onStageNavReady) return
+    if (layout === 'vertical' || layout === 'compact') {
+      onStageNavReady({ scrollToFirstStage, scrollToMiddleStage, scrollToLastStage })
+    } else {
+      onStageNavReady(null)
+    }
+    return () => { onStageNavReady(null) }
+  }, [onStageNavReady, layout, scrollToFirstStage, scrollToMiddleStage, scrollToLastStage])
 
   // Partner tag stacking – cardurile cu SAVY/ANNETE/PODOCLINIQ sunt grupate
   const PARTNER_TAGS = useMemo(() => ['savy', 'annete', 'podocliniq'], [])
@@ -998,39 +1012,6 @@ export function KanbanBoard({
 
       {layout === 'vertical' || layout === 'compact' ? (
         <div className="flex flex-col flex-1 min-h-0">
-          <div className="flex items-center justify-end gap-1 mb-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-2"
-              onClick={scrollToFirstStage}
-              title="Mergi la primul stage"
-            >
-              <ChevronsLeft className="h-4 w-4 mr-1" />
-              Primul stage
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-2"
-              onClick={scrollToMiddleStage}
-              title="Mergi la mijlocul stage-urilor"
-            >
-              <Minus className="h-4 w-4 mr-1" />
-              Stage din mijloc
-              <Minus className="h-4 w-4 ml-1" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-2"
-              onClick={scrollToLastStage}
-              title="Mergi la ultimul stage"
-            >
-              Ultimul stage
-              <ChevronsRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
           <div
             ref={scrollContainerRef}
             className="flex h-[calc(100vh-8rem)] min-h-[705px] flex-shrink-0 gap-3 overflow-x-auto overflow-y-hidden pb-2 scroll-smooth scrollbar-hide items-stretch"

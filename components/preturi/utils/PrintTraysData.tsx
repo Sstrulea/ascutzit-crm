@@ -80,13 +80,7 @@ export function PrintTraysData({
       const trayIds = quotes.map((q) => q.id)
       const { data: allTrayItems, error: itemsError } = await supabase
         .from('tray_items')
-        .select(
-          `
-          id, tray_id, instrument_id, service_id, part_id, department_id,
-          qty, notes, pipeline, created_at,
-          tray_item_brands(id, brand, garantie, tray_item_brand_serials(id, serial_number))
-        `
-        )
+        .select('id, tray_id, instrument_id, service_id, part_id, department_id, qty, notes, pipeline, created_at')
         .in('tray_id', trayIds)
         .order('tray_id, id', { ascending: true })
 

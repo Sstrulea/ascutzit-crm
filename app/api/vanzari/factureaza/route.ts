@@ -43,9 +43,9 @@ export async function POST(request: NextRequest) {
 
     // 3. Validare permisiuni (vânzător/admin/owner)
     const { data: userProfile } = await supabase
-      .from('user_profiles')
+      .from('app_members')
       .select('role')
-      .eq('id', user.id)
+      .eq('user_id', user.id)
       .single()
 
     const role = userProfile?.role?.toLowerCase()

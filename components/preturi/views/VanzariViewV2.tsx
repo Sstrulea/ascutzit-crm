@@ -56,15 +56,12 @@ export interface VanzariViewV2Props {
   instrumentForm: { 
     instrument: string
     qty: string
-    brandSerialGroups?: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }> | string[]; qty?: string }>
   }
   svc: { 
     id: string
     qty: string
     discount: string
     instrumentId: string
-    selectedBrands?: string[]
-    serialNumberId?: string
   }
   serviceSearchQuery: string
   serviceSearchFocused: boolean
@@ -130,16 +127,6 @@ export interface VanzariViewV2Props {
   onNuRaspundeChange: (checked: boolean, callbackTime?: string) => void
   onCallBackChange: (checked: boolean) => void
   onSave: () => void
-  onBrandToggle?: (brandName: string, checked: boolean) => void
-  onSerialNumberChange?: (serialNumberId: string) => void
-  onAddBrandSerialGroup?: () => void
-  onRemoveBrandSerialGroup?: (groupIndex: number) => void
-  onUpdateBrand?: (groupIndex: number, value: string) => void
-  onUpdateBrandQty?: (groupIndex: number, qty: string) => void
-  onUpdateSerialNumber?: (groupIndex: number, serialIndex: number, value: string) => void
-  onAddSerialNumber?: (groupIndex: number) => void
-  onRemoveSerialNumber?: (groupIndex: number, serialIndex: number) => void
-  onUpdateSerialGarantie?: (groupIndex: number, serialIndex: number, garantie: boolean) => void
   setIsDirty?: (dirty: boolean) => void
   
   // Flags pentru permisiuni
@@ -154,7 +141,7 @@ export interface VanzariViewV2Props {
   onTechnicianChange?: (technicianId: string) => void
   
   onSetStatusComanda?: () => Promise<void>
-  onAddInstrumentDirect?: (instrumentId: string, qty: number, brand?: string, brandSerialGroups?: Array<{ brand: string; serialNumbers: Array<{ serial: string; garantie: boolean }>; qty: string }>) => void
+  onAddInstrumentDirect?: (instrumentId: string, qty: number) => void
   onRowClick?: (item: LeadQuoteItem) => void
   onClearForm?: () => void
   onUndo?: () => void
@@ -238,40 +225,6 @@ function findStage(stages: string[], patterns: string[]): string | undefined {
   })
 }
 
-function renderServiceSerialNumbers(
-  item: LeadQuoteItem,
-  brandGroups: Array<{ id?: string; brand: string; serialNumbers: string[]; garantie?: boolean }>
-): React.ReactNode[] {
-  if (!brandGroups || brandGroups.length === 0) return []
-
-  return brandGroups.flatMap((bg: any, bgIdx: number) => {
-    if (!bg || typeof bg !== 'object') return []
-    const bgBrand = bg.brand || '—'
-    const bgSerials = Array.isArray(bg.serialNumbers) ? bg.serialNumbers : []
-    
-    return bgSerials.map((sn: any, snIdx: number) => {
-      const serial = typeof sn === 'string' ? sn : (sn?.serial || '')
-      const displaySerial = serial && serial.trim() ? serial.trim() : `Serial ${snIdx + 1}`
-      
-      return (
-        <div 
-          key={`${item.id}-${bgIdx}-${snIdx}`}
-          className={cn(
-            "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium border",
-            serial && serial.trim()
-              ? "bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700"
-              : "bg-slate-100/50 text-slate-500 dark:bg-slate-800/50 dark:text-slate-500 border-slate-300 dark:border-slate-600"
-          )}
-        >
-          <span className="font-semibold text-[11px]">{bgBrand}</span>
-          <span className="text-slate-400 dark:text-slate-500">—</span>
-          <span className="truncate">{displaySerial}</span>
-        </div>
-      )
-    })
-  })
-}
-
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -337,16 +290,6 @@ export function VanzariViewV2(props: VanzariViewV2Props) {
     onNuRaspundeChange,
     onCallBackChange,
     onSave,
-    onBrandToggle,
-    onSerialNumberChange,
-    onAddBrandSerialGroup,
-    onRemoveBrandSerialGroup,
-    onUpdateBrand,
-    onUpdateBrandQty,
-    onUpdateSerialNumber,
-    onAddSerialNumber,
-    onRemoveSerialNumber,
-    onUpdateSerialGarantie,
     setIsDirty,
     currentInstrumentId,
     hasServicesOrInstrumentInSheet,
@@ -459,16 +402,6 @@ export function VanzariViewV2(props: VanzariViewV2Props) {
   const mobileInstrumentForm = {
     instrument: currentInstrument ? { id: currentInstrument.id, name: currentInstrument.name } : null,
     qty: parseInt(instrumentForm.qty) || 1,
-    brandSerialGroups: (instrumentForm.brandSerialGroups || []).map((g, idx) => ({
-      id: `group-${idx}`,
-      brand: g.brand || '',
-      qty: parseInt(g.qty || '1') || 1,
-      serialNumbers: (Array.isArray(g.serialNumbers) ? g.serialNumbers : []).map((s: any, sIdx: number) => ({
-        id: `serial-${idx}-${sIdx}`,
-        serial: typeof s === 'string' ? s : s?.serial || '',
-        garantie: typeof s === 'object' ? s?.garantie || false : false,
-      })),
-    })),
   }
 
   // ============================================================================
@@ -1127,38 +1060,6 @@ export function VanzariViewV2(props: VanzariViewV2Props) {
           onInstrumentChange={(inst) => onInstrumentChange(inst ? inst.id : '')}
           onInstrumentDoubleClick={(inst) => onInstrumentDoubleClick?.(inst.id)}
           onQtyChange={(qty) => onQtyChange(String(qty))}
-          onAddBrandSerialGroup={onAddBrandSerialGroup}
-          onRemoveBrandSerialGroup={(groupId) => {
-            const idx = parseInt(groupId.replace('group-', ''))
-            onRemoveBrandSerialGroup?.(idx)
-          }}
-          onUpdateBrand={(groupId, brand) => {
-            const idx = parseInt(groupId.replace('group-', ''))
-            onUpdateBrand?.(idx, brand)
-          }}
-          onUpdateBrandQty={(groupId, qty) => {
-            const idx = parseInt(groupId.replace('group-', ''))
-            onUpdateBrandQty?.(idx, String(qty))
-          }}
-          onAddSerialNumber={(groupId) => {
-            const idx = parseInt(groupId.replace('group-', ''))
-            onAddSerialNumber?.(idx)
-          }}
-          onRemoveSerialNumber={(groupId, serialId) => {
-            const groupIdx = parseInt(groupId.replace('group-', ''))
-            const serialIdx = parseInt(serialId.split('-')[2] || '0')
-            onRemoveSerialNumber?.(groupIdx, serialIdx)
-          }}
-          onUpdateSerialNumber={(groupId, serialId, serial) => {
-            const groupIdx = parseInt(groupId.replace('group-', ''))
-            const serialIdx = parseInt(serialId.split('-')[2] || '0')
-            onUpdateSerialNumber?.(groupIdx, serialIdx, serial)
-          }}
-          onUpdateSerialGarantie={(groupId, serialId, garantie) => {
-            const groupIdx = parseInt(groupId.replace('group-', ''))
-            const serialIdx = parseInt(serialId.split('-')[2] || '0')
-            onUpdateSerialGarantie?.(groupIdx, serialIdx, garantie)
-          }}
           onClearForm={onClearForm}
         />
       ) : (
@@ -1179,14 +1080,6 @@ export function VanzariViewV2(props: VanzariViewV2Props) {
                 onInstrumentChange={onInstrumentChange}
                 onInstrumentDoubleClick={onInstrumentDoubleClick}
                 onQtyChange={onQtyChange}
-                onAddBrandSerialGroup={onAddBrandSerialGroup}
-                onRemoveBrandSerialGroup={onRemoveBrandSerialGroup}
-                onUpdateBrand={onUpdateBrand}
-                onUpdateBrandQty={onUpdateBrandQty}
-                onUpdateSerialNumber={onUpdateSerialNumber}
-                onAddSerialNumber={onAddSerialNumber}
-                onRemoveSerialNumber={onRemoveSerialNumber}
-                onUpdateSerialGarantie={onUpdateSerialGarantie}
                 setIsDirty={setIsDirty}
                 onAddInstrumentDirect={onAddInstrumentDirect}
                 onClearForm={onClearForm}
@@ -1214,8 +1107,6 @@ export function VanzariViewV2(props: VanzariViewV2Props) {
                 onQtyChange={onSvcQtyChange}
                 onDiscountChange={onSvcDiscountChange}
                 onAddService={onAddService}
-                onBrandToggle={onBrandToggle}
-                onSerialNumberChange={onSerialNumberChange}
               />
             </>
           )}
@@ -1233,7 +1124,6 @@ export function VanzariViewV2(props: VanzariViewV2Props) {
               <TableHeader>
                 <TableRow className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
                   <TableHead className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Instrument</TableHead>
-                  <TableHead className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Brand / Serial</TableHead>
                   <TableHead className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Serviciu</TableHead>
                   <TableHead className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider text-center w-14">Cant.</TableHead>
                   <TableHead className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider text-right">Preț</TableHead>
@@ -1279,10 +1169,6 @@ export function VanzariViewV2(props: VanzariViewV2Props) {
                     ? instruments.find(i => i.id === it.instrument_id)?.name || '—'
                     : '—'
                   
-                  const brandGroups = (it as any)?.brand_groups && Array.isArray((it as any).brand_groups) 
-                    ? (it as any).brand_groups 
-                    : []
-                  
                   return (
                     <TableRow 
                       key={it.id} 
@@ -1290,30 +1176,6 @@ export function VanzariViewV2(props: VanzariViewV2Props) {
                     >
                       <TableCell className="text-xs text-slate-700 dark:text-slate-300 py-2.5">
                         <span className="font-medium">{instrumentName}</span>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground py-2">
-                        <div className="flex flex-col gap-1">
-                          {brandGroups.length > 0 ? (
-                            renderServiceSerialNumbers(it, brandGroups)
-                          ) : (
-                            !isLocked && (
-                              <>
-                                <Input
-                                  className="h-6 text-[10px] w-24"
-                                  placeholder="Brand..."
-                                  value={it.brand || ''}
-                                  onChange={e => onUpdateItem(it.id, { brand: e.target.value || null })}
-                                />
-                                <Input
-                                  className="h-6 text-[10px] w-28"
-                                  placeholder="Serial..."
-                                  value={it.serial_number || ''}
-                                  onChange={e => onUpdateItem(it.id, { serial_number: e.target.value || null })}
-                                />
-                              </>
-                            )
-                          )}
-                        </div>
                       </TableCell>
                       <TableCell className="font-medium text-sm py-2">
                         {it.name_snapshot}
@@ -1404,7 +1266,7 @@ export function VanzariViewV2(props: VanzariViewV2Props) {
                 })}
                 {items.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-muted-foreground text-center py-6 text-sm">
+                    <TableCell colSpan={7} className="text-muted-foreground text-center py-6 text-sm">
                       Nu există poziții încă.
                     </TableCell>
                   </TableRow>

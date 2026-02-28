@@ -908,16 +908,14 @@ export class StandardPipelineStrategy implements PipelineStrategy {
       kanbanItems.push(transformLeadToKanbanItem(lead, finalPipelineItem, tags, total, userMessageCount, userNamesMap))
     })
 
-    // ==================== VÂNZĂRI: STAGE "CURIER AJUNS AZI" ====================
-    // Lead-uri cu Curier Trimis/Office Direct atribuit în ultimele 24h. Fără duplicate (excluse din CALL BACK etc.).
+    // ==================== VÂNZĂRI: STAGE "CURIER SENT" / LIVRARI ====================
+    // Lead-uri cu Curier Trimis/Office Direct (în ultimele 24h) apar și în acest stage, indiferent de stage-ul curent (Avem Comandă etc.), ca poziția în stage-uri să fie corectă.
     if (isVanzari && curierAjunsAziStage) {
       try {
         const curierAjunsAziLeadIds: string[] = []
         for (const lead of sortedLeads) {
           const pipelineItem = getPipelineItem(itemMap, 'lead', lead.id)
           if (!pipelineItem) continue
-          // Exclude lead-uri mutate explicit în Avem Comandă – păstrăm poziția aleasă de utilizator
-          if (avemComandaStage && pipelineItem.stage_id === avemComandaStage.id) continue
           const tags = tagMap.get(lead.id) || []
           const hasCurierOrOffice = curierOfficeTagAssignedAt.has(lead.id) || hasCurierTrimisTag(tags) || hasOfficeDirectTag(tags)
           if (!hasCurierOrOffice) continue

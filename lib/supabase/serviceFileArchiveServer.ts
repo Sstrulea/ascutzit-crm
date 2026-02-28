@@ -95,41 +95,26 @@ export async function archiveServiceFileToDbServer(
       const { data: items, error: itemsErr } = await (db as any)
         .from('tray_items')
         .select(`
-          id, tray_id, department_id, instrument_id, service_id, part_id, technician_id, qty, notes, pipeline,
-          tray_item_brands(id, brand, garantie, tray_item_brand_serials(id, serial_number))
+          id, tray_id, department_id, instrument_id, service_id, part_id, technician_id, qty, notes, pipeline
         `)
         .in('tray_id', trayIds)
       if (!itemsErr && items?.length) allTrayItems.push(...items)
     }
 
-    // Snapshot tăvițe: number și itemi cu datele introduse (brand/serial/garanție în info)
     const traysSnapshot = (trays || []).map((t: any) => {
       const itemsInTray = allTrayItems
         .filter((ti: any) => ti.tray_id === t.id)
-        .map((ti: any) => {
-          const brands = ti.tray_item_brands as any[] | undefined
-          let info = ''
-          if (brands?.length) {
-            const parts = brands.map((b: any) => {
-              const serials = (b.tray_item_brand_serials || []).map((s: any) => s.serial_number).filter(Boolean)
-              const ser = serials.length ? ` Serial: ${serials.join(', ')}` : ''
-              const gar = b.garantie ? ' Garanție: Da' : ' Garanție: Nu'
-              return `Brand: ${b.brand || ''}${ser}${gar}`
-            })
-            info = parts.join(' | ')
-          }
-          return {
-            department_id: ti.department_id ?? null,
-            instrument_id: ti.instrument_id ?? null,
-            service_id: ti.service_id ?? null,
-            part_id: ti.part_id ?? null,
-            technician_id: ti.technician_id ?? null,
-            qty: ti.qty ?? 1,
-            notes: ti.notes ?? null,
-            pipeline: ti.pipeline ?? null,
-            info: info || null,
-          }
-        })
+        .map((ti: any) => ({
+          department_id: ti.department_id ?? null,
+          instrument_id: ti.instrument_id ?? null,
+          service_id: ti.service_id ?? null,
+          part_id: ti.part_id ?? null,
+          technician_id: ti.technician_id ?? null,
+          qty: ti.qty ?? 1,
+          notes: ti.notes ?? null,
+          pipeline: ti.pipeline ?? null,
+          info: null,
+        }))
       return { id: t.id, number: t.number, items: itemsInTray }
     })
 
@@ -177,17 +162,6 @@ export async function archiveServiceFileToDbServer(
     // R2: INSERT tray_items; la prima eroare ștergem rândul din arhivă și refacem throw (rollback logic)
     try {
       for (const ti of allTrayItems) {
-        const brands = ti.tray_item_brands as any[] | undefined
-        let info = ''
-        if (brands?.length) {
-          const parts = brands.map((b: any) => {
-            const serials = (b.tray_item_brand_serials || []).map((s: any) => s.serial_number).filter(Boolean)
-            const ser = serials.length ? ` Serial: ${serials.join(', ')}` : ''
-            const gar = b.garantie ? ' Garanție: Da' : ' Garanție: Nu'
-            return `Brand: ${b.brand || ''}${ser}${gar}`
-          })
-          info = parts.join(' | ')
-        }
         const { error: tiErr } = await (db as any).from('arhiva_tray_items').insert({
           arhiva_fisa_id: arhivaFisaId,
           department_id: ti.department_id ?? null,
@@ -198,7 +172,7 @@ export async function archiveServiceFileToDbServer(
           qty: ti.qty ?? 1,
           notes: ti.notes ?? null,
           pipeline: ti.pipeline ?? null,
-          info: info || null,
+          info: null,
         })
         if (tiErr) throw tiErr
       }
@@ -322,7 +296,7 @@ async function findAvailableCopyNumber(
  * 1. Redenumește tăvița (A12 → A12-copy1, A12-copy2, etc.)
  * 2. Desasociază tăvița de fișă (service_file_id = null)
  * 3. Scoate tăvița din pipeline_items
- * 4. Păstrează toate datele (instrumente, servicii, brand-uri, imagini) în tăvița redenumită
+ * 4. Păstrează toate datele (instrumente, servicii, imagini) în tăvița redenumită
  * 
  * Astfel, numărul original (A12) devine disponibil pentru reutilizare.
  */
