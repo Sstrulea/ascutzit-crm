@@ -124,12 +124,12 @@ export class StandardPipelineStrategy implements PipelineStrategy {
         }) || null
       : null
 
-    // Stage "Colet Ajuns": exclude fișe care au ajuns deja aici din COLET NERIDICAT
+    // Stage "Colet Ajuns" / "TAVITE RAFT": exclude fișe care au ajuns deja aici din COLET NERIDICAT
     const coletAjunsStage = isVanzari
       ? context.allStages.find(s => {
           if (s.pipeline_id !== context.pipelineId) return false
           const nameLower = (s.name || '').toLowerCase().trim()
-          return (nameLower.includes('colet') && nameLower.includes('ajuns')) || nameLower.includes('colet_ajuns')
+          return (nameLower.includes('colet') && nameLower.includes('ajuns')) || nameLower.includes('colet_ajuns') || (nameLower.includes('tavite') && nameLower.includes('raft'))
         }) || null
       : null
 

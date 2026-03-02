@@ -76,7 +76,7 @@ const PRINT_STYLES = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: Arial, sans-serif;
-    font-size: 10pt;
+    font-size: 15pt;
     line-height: 1.4;
     color: #333;
     background: #fff;
@@ -86,18 +86,20 @@ const PRINT_STYLES = `
     margin: 0 auto;
     padding: 10mm;
   }
-  .header { margin-bottom: 12px; }
-  .doc-title { font-size: 18px; font-weight: bold; margin-bottom: 4px; }
-  .doc-meta { font-size: 10px; font-style: italic; margin-bottom: 8px; }
-  .client-block { font-size: 10px; line-height: 1.6; }
+  .header { margin-bottom: 10px; }
+  .doc-title-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .doc-title { font-size: 27px; font-weight: bold; }
+  .doc-tray-nr { font-size: 20px; font-weight: bold; }
+  .doc-meta { font-size: 15px; font-style: italic; margin-bottom: 6px; }
+  .client-block { font-size: 15px; line-height: 1.6; }
   table {
     width: 100%;
     border-collapse: collapse;
     border: 1px solid #000;
-    font-size: 9pt;
+    font-size: 21pt;
     margin-top: 6px;
   }
-  th, td { border: 1px solid #000; padding: 4px 6px; }
+  th, td { border: 1px solid #000; padding: 7px 8px; }
   th {
     background: #d0d0d0;
     color: #000;
@@ -105,8 +107,7 @@ const PRINT_STYLES = `
     text-align: left;
   }
   tr { page-break-inside: avoid; }
-  .tray-block { page-break-inside: avoid; margin-bottom: 14px; }
-  .tray-title { font-weight: bold; font-size: 10pt; margin-bottom: 4px; }
+  .tray-block { page-break-inside: avoid; margin-bottom: 10px; }
   @media print {
     body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     .container { padding: 0; }
@@ -142,10 +143,14 @@ export function buildTrayPrintDocumentHtml(data: TrayPrintData): string {
   const orderNr = lead.leadId ?? lead.id ?? '—'
   const clientName = (lead.name ?? '').toUpperCase() || '—'
   const clientPhone = lead.phone ?? '—'
+  const allTrayNrs = sheets.map((s) => s.quote?.number != null ? String(s.quote.number) : '').filter(Boolean)
+  const allTrayNrsStr = allTrayNrs.join(', ')
 
   let bodyHtml = ''
   bodyHtml += '<div class="header">'
-  bodyHtml += '<div class="doc-title">TĂVIȚE – FIȘA ' + escapeHtml(serviceFileNumber ?? '—') + '</div>'
+  bodyHtml += '<div class="doc-title-row"><span class="doc-title">TĂVIȚE</span>'
+  if (allTrayNrsStr) bodyHtml += '<span class="doc-tray-nr">' + escapeHtml(allTrayNrsStr) + '</span>'
+  bodyHtml += '</div>'
   bodyHtml += '<div class="doc-meta">la comanda Nr.: ' + escapeHtml(orderNr) + '</div>'
   bodyHtml += '<div class="client-block">'
   bodyHtml += '<div><strong>CLIENT:</strong> ' + escapeHtml(clientName) + '</div>'
@@ -159,10 +164,8 @@ export function buildTrayPrintDocumentHtml(data: TrayPrintData): string {
     const groups = groupItemsByInstrument(sheet.items, instrumentsMap)
 
     bodyHtml += '<div class="tray-block">'
-    bodyHtml += '<div class="tray-title">Tăviță ' + escapeHtml(nr) + '</div>'
-
     if (groups.length === 0 && sheet.items.length === 0) {
-      bodyHtml += '<div style="font-size:9pt;color:#666">Fără instrumente/servicii</div>'
+      bodyHtml += '<div style="font-size:21pt;color:#666">Fără instrumente/servicii</div>'
     } else {
       bodyHtml += '<table><thead><tr>'
       bodyHtml += '<th style="width:18%">Instrument</th>'

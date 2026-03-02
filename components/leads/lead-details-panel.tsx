@@ -1158,7 +1158,7 @@ export function LeadDetailsPanel({
               </div>
             )}
 
-            {/* Pasare tăviță */}
+            {/* Pasare tăviță – vizibil și când nu ești în pipeline departament (ex. Recepție cu card tăviță) */}
             {(lead as any)?.type === 'tray' && (
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase mb-2 block">
@@ -1186,7 +1186,66 @@ export function LeadDetailsPanel({
                     className="h-8 text-xs"
                     disabled={business.state.passingTray || !business.state.selectedTechnicianId}
                     onClick={async () => {
-                      // ... (codul rămâne neschimbat)
+                      const trayId = lead?.id
+                      if (!trayId || (lead as any)?.type !== 'tray') return
+                      const selectedTechnicianId = business.state.selectedTechnicianId
+                      if (!selectedTechnicianId) {
+                        toast.error('Selectează un tehnician')
+                        return
+                      }
+                      business.state.setPassingTray(true)
+                      try {
+                        const { data: prevTrayRow, error: prevError } = await supabase
+                          .from('trays')
+                          .select('technician_id')
+                          .eq('id', trayId)
+                          .maybeSingle()
+                        if (prevError) console.error('Error loading previous technician for tray:', prevError)
+                        const previousTechnicianId = (prevTrayRow as any)?.technician_id || null
+
+                        const { error: updateError } = await supabase
+                          .from('trays')
+                          .update({ technician_id: selectedTechnicianId } as any)
+                          .eq('id', trayId)
+                        if (updateError) {
+                          toast.error('Eroare la pasarea tăviței')
+                          return
+                        }
+
+                        const techniciansMap = (business.state.technicians || []).reduce((acc, t) => { acc[t.id] = t.name; return acc }, {} as Record<string, string>)
+                        const newTechName = techniciansMap[selectedTechnicianId] || 'tehnician necunoscut'
+                        const prevTechName = previousTechnicianId ? (techniciansMap[previousTechnicianId] || 'tehnician necunoscut') : 'Fără atribuire'
+
+                        try {
+                          const leadId = (lead as any)?.leadId ?? business.getLeadId()
+                          const authUser = user
+                          const currentUserOpt = authUser ? { id: authUser.id, email: (authUser as any).email ?? null } : undefined
+                          if (leadId) {
+                            const [trayDetails, previousTechnicianDetails, newTechnicianDetails, currentUser] = await Promise.all([
+                              getTrayDetails(trayId),
+                              previousTechnicianId ? getTechnicianDetails(previousTechnicianId) : Promise.resolve(null),
+                              getTechnicianDetails(selectedTechnicianId, { currentUser: currentUserOpt }),
+                              getUserDetails(authUser?.id ?? null, { currentUser: currentUserOpt }),
+                            ])
+                            const trayLabel = trayDetails ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}` : 'nesemnată'
+                            await logItemEvent('tray', trayId, `Tăvița "${trayLabel}" a fost pasată de la "${prevTechName}" la "${newTechName}"`, 'tray_passed', { from_technician_id: previousTechnicianId, to_technician_id: selectedTechnicianId, tray_id: trayId, lead_id: leadId }, { tray: trayDetails ? { id: trayDetails.id, number: trayDetails.number, status: trayDetails.status, service_file_id: trayDetails.service_file_id } : undefined, previous_technician: previousTechnicianDetails ? { id: previousTechnicianDetails.id, name: previousTechnicianDetails.name, email: previousTechnicianDetails.email } : undefined, technician: newTechnicianDetails ? { id: newTechnicianDetails.id, name: newTechnicianDetails.name, email: newTechnicianDetails.email } : undefined }, { currentUserId: authUser?.id ?? undefined, currentUserName: (authUser as any)?.email?.split('@')[0] ?? null, currentUserEmail: (authUser as any)?.email ?? null })
+                            if (selectedTechnicianId !== authUser?.id) {
+                              createNotification({ userId: selectedTechnicianId, type: 'tray_passed', title: 'Tăviță pasată', message: `Ți-a fost pasată tăvița ${trayLabel} de la ${prevTechName}.`, data: { tray_id: trayId, from_technician_id: previousTechnicianId, lead_id: leadId } }).catch((e) => console.warn('[LeadDetailsPanel] Notificare tray_passed:', e))
+                            }
+                          }
+                        } catch (logError) {
+                          console.error('Error logging tray pass event:', logError)
+                        }
+
+                        toast.success(`Tăvița a fost atribuită cu succes către ${newTechName}`)
+                        business.state.setSelectedTechnicianId('')
+                        onRefresh?.()
+                      } catch (error) {
+                        console.error('Error passing tray:', error)
+                        toast.error('Eroare la pasarea tăviței')
+                      } finally {
+                        business.state.setPassingTray(false)
+                      }
                     }}
                   >
                     {business.state.passingTray ? "Se atribuie…" : "Pasare"}
@@ -1195,6 +1254,70 @@ export function LeadDetailsPanel({
               </div>
             )}
           </>
+        )}
+
+        {/* Pasare tăviță – vizibil în pipeline departament când cardul deschis este o tăviță */}
+        {isDepartmentPipeline && (lead as any)?.type === 'tray' && lead?.id && (
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-2 mt-3">
+            <label className="text-xs font-medium text-muted-foreground uppercase mb-2 block">
+              Pasare Tăviță
+            </label>
+            <div className="flex items-center gap-2">
+              <Select
+                value={business.state.selectedTechnicianId}
+                onValueChange={business.state.setSelectedTechnicianId}
+              >
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Alege tehnician" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(business.state.technicians || []).map((tech) => (
+                    <SelectItem key={tech.id} value={tech.id}>
+                      {tech.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                disabled={business.state.passingTray || !business.state.selectedTechnicianId}
+                onClick={async () => {
+                  const trayId = lead?.id
+                  if (!trayId || (lead as any)?.type !== 'tray') return
+                  const selectedTechnicianId = business.state.selectedTechnicianId
+                  if (!selectedTechnicianId) { toast.error('Selectează un tehnician'); return }
+                  business.state.setPassingTray(true)
+                  try {
+                    const { data: prevTrayRow, error: prevError } = await supabase.from('trays').select('technician_id').eq('id', trayId).maybeSingle()
+                    if (prevError) console.error('Error loading previous technician for tray:', prevError)
+                    const previousTechnicianId = (prevTrayRow as any)?.technician_id || null
+                    const { error: updateError } = await supabase.from('trays').update({ technician_id: selectedTechnicianId } as any).eq('id', trayId)
+                    if (updateError) { toast.error('Eroare la pasarea tăviței'); return }
+                    const techniciansMap = (business.state.technicians || []).reduce((acc, t) => { acc[t.id] = t.name; return acc }, {} as Record<string, string>)
+                    const newTechName = techniciansMap[selectedTechnicianId] || 'tehnician necunoscut'
+                    const prevTechName = previousTechnicianId ? (techniciansMap[previousTechnicianId] || 'tehnician necunoscut') : 'Fără atribuire'
+                    try {
+                      const leadId = (lead as any)?.leadId ?? business.getLeadId()
+                      const authUser = user
+                      const currentUserOpt = authUser ? { id: authUser.id, email: (authUser as any).email ?? null } : undefined
+                      if (leadId) {
+                        const [trayDetails, previousTechnicianDetails, newTechnicianDetails] = await Promise.all([getTrayDetails(trayId), previousTechnicianId ? getTechnicianDetails(previousTechnicianId) : Promise.resolve(null), getTechnicianDetails(selectedTechnicianId, { currentUser: currentUserOpt })])
+                        const trayLabel = trayDetails ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}` : 'nesemnată'
+                        await logItemEvent('tray', trayId, `Tăvița "${trayLabel}" a fost pasată de la "${prevTechName}" la "${newTechName}"`, 'tray_passed', { from_technician_id: previousTechnicianId, to_technician_id: selectedTechnicianId, tray_id: trayId, lead_id: leadId }, { tray: trayDetails ? { id: trayDetails.id, number: trayDetails.number, status: trayDetails.status, service_file_id: trayDetails.service_file_id } : undefined, previous_technician: previousTechnicianDetails ? { id: previousTechnicianDetails.id, name: previousTechnicianDetails.name, email: previousTechnicianDetails.email } : undefined, technician: newTechnicianDetails ? { id: newTechnicianDetails.id, name: newTechnicianDetails.name, email: newTechnicianDetails.email } : undefined }, { currentUserId: authUser?.id ?? undefined, currentUserName: (authUser as any)?.email?.split('@')[0] ?? null, currentUserEmail: (authUser as any)?.email ?? null })
+                        if (selectedTechnicianId !== authUser?.id) createNotification({ userId: selectedTechnicianId, type: 'tray_passed', title: 'Tăviță pasată', message: `Ți-a fost pasată tăvița ${trayLabel} de la ${prevTechName}.`, data: { tray_id: trayId, from_technician_id: previousTechnicianId, lead_id: leadId } }).catch((e) => console.warn('[LeadDetailsPanel] Notificare tray_passed:', e))
+                      }
+                    } catch (logError) { console.error('Error logging tray pass event:', logError) }
+                    toast.success(`Tăvița a fost atribuită cu succes către ${newTechName}`)
+                    business.state.setSelectedTechnicianId('')
+                    onRefresh?.()
+                  } catch (error) { console.error('Error passing tray:', error); toast.error('Eroare la pasarea tăviței') } finally { business.state.setPassingTray(false) }
+                }}
+              >
+                {business.state.passingTray ? "Se atribuie…" : "Pasare"}
+              </Button>
+            </div>
+          </div>
         )}
       </>
     )}

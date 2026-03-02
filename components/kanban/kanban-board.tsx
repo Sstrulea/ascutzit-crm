@@ -63,8 +63,8 @@ interface KanbanBoardProps {
   onDeliveryClear?: (leadId: string) => void
   /** Slug pipeline curent (ex. receptie) – pentru butonul Colet neridicat (Recepție vs Vânzări) */
   pipelineSlug?: string
-  /** Receptie: callback la Arhivare pe card – mută cardul în stage Arhivat */
-  onArchiveCard?: (cardId: string) => Promise<void>
+  /** Receptie: callback la Arhivare pe card – mută în Arhivat sau șterge fișa (ex. în Colet Neridicat). cardId, stageName opțional. */
+  onArchiveCard?: (cardId: string, stageName?: string) => Promise<void>
   /** Receptie: returnează true pentru stage-urile unde se afișează butonul Arhivare (ex. De trimis, Ridic PE...) */
   showArchiveForStage?: (stageName: string) => boolean
   /** Receptie: la scoaterea tag-ului Nu răspunde de pe card (fișă) – mută fișa în De facturat și refresh */
@@ -308,7 +308,7 @@ export function KanbanBoard({
         headers: { 'Content-Type': 'application/json' },
       }
       if (isReceptie) {
-        (options as any).body = JSON.stringify({ pipelineSlug: 'receptie' })
+        (options as any).body = JSON.stringify({ pipelineSlug: 'receptie', debug: true })
       }
       const res = await fetch(url, options)
       const data = await res.json().catch(() => ({}))
@@ -317,9 +317,11 @@ export function KanbanBoard({
         toast.success(`${moved} ${moved === 1 ? 'fișă mutată' : 'fișe mutate'} în Colet neridicat`)
         onRefresh?.()
       } else if (data?.ok && moved === 0) {
-        toast.info(isReceptie ? 'Nicio fișă în stage-ul CURIER TRIMIS' : 'Nicio fișă eligibilă (Curier Trimis de 3+ zile)')
+        toast.info(data?.message || 'Nicio fișă creată acum 3+ zile în Curier Trimis')
+        if (data?.debug) console.log('[Colet neridicat] Debug:', data.debug)
       } else if (!data?.ok) {
         toast.error(data?.error ?? 'Eroare la mutare')
+        if (data?.debug) console.log('[Colet neridicat] Debug:', data.debug)
       }
     } catch (e) {
       console.error('[KanbanBoard] Eroare mutare Curier Trimis -> Colet neridicat:', e)
@@ -1175,15 +1177,46 @@ export function KanbanBoard({
                         stageLower.includes('arhivat')
                       )
                       const showColetNeridicat = isReceptiePipeline && stageLower.includes('curier') && stageLower.includes('trimis')
-                      
-                      // Nu afișează statistici/totale pentru stage-uri exclude (Messages, De confirmat, Colet neridicat, Curier trimis, Office direct, Arhivat)
+
+                      // Stage CURIER TRIMIS: afișează doar butonul „Colet neridicat” (fără total)
+                      if (showColetNeridicat) {
+                        return (
+                          <div className="text-right flex-shrink-0 flex flex-col items-end gap-2">
+                            <Button
+                              data-button-id="receptieColetNeridicatButton"
+                              variant="secondary"
+                              size="sm"
+                              className="h-7 px-2 text-xs shrink-0 bg-orange-100 hover:bg-orange-200 dark:bg-orange-900/30 dark:hover:bg-orange-900/50 text-orange-700 dark:text-orange-300 border border-orange-300 dark:border-orange-700 font-semibold shadow-sm"
+                              disabled={coletNeridicatLoading}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void handleMoveCurierTrimisToColetNeridicat()
+                              }}
+                              title="Mută în Colet neridicat fișele create acum 3+ zile"
+                            >
+                              {coletNeridicatLoading ? (
+                                <span className="flex items-center gap-1">
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  Se mută...
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1">
+                                  <Package className="h-3 w-3" />
+                                  Colet neridicat
+                                </span>
+                              )}
+                            </Button>
+                          </div>
+                        )
+                      }
+
+                      // Nu afișează statistici/totale pentru stage-uri exclude
                       if (isVanzariPipeline || isExcludedStage || isNoTotalReceptieStage || stageLower === 'messages') {
                         return null
                       }
                       
                       return (
                         <div className="text-right flex-shrink-0 flex flex-col items-end gap-2">
-                          {/* Suma totală */}
                           {isLoading ? (
                             <div className="space-y-1">
                               <Skeleton className="h-4 w-16" />
@@ -1201,7 +1234,7 @@ export function KanbanBoard({
                             </div>
                           )}
                           
-                          {/* Recepție – stage CURIER TRIMIS: mută în Colet neridicat fișele cu Curier Trimis de 3+ zile (automat după 3 zile) */}
+                          {/* Stage CURIER TRIMIS: mută în Colet neridicat doar fișele mai vechi de 3 zile */}
                           {showColetNeridicat && (
                             <Button
                               data-button-id="receptieColetNeridicatButton"
@@ -1213,7 +1246,7 @@ export function KanbanBoard({
                                 e.stopPropagation()
                                 void handleMoveCurierTrimisToColetNeridicat()
                               }}
-                              title={currentPipelineName?.toLowerCase().includes('receptie') ? 'Mută toate fișele din CURIER TRIMIS în Colet neridicat' : 'Mută în Colet neridicat fișele cu Curier Trimis aplicat acum 3+ zile'}
+                              title="Mută în Colet neridicat fișele create acum 3+ zile"
                             >
                               {coletNeridicatLoading ? (
                                 <span className="flex items-center gap-1">
@@ -1310,9 +1343,10 @@ export function KanbanBoard({
                                       onDeliveryClear={onDeliveryClear}
                                       onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                                       showArchiveButton={showArchiveForStage?.(stage)}
-                                      onArchive={onArchiveCard ? () => onArchiveCard(lead.id) : undefined}
+                                      onArchive={onArchiveCard ? () => onArchiveCard(lead.id, stage) : undefined}
                                       onSunaTagAdded={onSunaTagAdded}
                                       onSunaTagRemoved={onSunaTagRemoved}
+                                      showTagButton={(stage || '').toLowerCase().includes('colet') && (stage || '').toLowerCase().includes('neridicat')}
                                     />
                                   ))}
                                 </div>
@@ -1355,9 +1389,10 @@ export function KanbanBoard({
                               onDeliveryClear={onDeliveryClear}
                               onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                               showArchiveButton={showArchiveForStage?.(stage)}
-                              onArchive={onArchiveCard ? () => onArchiveCard(lead.id) : undefined}
+                              onArchive={onArchiveCard ? () => onArchiveCard(lead.id, stage) : undefined}
                               onSunaTagAdded={onSunaTagAdded}
                               onSunaTagRemoved={onSunaTagRemoved}
+                              showTagButton={(stage || '').toLowerCase().includes('colet') && (stage || '').toLowerCase().includes('neridicat')}
                             />
                           </div>
                         )
@@ -1563,6 +1598,7 @@ export function KanbanBoard({
                                         onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                                         onSunaTagAdded={onSunaTagAdded}
                                         onSunaTagRemoved={onSunaTagRemoved}
+                                        showTagButton={(stage || '').toLowerCase().includes('colet') && (stage || '').toLowerCase().includes('neridicat')}
                                       />
                                     ))}
                                   </div>
@@ -1590,9 +1626,10 @@ export function KanbanBoard({
                                 onDeliveryClear={onDeliveryClear}
                                 onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                                 showArchiveButton={showArchiveForStage?.(stage)}
-                                onArchive={onArchiveCard ? () => onArchiveCard(entry.lead.id) : undefined}
+                                onArchive={onArchiveCard ? () => onArchiveCard(entry.lead.id, stage) : undefined}
                                 onSunaTagAdded={onSunaTagAdded}
                                 onSunaTagRemoved={onSunaTagRemoved}
+                                showTagButton={(stage || '').toLowerCase().includes('colet') && (stage || '').toLowerCase().includes('neridicat')}
                               />
                             </div>
                           )
@@ -1845,9 +1882,10 @@ export function KanbanBoard({
                                       onDeliveryClear={onDeliveryClear}
                                       onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                                       showArchiveButton={showArchiveForStage?.(stage)}
-                                      onArchive={onArchiveCard ? () => onArchiveCard(lead.id) : undefined}
+                                      onArchive={onArchiveCard ? () => onArchiveCard(lead.id, stage) : undefined}
                                       onSunaTagAdded={onSunaTagAdded}
                                       onSunaTagRemoved={onSunaTagRemoved}
+                                      showTagButton={(stage || '').toLowerCase().includes('colet') && (stage || '').toLowerCase().includes('neridicat')}
                                     />
                                   ))}
                                 </div>
@@ -1890,9 +1928,10 @@ export function KanbanBoard({
                               onDeliveryClear={onDeliveryClear}
                               onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
                               showArchiveButton={showArchiveForStage?.(stage)}
-                              onArchive={onArchiveCard ? () => onArchiveCard(lead.id) : undefined}
+                              onArchive={onArchiveCard ? () => onArchiveCard(lead.id, stage) : undefined}
                               onSunaTagAdded={onSunaTagAdded}
                               onSunaTagRemoved={onSunaTagRemoved}
+                              showTagButton={(stage || '').toLowerCase().includes('colet') && (stage || '').toLowerCase().includes('neridicat')}
                             />
                           </div>
                         )

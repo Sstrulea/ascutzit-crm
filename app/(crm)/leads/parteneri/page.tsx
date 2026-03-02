@@ -334,10 +334,13 @@ export default function ParteneriPage() {
             stages={editorData.stages}
             onSubmit={async ({ pipelineName, stages }) => {
               const { error } = await updatePipelineAndStages(editorData!.pipelineId, pipelineName, stages)
-              if (error) { toast({ variant: "destructive", title: "Save failed", description: String(error.message ?? error) }); return }
+              if (error) {
+                toast({ variant: "destructive", title: "Salvare eșuată", description: String(error.message ?? error) })
+                throw error
+              }
               await refresh?.()
               setEditorOpen(false)
-              toast({ title: "Board updated" })
+              toast({ title: "Board actualizat" })
               if (typeof window !== "undefined") window.dispatchEvent(new Event("pipelines:updated"))
             }}
           />

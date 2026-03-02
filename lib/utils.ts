@@ -67,6 +67,40 @@ export function removeDiacritics(s: string | null | undefined): string {
     .replace(/î/gi, 'i')
 }
 
+/** Map: character fără diacritice -> variante cu diacritice (românești) pentru căutare */
+const DIACRITIC_VARIANT_MAP: Record<string, string[]> = {
+  a: ['a', 'ă', 'â'],
+  i: ['i', 'î'],
+  s: ['s', 'ș', 'ş'],
+  t: ['t', 'ț', 'ţ'],
+}
+
+const MAX_DIACRITIC_VARIANTS = 48
+
+/**
+ * Expandă un token normalizat (fără diacritice) în variante cu diacritice,
+ * ca la căutare "popescu" să potrivească și "Popeșcu" din DB.
+ * Limitat la MAX_DIACRITIC_VARIANTS pentru a evita explozia combinatorială.
+ */
+export function getDiacriticVariants(normalizedToken: string): string[] {
+  if (!normalizedToken) return ['']
+  const lower = normalizedToken.toLowerCase()
+  const charVariants = lower.split('').map((c) => DIACRITIC_VARIANT_MAP[c] || [c])
+  const results: string[] = []
+  function build(idx: number, current: string) {
+    if (results.length >= MAX_DIACRITIC_VARIANTS) return
+    if (idx === charVariants.length) {
+      results.push(current)
+      return
+    }
+    for (const v of charVariants[idx]) {
+      build(idx + 1, current + v)
+    }
+  }
+  build(0, '')
+  return results.length > 0 ? results : [normalizedToken]
+}
+
 /**
  * Returns all phone number variants for search (0, +40, 40 prefix).
  * Used so "0721123456", "+40721123456", "40721123456" all match.

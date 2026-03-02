@@ -267,32 +267,57 @@ export async function saveVanzariViewV4ToDb(
     }
 
     // 5. Inserează tray_items pentru servicii
+    // Deduplicare: un singur tray_item per (tray_id, instrument_id, service_id) – cantități și unrepaired însumate
+    const servicesResolved: Array<{ trayId: string; inst: V4Instrument; svc: V4SelectedService }> = []
     for (const svc of services) {
       const inst = instruments.find((i) => i.localId === svc.instrumentLocalId)
       if (!inst || !inst.instrumentId) continue
       const trayId = svc.trayId ? localTrayIdToDbTrayId.get(svc.trayId) : getTrayIdForInstrument(svc.instrumentLocalId)
       if (!trayId) continue
+      servicesResolved.push({ trayId, inst, svc })
+    }
+    const servicesMergedMap = new Map<string, { trayId: string; inst: V4Instrument; svc: V4SelectedService; qty: number; unrepairedCount: number; forSerialNumbers: string[] }>()
+    for (const { trayId, inst, svc } of servicesResolved) {
+      const key = `${trayId}|${inst.instrumentId}|${svc.serviceId}`
+      const existing = servicesMergedMap.get(key)
+      if (!existing) {
+        servicesMergedMap.set(key, {
+          trayId,
+          inst,
+          svc,
+          qty: svc.quantity,
+          unrepairedCount: svc.unrepairedCount ?? 0,
+          forSerialNumbers: Array.from(new Set(svc.forSerialNumbers ?? [])),
+        })
+      } else {
+        existing.qty += svc.quantity
+        existing.unrepairedCount += svc.unrepairedCount ?? 0
+        const combined = [...existing.forSerialNumbers, ...(svc.forSerialNumbers ?? [])]
+        existing.forSerialNumbers = Array.from(new Set(combined))
+      }
+    }
+    for (const { trayId, inst, svc, qty, unrepairedCount, forSerialNumbers } of servicesMergedMap.values()) {
       const departmentId = getDepartmentId(inst.instrumentId)
       const notes = {
         name_snapshot: svc.serviceName,
         item_type: 'service',
         price: svc.basePrice,
         discount_pct: svc.discount,
-        qty: svc.quantity,
-        unrepairedCount: svc.unrepairedCount ?? 0,
-        forSerialNumbers: svc.forSerialNumbers ?? [],
+        qty,
+        unrepairedCount,
+        forSerialNumbers,
         instrument_discount_pct: inst.discount ?? 0,
         garantie: inst.garantie ?? false,
       }
-      const serialsSummary = serialsFromInstrumentOrList(inst, svc.forSerialNumbers)
+      const serialsSummary = serialsFromInstrumentOrList(inst, forSerialNumbers)
       const { error: itemErr } = await createTrayItem({
         tray_id: trayId,
         instrument_id: inst.instrumentId,
         service_id: svc.serviceId,
         part_id: null,
         department_id: departmentId,
-        qty: svc.quantity,
-        unrepaired_qty: svc.unrepairedCount ?? 0,
+        qty,
+        unrepaired_qty: unrepairedCount,
         notes: JSON.stringify(notes),
         pipeline: null,
         serials: serialsSummary ?? undefined,

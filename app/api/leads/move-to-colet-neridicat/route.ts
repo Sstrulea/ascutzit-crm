@@ -1,19 +1,23 @@
 /**
  * POST /api/leads/move-to-colet-neridicat
  *
- * La apăsarea butonului "Colet neridicat" în pipeline Recepție:
- * Mută TOATE fișele din stage-ul CURIER TRIMIS în stage-ul COLET NERIDICAT
- * și setează service_files.colet_neridicat = true (persistență).
- * Body: { pipelineSlug: 'receptie' }
+ * La apăsarea butonului "Colet neridicat" în stage-ul CURIER TRIMIS (Recepție):
+ * Mută în COLET NERIDICAT doar fișele create acum 3+ zile (după created_at),
+ * și setează service_files.colet_neridicat = true.
+ * Body: { pipelineSlug: 'receptie', debug?: boolean }
  * Doar utilizatori autentificați.
  */
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { createAdminClient } from '@/lib/supabase/api-helpers'
+import { createApiSupabaseClient, createAdminClient } from '@/lib/supabase/api-helpers'
 
 const NORM = (s: string) =>
   (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+
+/** ID-uri cunoscute pentru pipeline Recepție – folosite ca fallback dacă match-ul după nume eșuează */
+const RECEPTIE_STAGE_IDS = {
+  curierTrimis: '081a56b9-d2f1-4afb-9fd0-56cacd7d147d',
+  coletNeridicat: '8761501c-073b-45f1-9d95-27b398e1dcd7',
+} as const
 
 function isReceptie(name: string): boolean {
   const n = NORM(name)
@@ -32,20 +36,20 @@ function isColetNeridicatStage(name: string): boolean {
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = await cookies()
-    const supabaseAuth = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabaseAuth = await createApiSupabaseClient()
     const { data: { session }, error: authErr } = await supabaseAuth.auth.getSession()
     if (authErr || !session?.user) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    let body: { pipelineSlug?: string } = {}
+    let body: { pipelineSlug?: string; debug?: boolean } = {}
     try {
       body = await req.json().catch(() => ({}))
     } catch {
       body = {}
     }
     const pipelineSlug = (body.pipelineSlug ?? '').toString().trim()
+    const debug = !!body.debug
     if (!pipelineSlug || !NORM(pipelineSlug).includes('receptie')) {
       return NextResponse.json(
         { ok: false, error: 'Pipeline Recepție este obligatoriu', movedCount: 0 },
@@ -90,18 +94,23 @@ export async function POST(req: Request) {
       )
     }
 
-    const curierTrimisStage = (stages as { id: string; name: string }[]).find((s) =>
-      isCurierTrimisStage(s.name || '')
-    )
-    const coletNeridicatStage = (stages as { id: string; name: string }[]).find((s) =>
-      isColetNeridicatStage(s.name || '')
-    )
+    const stagesList = stages as { id: string; name: string }[]
+    let curierTrimisStage = stagesList.find((s) => isCurierTrimisStage(s.name || ''))
+    let coletNeridicatStage = stagesList.find((s) => isColetNeridicatStage(s.name || ''))
+    // Fallback: folosim ID-urile cunoscute dacă există în lista de stage-uri ale pipeline-ului Recepție
+    if (!curierTrimisStage && stagesList.some((s) => s.id === RECEPTIE_STAGE_IDS.curierTrimis)) {
+      curierTrimisStage = stagesList.find((s) => s.id === RECEPTIE_STAGE_IDS.curierTrimis)!
+    }
+    if (!coletNeridicatStage && stagesList.some((s) => s.id === RECEPTIE_STAGE_IDS.coletNeridicat)) {
+      coletNeridicatStage = stagesList.find((s) => s.id === RECEPTIE_STAGE_IDS.coletNeridicat)!
+    }
 
     if (!curierTrimisStage || !coletNeridicatStage) {
       return NextResponse.json({
         ok: true,
         movedCount: 0,
         message: 'Stage-urile CURIER TRIMIS sau COLET NERIDICAT nu există',
+        ...(debug && { debug: { pipelineId: receptie.id, stageIds: stagesList.map((s) => ({ id: s.id, name: s.name })) } }),
       })
     }
 
@@ -112,16 +121,81 @@ export async function POST(req: Request) {
       .eq('type', 'service_file')
       .eq('stage_id', curierTrimisStage.id)
 
-    if (piErr || !pipelineItems?.length) {
-      return NextResponse.json({ ok: true, movedCount: 0 })
+    if (piErr) {
+      return NextResponse.json({
+        ok: false,
+        movedCount: 0,
+        error: piErr.message,
+        ...(debug && { debug: { step: 'pipeline_items', error: piErr.message } }),
+      }, { status: 500 })
     }
 
-    const itemIds = [
+    if (!pipelineItems?.length) {
+      return NextResponse.json({
+        ok: true,
+        movedCount: 0,
+        message: 'Niciun card în stage-ul Curier Trimis (0 rânduri în pipeline_items)',
+        ...(debug && { debug: { pipelineId: receptie.id, curierTrimisStageId: curierTrimisStage.id, pipelineItemsCount: 0 } }),
+      })
+    }
+
+    const allItemIds = [
       ...new Set(
         (pipelineItems as { id: string; item_id: string }[]).map((x) => x.item_id).filter(Boolean)
       ),
     ] as string[]
-    const pipelineItemIds = (pipelineItems as { id: string }[]).map((x) => x.id)
+
+    // Fișe mai vechi de 3 zile după created_at (indiferent de flag-ul curier_trimis)
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: expiredFiles, error: sfErr } = await supabase
+      .from('service_files')
+      .select('id, created_at')
+      .in('id', allItemIds)
+      .lt('created_at', threeDaysAgo)
+
+    if (sfErr) {
+      return NextResponse.json({
+        ok: false,
+        movedCount: 0,
+        error: sfErr.message,
+        ...(debug && { debug: { step: 'service_files_filter', error: sfErr.message } }),
+      }, { status: 500 })
+    }
+
+    if (!expiredFiles?.length) {
+      // Diagnostic: ce created_at au fișele din stage (primele 5) ca să vedem de ce nu trec filtrul
+      const { data: sampleSf } = await supabase
+        .from('service_files')
+        .select('id, created_at, number')
+        .in('id', allItemIds.slice(0, 10))
+        .order('created_at', { ascending: true })
+      return NextResponse.json({
+        ok: true,
+        movedCount: 0,
+        message: 'Niciun card cu created_at mai vechi de 3 zile în Curier Trimis',
+        ...(debug && {
+          debug: {
+            pipelineId: receptie.id,
+            curierTrimisStageId: curierTrimisStage.id,
+            pipelineItemsCount: pipelineItems.length,
+            allItemIdsCount: allItemIds.length,
+            threeDaysAgo,
+            expiredCount: 0,
+            sampleServiceFiles: (sampleSf || []).map((s: any) => ({ id: s.id, number: s.number, created_at: s.created_at })),
+          },
+        }),
+      })
+    }
+
+    const itemIds = (expiredFiles as { id: string; created_at?: string }[]).map((x) => x.id)
+    const pipelineItemIds = (pipelineItems as { id: string; item_id: string }[])
+      .filter((pi) => itemIds.includes(pi.item_id))
+      .map((x) => x.id)
+
+    if (pipelineItemIds.length === 0) {
+      return NextResponse.json({ ok: true, movedCount: 0 })
+    }
+
     const nowIso = new Date().toISOString()
 
     await supabase

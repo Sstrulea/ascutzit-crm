@@ -753,12 +753,24 @@ export async function updatePipelineAndStages(
   stages: { id: string; name: string }[]    // final order
 ) {
   const payload = stages.map((s, i) => ({ id: s.id, position: i, name: s.name.trim() }))
-  const { error } = await supabase.rpc('update_pipeline_and_reorder_stages', {
-    p_pipeline_id: pipelineId,
-    p_pipeline_name: pipelineName?.trim() ?? null, // send null if you want to skip renaming
-    p_items: payload
-})
-  return { error }
+  try {
+    const res = await fetch('/api/pipelines/update-stages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pipelineId,
+        pipelineName: pipelineName?.trim() || null,
+        stages: payload,
+      }),
+    })
+    const data = await res.json().catch(() => ({} as any))
+    if (!res.ok) {
+      return { error: new Error(data?.error || res.statusText || 'Save failed') }
+    }
+    return { error: null }
+  } catch (e: any) {
+    return { error: e instanceof Error ? e : new Error(String(e)) }
+  }
 }
 
 // ==================== HELPER FUNCTIONS FOR DETAILED TRACKING ====================

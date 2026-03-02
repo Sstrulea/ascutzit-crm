@@ -882,8 +882,8 @@ export default function StatisticiApeluriPage() {
                                           ...leads.nuRaspunde.map((i) => ({ ...i, outcome: 'Nu Răspunde' as const, outcomeColor: 'text-orange-600', livrare: undefined })),
                                         ]
                                           .sort((a, b) => (a.lead_name || '').localeCompare(b.lead_name || ''))
-                                          .map((item) => (
-                                            <tr key={item.lead_id} className="border-t border-border/40 hover:bg-muted/30">
+                                          .map((item, idx) => (
+                                            <tr key={`${item.lead_id}-${item.outcome}-${idx}`} className="border-t border-border/40 hover:bg-muted/30">
                                               <td className="p-2 font-medium truncate max-w-[200px]" title={item.lead_name || item.lead_id}>
                                                 {item.lead_name || 'Fără nume'}
                                               </td>

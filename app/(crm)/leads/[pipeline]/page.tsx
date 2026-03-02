@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { createLeadWithPipeline } from "@/lib/supabase/leadOperations"
-import { createServiceFile, getNextGlobalServiceFileNumber, updateServiceFile } from "@/lib/supabase/serviceFileOperations"
+import { createServiceFile, getNextGlobalServiceFileNumber, updateServiceFile, deleteServiceFile } from "@/lib/supabase/serviceFileOperations"
 import { addServiceFileToPipeline } from "@/lib/supabase/pipelineOperations"
 import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -2307,14 +2307,16 @@ export default function CRMPage() {
             stages={editorData.stages}
             onSubmit={async ({ pipelineName, stages }) => {
               const { error } = await updatePipelineAndStages(editorData!.pipelineId, pipelineName, stages)
-              if (error) { toast({ variant: "destructive", title: "Save failed", description: String(error.message ?? error) }); return }
-              await refresh?.()                                   // ensure UI reflects new order/name
-              const newSlug = toSlug(pipelineName);               // if your URL uses slug
+              if (error) {
+                toast({ variant: "destructive", title: "Salvare eșuată", description: String(error.message ?? error) })
+                throw error
+              }
+              await refresh?.()
+              const newSlug = toSlug(pipelineName)
               if (newSlug !== pipelineSlug) router.replace(`/leads/${newSlug}`)
               setEditorOpen(false)
-              toast({ title: "Board updated" })
+              toast({ title: "Board actualizat" })
               if (typeof window !== "undefined") window.dispatchEvent(new Event("pipelines:updated"))
-
             }}
           />
         )}
@@ -2402,14 +2404,26 @@ export default function CRMPage() {
                   onTagsChange={handleTagsChange}
                   onDeliveryClear={patchLeadDeliveryClear}
                   pipelineSlug={pipelineSlug}
-                  onArchiveCard={pipelineSlug?.toLowerCase() === 'receptie' && arhivatStageName ? async (cardId) => {
-                    await handleBulkMoveToStage([cardId], arhivatStageName)
-                    toast({ title: 'Arhivat', description: 'Card mutat la Arhivat.', duration: 2000 })
-                    refresh?.()
+                  onArchiveCard={pipelineSlug?.toLowerCase() === 'receptie' ? async (cardId, stageName) => {
+                    const s = String(stageName || '').toLowerCase()
+                    const isColetNeridicat = s.includes('colet') && s.includes('neridicat')
+                    if (isColetNeridicat) {
+                      const { success, error } = await deleteServiceFile(cardId)
+                      if (success) {
+                        toast({ title: 'Fișă ștearsă', description: 'Fișa de serviciu a fost ștearsă.', duration: 2000 })
+                        refresh?.()
+                      } else {
+                        toast({ variant: 'destructive', title: 'Eroare', description: (error as Error)?.message ?? 'Nu s-a putut șterge fișa.' })
+                      }
+                    } else if (arhivatStageName) {
+                      await handleBulkMoveToStage([cardId], arhivatStageName)
+                      toast({ title: 'Arhivat', description: 'Card mutat la Arhivat.', duration: 2000 })
+                      refresh?.()
+                    }
                   } : undefined}
                   showArchiveForStage={pipelineSlug?.toLowerCase() === 'receptie' ? (stageName: string) => {
                     const s = String(stageName || '').toLowerCase()
-                    return s.includes('de trimis') || s.includes('ridic')
+                    return s.includes('de trimis') || s.includes('ridic') || (s.includes('colet') && s.includes('neridicat'))
                   } : undefined}
                   onNuRaspundeClearedForReceptie={pipelineSlug?.toLowerCase() === 'receptie' ? moveServiceFileToDeFacturat : undefined}
                   onBulkMoveCurierAjunsAziToAvemComanda={toSlugNormalized(activePipelineName || '').includes('vanzari') ? handleBulkMoveCurierAjunsAziToAvemComanda : undefined}
