@@ -1493,7 +1493,7 @@ export function usePreturiTrayOperations({
               ([pipeline, names]) => `${pipeline}: ${names.join(', ')}`
             )
             errors.push(
-              `Tăvița ${tray.number} nu se poate expedia: conține instrumente din departamente/pipeline-uri diferite. ${parts.join(' | ')}. Mută instrumentele în tăvițe separate.`
+              `Tăvița ${tray.number} nu se poate expedia: conține instrumente din departamente/pipeline-uri diferite. ${parts.join(' | ')}. Mută instrumentele în tăvițe separate (dropdown lângă fiecare instrument), apoi apasă Salvează înainte de Trimite tăvițele.`
             )
           }
         }
@@ -1596,11 +1596,17 @@ export function usePreturiTrayOperations({
 
     // Recalculează quotes după eventuale ștergeri (folosim state actualizat prin callback în pasul următor)
     const quotesAfterClean = unassigned.length > 0 ? quotes.filter((q: any) => (q?.number != null ? String(q.number).trim() : '') !== '') : quotes
-    const traysToSend = quotesAfterClean.filter((q: any) => {
+    const traysWithNumber = quotesAfterClean.filter((q: any) => {
       const num = q?.number != null ? String(q.number).trim() : ''
       if (!num) return false
       return !isVanzareTray(num)
     })
+    // Trimite doar tăvițele care au cel puțin un item (evită eroarea "tăvița X este goală" și aliniază cu numărul afișat pe card)
+    const traysToSend: typeof traysWithNumber = []
+    for (const q of traysWithNumber) {
+      const items = await listQuoteItems(q.id, services, instruments, pipelinesWithIds)
+      if (items && items.length > 0) traysToSend.push(q)
+    }
     if (traysToSend.length === 0) {
       sendAllTraysInProgressRef.current = false
       toast.error('Nu există tăvițe de trimis. Adaugă tăvițe cu număr și conținut (servicii/piese) înainte de trimitere.')

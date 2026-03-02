@@ -9,7 +9,7 @@ import { runExpireColetNeridicat } from '@/lib/supabase/expireColetNeridicat'
  *
  * On-access (nu cron), la încărcarea pipeline-ului Vânzări:
  * 1. Mută lead-urile din Call Back / Nu răspunde (timp expirat) în Leads + tag Follow Up.
- * 2. Mută fișele care sunt în "Curier Trimis" și nu au ajuns la "Colet ajuns" în 36h în "Colet neridicat".
+ * 2. Mută fișele care sunt în "Curier Trimis" și nu au ajuns la "Colet ajuns" în 3 zile în "Colet neridicat" (Recepție + Vânzări).
  * Doar utilizatori autentificați.
  */
 export async function POST() {

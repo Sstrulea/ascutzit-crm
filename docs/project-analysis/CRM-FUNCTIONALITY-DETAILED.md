@@ -121,11 +121,11 @@ Service files with `office_direct` or `curier_trimis` are loaded directly from t
 
 ### 3.3 Uncollected Parcel (Colet neridicat)
 
-- **Condition:** After the courier has been "sent" on a chosen date (`curier_scheduled_at`), if **2 days** have passed (or 36h in some code paths), the service file is considered "uncollected parcel (colet neridicat)".
+- **Condition:** After the courier has been "sent" on a chosen date (`curier_scheduled_at`), if **3 days** have passed, the service file is considered "uncollected parcel (colet neridicat)" and is automatically moved to the **Colet neridicat** stage in both the Reception (Recepție) pipeline (service files) and the Sales (Vânzări) pipeline (lead).
 - **Implementation:**  
-  - `lib/supabase/expireColetNeridicat.ts` – `runExpireColetNeridicat()`: after 36h from `curier_scheduled_at` (or 2 days from `created_at`) moves the service file to the Reception (Recepție) **Uncollected parcel (Colet neridicat)** stage and the lead to the Sales (Vânzări) **Uncollected parcel (Colet neridicat)** stage.  
-  - Cron: `app/api/cron/vanzari-colet-neridicat/route.ts` – similar logic (2 days from `curier_scheduled_at`), updates `pipeline_items` and sets `no_deal` on the service file.  
-  - On-demand API: `app/api/leads/move-to-colet-neridicat/route.ts`.
+  - `lib/supabase/expireColetNeridicat.ts` – `runExpireColetNeridicat()`: after 3 days from `curier_scheduled_at` (or from `created_at`) moves the service file to the **Colet neridicat** stage in Reception (and sets `colet_neridicat = true`) and the lead to the **Colet neridicat** stage in Sales.  
+  - Cron: `app/api/cron/vanzari-colet-neridicat/route.ts` – runs daily; after 3 days from `curier_scheduled_at` moves service files from **Curier trimis** to **Colet neridicat** in the Reception pipeline, updates leads in Sales, and sets `no_deal` on the service file.  
+  - On-demand API: `app/api/leads/move-to-colet-neridicat/route.ts` – manually moves all files from the Curier trimis stage (Recepție) to Colet neridicat.
 
 ### 3.4 Parcel Arrived (Colet ajuns) (sending trays to departments)
 

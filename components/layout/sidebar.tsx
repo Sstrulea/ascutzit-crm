@@ -8,7 +8,7 @@ import {
   Plus, LayoutDashboard, Trash2, ShoppingCart, Scissors, Wrench, Building, 
   Target, Briefcase, Phone, Package, Sparkles, Shield, Settings, UserCircle, 
   LogOut, Check, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight,
-  Home, BarChart3, Handshake
+  Home, BarChart3, Handshake, Users
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -333,6 +333,21 @@ export function Sidebar({ canManagePipelines }: SidebarProps) {
                 >
                   <Package className="h-4 w-4" />
                   <span>Tehnician</span>
+                </Link>
+              )}
+
+              {/* Baza Clienți */}
+              {(isVanzator() || pipeNames.some((n) => n.toLowerCase().includes('vanzari'))) && (
+                <Link
+                  href="/dashboard/baza-clienti"
+                  prefetch={false}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-sidebar-accent transition-colors",
+                    pathname === "/dashboard/baza-clienti" && "bg-blue-800 dark:bg-blue-900 text-white"
+                  )}
+                >
+                  <Users className="h-4 w-4" />
+                  <span>Baza Clienți</span>
                 </Link>
               )}
             </SidebarSection>

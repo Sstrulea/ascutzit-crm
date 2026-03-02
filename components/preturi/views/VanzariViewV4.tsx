@@ -145,6 +145,8 @@ export interface VanzariViewV4Props {
   isUrgentare?: boolean
   isUrgentaring?: boolean
   onUrgentareClick?: () => void
+  /** Ștergere tăviță din DB (deschide dialog confirmare, apoi șterge). Când este setat, butonul X pe tăvițe va șterge efectiv din baza de date; altfel doar din state local. */
+  onDeleteTray?: (trayId: string) => void
 }
 
 // ============================================================================
@@ -1230,6 +1232,7 @@ export function VanzariViewV4({
   isUrgentare = false,
   isUrgentaring = false,
   onUrgentareClick,
+  onDeleteTray,
 }: VanzariViewV4Props) {
   const { user: currentUser } = useAuth()
   const actorOption = useMemo(() => ({
@@ -1492,18 +1495,29 @@ export function VanzariViewV4({
       const forSerialNumbers = serials.length === 1 ? [serials[0]!] : []
       const initialQty = forSerialNumbers.length > 0 ? forSerialNumbers.length : (instrument ? Math.max(1, instrument.quantity) : 1)
       const trayId = instrumentTrayId[instrumentLocalId]
-      setSelectedServices(prev => [...prev, {
-        instrumentLocalId,
-        serviceId,
-        serviceName,
-        basePrice: price,
-        quantity: initialQty,
-        trayId,
-        instrumentQty: initialQty,
-        discount: 0,
-        unrepairedCount: 0,
-        forSerialNumbers,
-      }])
+      // Articol unic per instrument: dacă același (instrument + serviciu) există deja, actualizăm cantitatea în loc să duplicăm rândul
+      setSelectedServices(prev => {
+        const existing = prev.find(s => s.instrumentLocalId === instrumentLocalId && s.serviceId === serviceId)
+        if (existing) {
+          return prev.map(s =>
+            s.instrumentLocalId === instrumentLocalId && s.serviceId === serviceId
+              ? { ...s, quantity: s.quantity + initialQty, basePrice: price }
+              : s
+          )
+        }
+        return [...prev, {
+          instrumentLocalId,
+          serviceId,
+          serviceName,
+          basePrice: price,
+          quantity: initialQty,
+          trayId,
+          instrumentQty: initialQty,
+          discount: 0,
+          unrepairedCount: 0,
+          forSerialNumbers,
+        }]
+      })
     } else {
       setSelectedServices(prev => prev.filter(s => !(s.instrumentLocalId === instrumentLocalId && s.serviceId === serviceId)))
     }
@@ -1578,6 +1592,15 @@ export function VanzariViewV4({
       Object.keys(next).forEach(localId => { if (next[localId] === trayId) next[localId] = undefined })
       return next
     })
+  }
+
+  /** La click pe X: dacă parent-ul furnizează onDeleteTray, deschide dialogul și șterge din DB; altfel doar din state local. */
+  const handleRemoveOrDeleteTray = (trayId: string) => {
+    if (onDeleteTray) {
+      onDeleteTray(trayId)
+    } else {
+      handleRemoveTray(trayId)
+    }
   }
 
   const handleUpdateTray = (trayId: string, newNumber: string) => {
@@ -1943,7 +1966,7 @@ export function VanzariViewV4({
           instrumentQuantityInTable={instrumentQuantityInTable}
           onValidateTrayQc={onValidateTrayQc}
           onAddTray={handleAddTray}
-          onRemoveTray={handleRemoveTray}
+          onRemoveTray={handleRemoveOrDeleteTray}
           onUpdateTray={handleUpdateTray}
           onUpdateServiceTray={handleUpdateServiceTray}
           onUpdatePartTray={handleUpdatePartTray}

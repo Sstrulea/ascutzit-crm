@@ -313,7 +313,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       this.getTechnicianMapForServiceFiles(serviceFileIdsForTotals, preloadedTraysForTotals.length ? { trays: preloadedTraysForTotals } : undefined)
     ])
 
-    // Numere de tăvițe per fișă (pentru afișare pe card) – folosim preloadedTraysForTotals care nu are number; încărcăm number separat dacă e nevoie
+    // Numere de tăvițe per fișă (pentru afișare pe card) – doar tăvițe care au cel puțin un item (evită afișarea a 3 când utilizatorul are 2 tăvițe cu conținut + una goală)
     const trayNumbersBySf = new Map<string, string[]>()
     if (serviceFileIdsForTotals.length > 0) {
       const { data: traysWithNumber } = await supabase
@@ -321,7 +321,14 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
         .select('id, number, service_file_id')
         .in('service_file_id', serviceFileIdsForTotals)
       if (traysWithNumber?.length) {
+        const trayIds = (traysWithNumber as Array<{ id: string }>).map((t) => t.id)
+        const { data: trayItemsRows } = await supabase
+          .from('tray_items')
+          .select('tray_id')
+          .in('tray_id', trayIds)
+        const trayIdsWithItems = new Set((trayItemsRows ?? []).map((r: { tray_id: string }) => r.tray_id))
         for (const t of traysWithNumber as Array<{ id: string; number: string | null; service_file_id: string | null }>) {
+          if (!trayIdsWithItems.has(t.id)) continue
           const sfId = t.service_file_id
           if (!sfId) continue
           const num = t.number != null && String(t.number).trim() !== '' ? String(t.number).trim() : null

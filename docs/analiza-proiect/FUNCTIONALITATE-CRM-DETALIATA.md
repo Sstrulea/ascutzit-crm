@@ -121,11 +121,11 @@ Fișele de service cu `office_direct` sau `curier_trimis` sunt încărcate direc
 
 ### 3.3 Colet Neridicat
 
-- **Condiție:** După ce curierul a fost "trimis" la o dată aleasă (`curier_scheduled_at`), dacă au trecut **2 zile** (sau 36h în unele căi de cod), fișa de service este considerată "colet neridicat".
+- **Condiție:** După ce curierul a fost "trimis" la o dată aleasă (`curier_scheduled_at`), dacă au trecut **3 zile**, fișa de service este considerată "colet neridicat" și se mută automat în stage-ul **Colet neridicat** atât în pipeline-ul Recepție (fișe de service), cât și în Vânzări (lead).
 - **Implementare:**  
-  - `lib/supabase/expireColetNeridicat.ts` – `runExpireColetNeridicat()`: după 36h de la `curier_scheduled_at` (sau 2 zile de la `created_at`) mută fișa de service în etapa **Colet neridicat** din Recepție și lead-ul în etapa **Colet neridicat** din Vânzări.  
-  - Cron: `app/api/cron/vanzari-colet-neridicat/route.ts` – logică similară (2 zile de la `curier_scheduled_at`), actualizează `pipeline_items` și setează `no_deal` pe fișa de service.  
-  - API la cerere: `app/api/leads/move-to-colet-neridicat/route.ts`.
+  - `lib/supabase/expireColetNeridicat.ts` – `runExpireColetNeridicat()`: după 3 zile de la `curier_scheduled_at` (sau de la `created_at`) mută fișa de service în etapa **Colet neridicat** din Recepție (și setează `colet_neridicat = true`) și lead-ul în etapa **Colet neridicat** din Vânzări.  
+  - Cron: `app/api/cron/vanzari-colet-neridicat/route.ts` – rulează zilnic; după 3 zile de la `curier_scheduled_at` mută fișele de service din **Curier trimis** în **Colet neridicat** în pipeline-ul Recepție, actualizează lead-urile în Vânzări și setează `no_deal` pe fișa de service.  
+  - API la cerere: `app/api/leads/move-to-colet-neridicat/route.ts` – mută manual toate fișele din stage-ul Curier trimis (Recepție) în Colet neridicat.
 
 ### 3.4 Colet Ajuns (trimiterea tăvițelor în departamente)
 

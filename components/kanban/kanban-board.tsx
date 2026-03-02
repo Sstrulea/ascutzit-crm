@@ -293,49 +293,8 @@ export function KanbanBoard({
     }
   }, [archivedStageName, onBulkMoveToStage, onLeadMove])
 
-  // Handler pentru activarea colet_ajuns pentru fișele din DE TRIMIS
-  const handleTrimiAllInStage = useCallback(async (sourceStage: string, leadIds: string[]) => {
-    if (!leadIds || leadIds.length === 0) return
-
-    setBulkRidicatLoading(prev => ({ ...prev, [sourceStage]: true }))
-    try {
-      // Filtrăm doar service_file IDs (pentru că colet_ajuns este pe service_files)
-      const serviceFileIds = leadIds
-        .map(id => {
-          const item = leads.find(l => l.id === id) as any
-          return item?.type === 'service_file' ? id : null
-        })
-        .filter(Boolean)
-
-      if (serviceFileIds.length === 0) {
-        toast.warning('Nu există fișe de service în acest stage.')
-        return
-      }
-
-      // Apelăm API-ul pentru a seta colet_ajuns = true
-      const res = await fetch('/api/service-files/set-colet-ajuns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serviceFileIds })
-      })
-
-      const data = await res.json()
-      if (data?.success) {
-        toast.success(`${data.updatedCount} ${data.updatedCount === 1 ? 'fișă marcată' : 'fișe marcate'} ca "Colet ajuns"`)
-        onRefresh?.()
-      } else {
-        toast.error(data?.error || 'Eroare la marcarea Colet ajuns')
-      }
-    } catch (e) {
-      console.error('[KanbanBoard] Eroare la activarea colet_ajuns:', e)
-      toast.error('Eroare la marcarea Colet ajuns. Încearcă din nou.')
-    } finally {
-      setBulkRidicatLoading(prev => ({ ...prev, [sourceStage]: false }))
-    }
-  }, [leads, onRefresh])
-
   // Mută fișele din Curier Trimis în Colet neridicat
-  // Recepție: toate fișele din stage → mutare + flag colet_neridicat. Vânzări: doar cele expirate (2+ zile).
+  // Recepție: toate fișele din stage → mutare + flag colet_neridicat. Vânzări: doar cele expirate (3+ zile).
   const handleMoveCurierTrimisToColetNeridicat = useCallback(async () => {
     setColetNeridicatLoading(true)
     try {
@@ -358,7 +317,7 @@ export function KanbanBoard({
         toast.success(`${moved} ${moved === 1 ? 'fișă mutată' : 'fișe mutate'} în Colet neridicat`)
         onRefresh?.()
       } else if (data?.ok && moved === 0) {
-        toast.info(isReceptie ? 'Nicio fișă în stage-ul CURIER TRIMIS' : 'Nicio fișă eligibilă (Curier Trimis de 2+ zile)')
+        toast.info(isReceptie ? 'Nicio fișă în stage-ul CURIER TRIMIS' : 'Nicio fișă eligibilă (Curier Trimis de 3+ zile)')
       } else if (!data?.ok) {
         toast.error(data?.error ?? 'Eroare la mutare')
       }
@@ -1136,7 +1095,7 @@ export function KanbanBoard({
                       </Button>
                     )}
 
-                    {/* Acțiune rapidă: Trimis -> Arhivat (mută toate cardurile din stage) */}
+                    {/* Acțiune rapidă: Trimis -> Arhivat (mută toate cardurile în Arhivat și rulează arhivarea) */}
                     {showTrimiButton && (
                       <Button
                         data-button-id="receptieStageTrimisButton"
@@ -1147,9 +1106,9 @@ export function KanbanBoard({
                         onClick={(e) => {
                           e.stopPropagation()
                           const ids = stageLeads.map(l => l.id)
-                          void handleTrimiAllInStage(stage, ids)
+                          void handleRidicatAllInStage(stage, ids)
                         }}
-                        title={`Mută toate cardurile în "${archivedStageName}"`}
+                        title={`Mută toate cardurile în "${archivedStageName}" (arhivare fișe + tăvițe + lead)`}
                       >
                         {bulkRidicatLoading[stage] ? (
                           <span className="flex items-center gap-1">
@@ -1242,7 +1201,7 @@ export function KanbanBoard({
                             </div>
                           )}
                           
-                          {/* Recepție – stage CURIER TRIMIS: mută în Colet neridicat fișele cu Curier Trimis de 2+ zile */}
+                          {/* Recepție – stage CURIER TRIMIS: mută în Colet neridicat fișele cu Curier Trimis de 3+ zile (automat după 3 zile) */}
                           {showColetNeridicat && (
                             <Button
                               data-button-id="receptieColetNeridicatButton"
@@ -1254,7 +1213,7 @@ export function KanbanBoard({
                                 e.stopPropagation()
                                 void handleMoveCurierTrimisToColetNeridicat()
                               }}
-                              title={currentPipelineName?.toLowerCase().includes('receptie') ? 'Mută toate fișele din CURIER TRIMIS în Colet neridicat' : 'Mută în Colet neridicat fișele cu Curier Trimis aplicat acum 2+ zile'}
+                              title={currentPipelineName?.toLowerCase().includes('receptie') ? 'Mută toate fișele din CURIER TRIMIS în Colet neridicat' : 'Mută în Colet neridicat fișele cu Curier Trimis aplicat acum 3+ zile'}
                             >
                               {coletNeridicatLoading ? (
                                 <span className="flex items-center gap-1">
@@ -1370,7 +1329,7 @@ export function KanbanBoard({
                         const lead = entry.lead
                         return (
                           <div
-                            key={lead.id}
+                            key={`${stage}-${gi}-${lead.id}`}
                             className={cn(
                               "animate-in fade-in slide-in-from-bottom-2",
                               `duration-300 delay-[${gi * 50}ms]`
@@ -1564,7 +1523,7 @@ export function KanbanBoard({
                       </div>
 
                       <div className="flex gap-3 overflow-x-auto pb-1">
-                        {groupStageLeads(stageLeads, stage).map((entry) => {
+                        {groupStageLeads(stageLeads, stage).map((entry, gi) => {
                           if (entry.type === 'partner-group') {
                             const groupKey = `${stage}::${entry.tag}`
                             const isExpanded = expandedPartnerGroups.has(groupKey)
@@ -1612,7 +1571,7 @@ export function KanbanBoard({
                             )
                           }
                           return (
-                            <div key={entry.lead.id} className="w-[368px] flex-shrink-0">
+                            <div key={`${stage}-${gi}-${entry.lead.id}`} className="w-[368px] flex-shrink-0">
                               <LazyLeadCard
                                 lead={entry.lead}
                                 onMove={onLeadMove}
@@ -1905,7 +1864,7 @@ export function KanbanBoard({
                         const lead = entry.lead
                         return (
                           <div
-                            key={lead.id}
+                            key={`${stage}-${gi}-${lead.id}`}
                             className={cn(
                               "animate-in fade-in slide-in-from-bottom-2",
                               `duration-300 delay-[${gi * 50}ms]`

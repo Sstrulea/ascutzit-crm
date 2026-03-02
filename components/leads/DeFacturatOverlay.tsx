@@ -159,6 +159,39 @@ export function DeFacturatOverlay({
   const isMobile = useIsMobile()
   const DEPARTMENT_NAMES = ['Saloane', 'Frizerii', 'Horeca', 'Reparatii']
 
+  // Funcții helper pentru calcularea cantităților reparabile/nereparabile
+  const getRepairableQty = (it: any) => {
+    const qty = it.qty || 1
+    // Încercăm să obținem cantitatea nereparabilă din multiple surse
+    let unrepaired = 0
+    
+    // 1. Din notes.non_repairable_qty (dacă tehnicianul a scris în detalii)
+    let notesData: any = {}
+    if (it.notes) {
+      try { notesData = JSON.parse(it.notes) } catch { notesData = {} }
+    }
+    if (typeof notesData.non_repairable_qty === 'number') {
+      unrepaired = Math.max(0, notesData.non_repairable_qty)
+    } else if (typeof it.unrepaired_qty === 'number') {
+      // 2. Din câmpul unrepaired_qty (dacă există)
+      unrepaired = Math.max(0, it.unrepaired_qty)
+    }
+    
+    return Math.max(0, qty - unrepaired)
+  }
+
+  const getUnrepairedQty = (it: any) => {
+    // Încercăm să obținem cantitatea nereparabilă din multiple surse
+    let notesData: any = {}
+    if (it.notes) {
+      try { notesData = JSON.parse(it.notes) } catch { notesData = {} }
+    }
+    if (typeof notesData.non_repairable_qty === 'number') {
+      return Math.max(0, notesData.non_repairable_qty)
+    }
+    return typeof it.unrepaired_qty === 'number' ? Math.max(0, it.unrepaired_qty) : 0
+  }
+
   const fisaId = serviceFile?.id ?? (kanbanLead?.type === 'service_file' ? kanbanLead?.id : null)
   const leadId = leadFull?.id ?? kanbanLead?.leadId ?? kanbanLead?.lead_id ?? (kanbanLead?.type === 'service_file' ? null : kanbanLead?.id)
 
@@ -252,10 +285,10 @@ export function DeFacturatOverlay({
           ? supabase.from('leads').select('*').eq('id', finalLeadId).single()
           : Promise.resolve({ data: null }),
         listServices(),
-        supabase.from('instruments').select('id,name,weight,department_id,pipeline,active').then(({ data }) => ({ data: data || [] })),
+        supabase.from('instruments').select('id,name,weight,department_id,pipeline,active').then(({ data }: { data: any }) => ({ data: data || [] })),
         pipelinesWithStages.length > 0
           ? Promise.resolve(pipelinesWithStages.map((p: any) => ({ id: p.id, name: p.name })))
-          : supabase.from('pipelines').select('id,name').then(({ data }) => ({ data: data || [] })),
+          : supabase.from('pipelines').select('id,name').then(({ data }: { data: any }) => ({ data: data || [] })),
         finalLeadId ? fetchConvMessages(finalLeadId) : Promise.resolve([]),
       ])
 
@@ -338,12 +371,6 @@ export function DeFacturatOverlay({
         if (!itemsByTray.has(tid)) itemsByTray.set(tid, [])
         itemsByTray.get(tid)!.push(it)
       })
-
-      const getRepairableQty = (it: any) => {
-        const qty = it.qty || 1
-        const unrepaired = Number(it.unrepaired_qty ?? it.non_repairable_qty) || 0
-        return Math.max(0, qty - unrepaired)
-      }
 
       const sheets: SheetData[] = quotesList.map((quote: any) => {
         const items = itemsByTray.get(quote.id) || []
@@ -485,11 +512,13 @@ export function DeFacturatOverlay({
 
       await clearTrayPositionsOnFacturare(fisaId)
 
-      toast.success(
-        mode === 'facturare_awb'
+      toast({
+        title: 'Succes',
+        description: mode === 'facturare_awb'
           ? 'Fișă facturată. Card mutat în De trimis.'
-          : 'Fișă facturată. Card mutat în Ridic personal.'
-      )
+          : 'Fișă facturată. Card mutat în Ridic personal.',
+        variant: 'default',
+      })
       defacturatCache.delete(getCacheKey(kanbanLead))
       onRefresh?.()
       onOpenChange(false)
@@ -497,7 +526,11 @@ export function DeFacturatOverlay({
       if (leadId) {
         try {
           const { moved } = await tryMoveLeadToArhivatIfAllFacturate(leadId)
-          if (moved) toast.success('Toate fișele sunt facturate. Lead mutat în Arhivat (Vânzări).')
+          if (moved) toast({
+            title: 'Succes',
+            description: 'Toate fișele sunt facturate. Lead mutat în Arhivat (Vânzări).',
+            variant: 'default',
+          })
         } catch (_) {}
       }
     } catch (e: any) {
@@ -627,7 +660,11 @@ export function DeFacturatOverlay({
       await addLeadTagIfNotPresent(leadId, pinnedTag.id)
       const { error: moveErr } = await moveItemToStage('service_file', fisaId, receptie.id, coletAjunsStage.id)
       if (moveErr) throw moveErr
-      toast.success('Tăvițele au fost retrimise în departament (Noua), tag Fixed aplicat, fișa mutată în Colet ajuns.')
+      toast({
+        title: 'Succes',
+        description: 'Tăvițele au fost retrimise în departament (Noua), tag Fixed aplicat, fișa mutată în Colet ajuns.',
+        variant: 'default',
+      })
       defacturatCache.delete(getCacheKey(kanbanLead))
       onRefresh?.()
       onOpenChange(false)
@@ -908,7 +945,7 @@ export function DeFacturatOverlay({
                             .filter((it: any) => it.item_type)
                             .map((it: any, idx: number) => {
                               const qty = it.qty ?? 1
-                              const unrepaired = Number((it as any).unrepaired_qty) || 0
+                              const unrepaired = getUnrepairedQty(it)
                               const repairableQty = Math.max(0, qty - unrepaired)
                               const price = it.price ?? 0
                               const disc = Math.min(100, Math.max(0, it.discount_pct || 0))
