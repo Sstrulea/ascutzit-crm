@@ -36,6 +36,7 @@ interface UsePreturiEffectsProps {
   setIsDirty: (dirty: boolean) => void
   setOfficeDirect: (value: boolean) => void
   setCurierTrimis: (value: boolean) => void
+  setCurierScheduledAt: (value: string | null) => void
   setGlobalDiscountPct: (value: number) => void
   setIsServiceFileLocked: (value: boolean) => void
   setServiceFileStatus: (value: string | null) => void
@@ -73,6 +74,7 @@ export function usePreturiEffects({
   setIsDirty,
     setOfficeDirect,
     setCurierTrimis,
+    setCurierScheduledAt,
     setGlobalDiscountPct,
     setIsServiceFileLocked,
     setServiceFileStatus,
@@ -329,6 +331,7 @@ export function usePreturiEffects({
     if (!fisaId) {
       setOfficeDirect(false)
       setCurierTrimis(false)
+      setCurierScheduledAt(null)
       setGlobalDiscountPct(0)
       setIsServiceFileLocked(false)
       setServiceFileStatus(null)
@@ -344,6 +347,7 @@ export function usePreturiEffects({
         console.error('[usePreturiEffects] Eroare la încărcarea service file:', error)
         setOfficeDirect(false)
         setCurierTrimis(false)
+        setCurierScheduledAt(null)
         setGlobalDiscountPct(0)
         setIsServiceFileLocked(false)
         setServiceFileStatus(null)
@@ -357,6 +361,7 @@ export function usePreturiEffects({
         const isLockedFromDB = serviceFileAny.is_locked ?? serviceFileAny.is_Locked ?? serviceFileData.is_locked ?? false
         setOfficeDirect(serviceFileData.office_direct || false)
         setCurierTrimis(serviceFileData.curier_trimis || false)
+        setCurierScheduledAt(serviceFileData.curier_scheduled_at ?? null)
         setPaymentCash(serviceFileData.cash || false)
         setPaymentCard(serviceFileData.card || false)
         setGlobalDiscountPct(serviceFileData.global_discount_pct ?? 0)
@@ -379,6 +384,7 @@ export function usePreturiEffects({
       } else {
         setOfficeDirect(false)
         setCurierTrimis(false)
+        setCurierScheduledAt(null)
         setGlobalDiscountPct(0)
         setIsServiceFileLocked(false)
         setServiceFileStatus(null)
@@ -390,6 +396,7 @@ export function usePreturiEffects({
       console.error('[usePreturiEffects] Eroare la încărcarea service file:', error)
       setOfficeDirect(false)
       setCurierTrimis(false)
+      setCurierScheduledAt(null)
       setGlobalDiscountPct(0)
       setIsServiceFileLocked(false)
       setServiceFileStatus(null)
@@ -399,7 +406,7 @@ export function usePreturiEffects({
     } finally {
       setLoadingTrayDetails(false)
     }
-  }, [fisaId, setOfficeDirect, setCurierTrimis, setGlobalDiscountPct, setIsServiceFileLocked, setServiceFileStatus, setPaymentCash, setPaymentCard, setTrayDetails, setLoadingTrayDetails])
+  }, [fisaId, setOfficeDirect, setCurierTrimis, setCurierScheduledAt, setGlobalDiscountPct, setIsServiceFileLocked, setServiceFileStatus, setPaymentCash, setPaymentCard, setTrayDetails, setLoadingTrayDetails])
 
   // Un singur apel getServiceFile: flags + trayDetails (loadServiceFileFlags face ambele)
   useEffect(() => {

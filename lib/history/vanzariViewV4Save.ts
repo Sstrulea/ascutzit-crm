@@ -336,12 +336,15 @@ export async function saveVanzariViewV4ToDb(
     const hasServiceOrPart = new Set(
       [...services.map((s) => s.instrumentLocalId), ...parts.map((p) => p.instrumentLocalId)]
     )
+    const existingTrayIds = new Set(existing.map((t) => t.id))
+    const resolveTrayId = (localOrDbTrayId: string): string | null =>
+      localTrayIdToDbTrayId.get(localOrDbTrayId) ?? (existingTrayIds.has(localOrDbTrayId) ? localOrDbTrayId : null)
     const defaultLocalTrayId = traysToUse[0]?.id ?? null
     for (const inst of instruments) {
       if (!inst.instrumentId || hasServiceOrPart.has(inst.localId)) continue
       const localTrayId = instrumentTrayIdMap[inst.localId] ?? defaultLocalTrayId
       if (!localTrayId) continue
-      const trayId = localTrayIdToDbTrayId.get(localTrayId)
+      const trayId = resolveTrayId(localTrayId)
       if (!trayId) continue
       const departmentId = getDepartmentId(inst.instrumentId)
       const notes = {

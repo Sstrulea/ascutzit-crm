@@ -1,11 +1,11 @@
 /**
  * Expirare Colet Neridicat
  *
- * Mută în stage-ul "Colet neridicat" (Vânzări) fișele care:
- * 1. (Criteriu 36h) Sunt în "Curier Trimis", nu au ajuns la "Colet ajuns" și curier_scheduled_at e mai vechi de 36h.
- * 2. (Criteriu 2 zile) Au curier_trimis=true, created_at mai vechi de 2 zile și sunt încă în "Curier Trimis".
+ * Regulă: doar fișele care SUNT în stage-ul "Curier trimis" din pipeline-ul Recepție
+ * și au curier_scheduled_at mai vechi de 3 zile se mută în "Colet neridicat".
+ * Criteriul este doar data programării (curier_scheduled_at), nu created_at.
  *
- * Rulează on-access: la încărcarea pipeline-ului Vânzări (împreună cu expire-callbacks).
+ * Rulează on-access la încărcarea pipeline-ului Vânzări (împreună cu expire-callbacks).
  * Folosește createAdminClient — apelat doar din API (server-side).
  */
 
@@ -17,6 +17,11 @@ const NORM = (s: string) =>
 function isVanzari(name: string): boolean {
   const n = NORM(name)
   return n.includes('vanzari') || n.includes('sales')
+}
+
+function isReceptie(name: string): boolean {
+  const n = NORM(name)
+  return n.includes('receptie') || n.includes('reception')
 }
 
 function isCurierTrimisStage(name: string): boolean {
@@ -34,8 +39,7 @@ function isColetNeridicatStage(name: string): boolean {
   return n.includes('colet') && n.includes('neridicat')
 }
 
-const HOURS_MS = 36 * 60 * 60 * 1000
-const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
 
 export type ExpireColetNeridicatResult = {
   ok: boolean
@@ -44,14 +48,15 @@ export type ExpireColetNeridicatResult = {
 }
 
 /**
- * Mută fișele care sunt în "Curier Trimis" și nu au ajuns la "Colet ajuns" în 36h
- * în stage-ul "Colet neridicat" (pipeline Vânzări).
+ * Mută în "Colet neridicat" doar fișele care sunt în stage "Curier trimis" în pipeline Recepție
+ * și au curier_scheduled_at mai vechi de 3 zile. Actualizează Recepție și Vânzări.
  */
 export async function runExpireColetNeridicat(): Promise<ExpireColetNeridicatResult> {
   try {
     const supabase = createAdminClient()
     const now = new Date()
-    const limitIso = new Date(now.getTime() - HOURS_MS).toISOString()
+    const limitIso = new Date(now.getTime() - THREE_DAYS_MS).toISOString()
+    const nowIso = now.toISOString()
 
     const { data: pipelines, error: pErr } = await supabase
       .from('pipelines')
@@ -62,167 +67,114 @@ export async function runExpireColetNeridicat(): Promise<ExpireColetNeridicatRes
       return { ok: false, movedCount: 0, error: pErr?.message || 'No pipelines' }
     }
 
-    const vanzari = (pipelines as any[]).find((p: any) => isVanzari(p.name || ''))
-    if (!vanzari) return { ok: true, movedCount: 0 }
+    const receptie = (pipelines as any[]).find((p: any) => isReceptie(p.name || ''))
+    if (!receptie) return { ok: true, movedCount: 0 }
 
-    const { data: stages, error: sErr } = await supabase
+    const { data: receptieStages, error: rsErr } = await supabase
       .from('stages')
       .select('id, name')
-      .eq('pipeline_id', vanzari.id)
+      .eq('pipeline_id', receptie.id)
       .eq('is_active', true)
 
-    if (sErr || !stages?.length) {
-      return { ok: false, movedCount: 0, error: sErr?.message || 'No stages' }
+    if (rsErr || !receptieStages?.length) {
+      return { ok: false, movedCount: 0, error: rsErr?.message || 'No stages Recepție' }
     }
 
-    const curierTrimisStage = (stages as any[]).find((s: any) => isCurierTrimisStage(s.name || ''))
-    const coletNeridicatStage = (stages as any[]).find((s: any) => isColetNeridicatStage(s.name || ''))
+    const receptieCurierTrimis = (receptieStages as any[]).find((s: any) => isCurierTrimisStage(s.name || ''))
+    const receptieColetNeridicat = (receptieStages as any[]).find((s: any) => isColetNeridicatStage(s.name || ''))
+    if (!receptieCurierTrimis || !receptieColetNeridicat) return { ok: true, movedCount: 0 }
 
-    if (!curierTrimisStage || !coletNeridicatStage) {
-      return { ok: true, movedCount: 0 }
-    }
+    // 1. Doar fișe care SUNT în stage Curier trimis în pipeline Recepție
+    const { data: receptieItems, error: piErr } = await supabase
+      .from('pipeline_items')
+      .select('id, item_id')
+      .eq('pipeline_id', receptie.id)
+      .eq('type', 'service_file')
+      .eq('stage_id', receptieCurierTrimis.id)
 
-    // Fișe cu curier_trimis = true și curier_scheduled_at mai vechi de 36h
+    if (piErr || !receptieItems?.length) return { ok: true, movedCount: 0 }
+
+    const candidateSfIds = [...new Set((receptieItems as any[]).map((x: any) => x.item_id).filter(Boolean))] as string[]
+
+    // 2. Păstrăm doar cele cu curier_scheduled_at mai vechi de 3 zile (data programării)
     const { data: files, error: fErr } = await supabase
       .from('service_files')
-      .select('id, curier_scheduled_at')
-      .eq('curier_trimis', true)
+      .select('id')
+      .in('id', candidateSfIds)
       .not('curier_scheduled_at', 'is', null)
       .lt('curier_scheduled_at', limitIso)
 
-    if (fErr || !files?.length) {
-      return { ok: true, movedCount: 0 }
-    }
+    if (fErr || !files?.length) return { ok: true, movedCount: 0 }
 
-    const serviceFileIds = (files as any[]).map((f: any) => f.id)
+    const movedSfIds = (files as any[]).map((f: any) => f.id)
+    const receptieItemIdsToMove = (receptieItems as any[]).filter((pi: any) => movedSfIds.includes(pi.item_id)).map((pi: any) => pi.id)
 
-    // pipeline_items în Vânzări, tip service_file, în stage Curier Trimis
-    const { data: pipelineItems, error: piErr } = await supabase
-      .from('pipeline_items')
-      .select('id, item_id, stage_id')
-      .eq('pipeline_id', vanzari.id)
-      .eq('type', 'service_file')
-      .eq('stage_id', curierTrimisStage.id)
-      .in('item_id', serviceFileIds)
-
-    if (piErr || !pipelineItems?.length) {
-      return { ok: true, movedCount: 0 }
-    }
-
-    const candidateIds = [...new Set((pipelineItems as any[]).map((x: any) => x.item_id).filter(Boolean))] as string[]
-
-    if (candidateIds.length === 0) return { ok: true, movedCount: 0 }
-
-    // Care dintre aceste fișe au avut deja eveniment "Colet ajuns"?
-    const { data: coletAjunsEvents } = await supabase
-      .from('items_events')
-      .select('item_id, event_type, payload')
-      .eq('type', 'service_file')
-      .in('item_id', candidateIds)
-      .or('event_type.eq.colet_ajuns,event_type.eq.stage_change')
-
-    const hadColetAjuns = new Set<string>()
-    if (coletAjunsEvents) {
-      for (const ev of coletAjunsEvents as any[]) {
-        const itemId = ev.item_id
-        if (!itemId) continue
-        if (ev.event_type === 'colet_ajuns') {
-          hadColetAjuns.add(itemId)
-          continue
-        }
-        if (ev.event_type === 'stage_change' && ev.payload) {
-          const toStage = typeof ev.payload === 'object' && ev.payload !== null
-            ? (ev.payload.to_stage ?? ev.payload.stage?.name ?? '')
-            : ''
-          const stageStr = typeof toStage === 'string' ? toStage : (toStage?.name ?? '')
-          if (isColetAjunsStage(stageStr)) hadColetAjuns.add(itemId)
-        }
-      }
-    }
-
-    const toMove = (pipelineItems as any[]).filter(
-      (pi: any) => pi.item_id && !hadColetAjuns.has(pi.item_id)
-    )
-
-    const nowIso = now.toISOString()
-    let movedCount = 0
-
-    if (toMove.length > 0) {
-      const ids = toMove.map((pi: any) => pi.id)
-      const { error: upErr } = await supabase
+    // 3. Recepție: mut în Colet neridicat
+    if (receptieItemIdsToMove.length > 0) {
+      await supabase
         .from('pipeline_items')
-        .update({
-          stage_id: coletNeridicatStage.id,
-          updated_at: nowIso,
-        })
-        .in('id', ids)
-      if (!upErr) movedCount = ids.length
+        .update({ stage_id: receptieColetNeridicat.id, updated_at: nowIso })
+        .in('id', receptieItemIdsToMove)
+      await supabase.from('service_files').update({ colet_neridicat: true }).in('id', movedSfIds)
+      const eventRows = movedSfIds.map((item_id: string) => ({
+        type: 'service_file',
+        item_id,
+        event_type: 'colet_neridicat',
+        message: `Mutare în ${receptieColetNeridicat.name}`,
+        payload: { to: receptieColetNeridicat.name, automated: true },
+        created_at: nowIso,
+      }))
+      await supabase.from('items_events').insert(eventRows)
     }
 
-    // Criteriu 2 zile: fișe cu curier_trimis și created_at mai vechi de 2 zile, încă în Curier Trimis → mutare în Colet neridicat
-    const twoDaysAgoISO = new Date(now.getTime() - TWO_DAYS_MS).toISOString()
-    const { data: files2d, error: f2Err } = await supabase
-      .from('service_files')
-      .select('id')
-      .eq('curier_trimis', true)
-      .lt('created_at', twoDaysAgoISO)
-
-    if (!f2Err && files2d && files2d.length > 0) {
-      const ids2d = (files2d as any[]).map((f: any) => f.id).filter(Boolean) as string[]
-      const { data: pi2d, error: pi2Err } = await supabase
-        .from('pipeline_items')
-        .select('id, item_id')
+    // 4. Vânzări: mut aceleași fișe (pipeline_items tip service_file) din Curier trimis în Colet neridicat
+    const vanzari = (pipelines as any[]).find((p: any) => isVanzari(p.name || ''))
+    if (vanzari && movedSfIds.length > 0) {
+      const { data: vanzariStages } = await supabase
+        .from('stages')
+        .select('id, name')
         .eq('pipeline_id', vanzari.id)
-        .eq('type', 'service_file')
-        .eq('stage_id', curierTrimisStage.id)
-        .in('item_id', ids2d)
-
-      if (!pi2Err && pi2d && pi2d.length > 0) {
-        const candidateIds2d = [...new Set((pi2d as any[]).map((x: any) => x.item_id).filter(Boolean))] as string[]
-        const { data: coletAjunsEvents2d } = await supabase
+        .eq('is_active', true)
+      const vanzariCurierTrimis = (vanzariStages as any[])?.find((s: any) => isCurierTrimisStage(s.name || ''))
+      const vanzariColetNeridicat = (vanzariStages as any[])?.find((s: any) => isColetNeridicatStage(s.name || ''))
+      if (vanzariCurierTrimis && vanzariColetNeridicat) {
+        const { data: coletAjunsEvents } = await supabase
           .from('items_events')
           .select('item_id, event_type, payload')
           .eq('type', 'service_file')
-          .in('item_id', candidateIds2d)
+          .in('item_id', movedSfIds)
           .or('event_type.eq.colet_ajuns,event_type.eq.stage_change')
-
-        const hadColetAjuns2d = new Set<string>()
-        if (coletAjunsEvents2d) {
-          for (const ev of coletAjunsEvents2d as any[]) {
-            const itemId = ev.item_id
-            if (!itemId) continue
-            if (ev.event_type === 'colet_ajuns') {
-              hadColetAjuns2d.add(itemId)
-              continue
-            }
+        const hadColetAjuns = new Set<string>()
+        if (coletAjunsEvents) {
+          for (const ev of coletAjunsEvents as any[]) {
+            if (ev.event_type === 'colet_ajuns' && ev.item_id) hadColetAjuns.add(ev.item_id)
             if (ev.event_type === 'stage_change' && ev.payload) {
-              const toStage = typeof ev.payload === 'object' && ev.payload !== null
-                ? (ev.payload.to_stage ?? ev.payload.stage?.name ?? '')
-                : ''
+              const toStage = typeof ev.payload === 'object' ? (ev.payload as any).to_stage ?? (ev.payload as any).stage?.name ?? '' : ''
               const stageStr = typeof toStage === 'string' ? toStage : (toStage?.name ?? '')
-              if (isColetAjunsStage(stageStr)) hadColetAjuns2d.add(itemId)
+              if (ev.item_id && isColetAjunsStage(stageStr)) hadColetAjuns.add(ev.item_id)
             }
           }
         }
-
-        const toMove2d = (pi2d as any[]).filter(
-          (pi: any) => pi.item_id && !hadColetAjuns2d.has(pi.item_id)
-        )
-        if (toMove2d.length > 0) {
-          const ids2dToUpdate = toMove2d.map((pi: any) => pi.id)
-          const { error: up2Err } = await supabase
-            .from('pipeline_items')
-            .update({
-              stage_id: coletNeridicatStage.id,
-              updated_at: nowIso,
-            })
-            .in('id', ids2dToUpdate)
-          if (!up2Err) movedCount += ids2dToUpdate.length
+        const { data: vanzariItems } = await supabase
+          .from('pipeline_items')
+          .select('id, item_id')
+          .eq('pipeline_id', vanzari.id)
+          .eq('type', 'service_file')
+          .eq('stage_id', vanzariCurierTrimis.id)
+          .in('item_id', movedSfIds)
+        if (vanzariItems?.length) {
+          const toMoveVanzari = (vanzariItems as any[]).filter((pi: any) => pi.item_id && !hadColetAjuns.has(pi.item_id))
+          if (toMoveVanzari.length > 0) {
+            await supabase
+              .from('pipeline_items')
+              .update({ stage_id: vanzariColetNeridicat.id, updated_at: nowIso })
+              .in('id', toMoveVanzari.map((pi: any) => pi.id))
+          }
         }
       }
     }
 
-    return { ok: true, movedCount }
+    return { ok: true, movedCount: movedSfIds.length }
   } catch (e: any) {
     console.error('[expireColetNeridicat] Error:', e)
     return { ok: false, movedCount: 0, error: e?.message ?? 'Unknown error' }

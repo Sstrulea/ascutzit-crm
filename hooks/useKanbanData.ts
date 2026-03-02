@@ -1191,6 +1191,18 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
               updateLead(leadIdForApel, leadUpdates).then(({ error: leadUpdErr }) => {
                 if (leadUpdErr) console.error('[handleLeadMove] updateLead (curier/office):', leadUpdErr)
               }).catch((e) => console.error('[handleLeadMove] updateLead (curier/office):', e))
+              // Când mutăm lead-ul în Curier Trimis, completăm curier_scheduled_at pe fișele care sunt deja curier_trimis dar fără dată (pentru regula 3 zile)
+              if (isCurierTrimis) {
+                supabase
+                  .from('service_files')
+                  .update({ curier_scheduled_at: nowIso, updated_at: nowIso })
+                  .eq('lead_id', leadIdForApel)
+                  .eq('curier_trimis', true)
+                  .is('curier_scheduled_at', null)
+                  .then(({ error: sfErr }) => {
+                    if (sfErr) console.error('[handleLeadMove] update service_files curier_scheduled_at:', sfErr)
+                  })
+              }
             }
           }
         }

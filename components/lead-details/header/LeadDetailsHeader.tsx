@@ -206,11 +206,11 @@ export function LeadDetailsHeader({
   }, [callbackDate])
 
   return (
-    <header className="bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-b border-slate-200 dark:border-slate-700">
-      {/* Main Header Row */}
-      <div className="px-4 py-3 flex items-center justify-between gap-4">
+    <header className="bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-b border-slate-200 dark:border-slate-700 min-h-[4.5rem]">
+      {/* Main Header Row — flex-wrap: pe ecran îngust (ex. 2 ferestre) butoanele trec pe rândul următor */}
+      <div className="px-4 py-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         {/* Left: Name & Tags */}
-        <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="flex items-center gap-3 min-w-0 flex-1 shrink-0 basis-auto">
           {/* Avatar */}
           <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center flex-shrink-0">
             <span className="text-lg font-bold text-primary">
@@ -382,7 +382,7 @@ export function LeadDetailsHeader({
 
         {/* Center: Selector fișă de serviciu (același rând cu nume și butoane) */}
         {showSheetSelectorInHeader && onFisaIdChange && (
-          <div className="flex items-center justify-center gap-3 flex-1 min-w-0 mx-2">
+          <div className="flex items-center justify-center gap-3 flex-1 min-w-0 mx-2 shrink-0 basis-auto">
             <label className="text-sm font-medium text-foreground whitespace-nowrap hidden sm:inline">
               Selectează fișa de serviciu:
             </label>
@@ -429,8 +429,8 @@ export function LeadDetailsHeader({
           </div>
         )}
 
-        {/* Right: Action Buttons */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Right: Action Buttons — flex-wrap: butoanele trec pe rândul următor când nu mai au loc */}
+        <div className="flex flex-wrap items-center justify-end gap-2 flex-shrink-0 basis-auto w-full min-[900px]:w-auto">
           {showPinButton && onPinClick && (
             <Button
               variant="outline"
@@ -544,7 +544,7 @@ export function LeadDetailsHeader({
 
       {/* Action Checkboxes Row — doar Recepție (Call Back); No Deal / Nu Răspunde sunt în secțiunea Callback */}
       {showActionCheckboxes && !isCurierPipeline && isReceptiePipeline && (
-        <div className="px-4 pb-3 flex items-center gap-3">
+        <div className="px-4 pb-4 pt-0 flex items-center gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <ActionCheckbox
               checked={callBack}

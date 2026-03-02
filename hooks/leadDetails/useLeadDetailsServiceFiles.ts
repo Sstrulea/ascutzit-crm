@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { 
   createServiceFile,
   getNextGlobalServiceFileNumber,
+  type ServiceFile,
 } from '@/lib/supabase/serviceFileOperations'
 import { logLeadEvent } from '@/lib/supabase/leadOperations'
 import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
@@ -22,84 +23,46 @@ interface UseLeadDetailsServiceFilesProps {
 
 // Funcție helper pentru crearea unei fișe de serviciu (Faza 5: currentUserId opțional – evită getSession())
 const createServiceSheet = async (leadId: string, name?: string, currentUserId?: string | null): Promise<string> => {
-  // PROTECȚIE: Retry logic pentru a evita duplicate-uri cauzate de numere deja folosite.
-  // IMPORTANT: Pentru numele auto-generate („Fisa X”) dacă există deja, trecem la următorul număr.
-  let retries = 5
-  let lastError: any = null
-  let data: ServiceFile | null = null
+  // Dacă numărul există deja: o singură încercare cu următorul număr (fără buclă, fără crearea a mai multor fișe).
+  const isDuplicateError = (msg: string) =>
+    msg.includes('există deja') || msg.includes('creată deja') || msg.includes('race condition')
+
   let currentNumber: number | null = null
-
-  while (retries > 0) {
-    try {
-      // 1) Determină numărul de fișă
-      if (!name) {
-        // Auto-numbering: obține punctul de plecare o singură dată, apoi incrementează local
-        if (currentNumber == null) {
-          const { data: nextGlobalNumber, error: numberError } = await getNextGlobalServiceFileNumber()
-          if (numberError || nextGlobalNumber === null) {
-            throw numberError || new Error('Failed to get next global service file number')
-          }
-          currentNumber = nextGlobalNumber
-        } else {
-          currentNumber++
-        }
-      }
-      
-      const autoNumber = !name ? `Fisa ${currentNumber}` : name
-
-      const serviceFileData = {
-        lead_id: leadId,
-        number: autoNumber,
-        date: new Date().toISOString().split('T')[0],
-        status: 'noua' as const,
-        notes: null,
-      }
-      
-      const result = await createServiceFile(serviceFileData)
-      
-      if (result.error) {
-        // Pentru numere auto-generate: dacă există deja, încercăm următorul număr.
-        const msg = String(result.error.message || '')
-        const isDuplicate =
-          msg.includes('există deja') ||
-          msg.includes('creată deja') ||
-          msg.includes('race condition')
-
-        if (!name && isDuplicate) {
-          lastError = result.error
-          retries--
-          // Așteaptă puțin înainte de retry pentru a evita race condition-uri
-          await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 100))
-          continue
-        }
-
-        // Pentru numere custom (name) sau alte erori, propagăm imediat
-        throw result.error
-      }
-      
-      if (!result.data) {
-        throw new Error('Failed to create service file')
-      }
-      
-      // Succes - salvează data și ieșim din loop
-      data = result.data
-      break
-    } catch (error: any) {
-      const msg = String(error?.message || '')
-      if (!name && retries > 0 && msg.includes('există deja')) {
-        retries--
-        lastError = error
-        await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 100))
-        continue
-      }
-      throw error
+  if (!name) {
+    const { data: nextGlobalNumber, error: numberError } = await getNextGlobalServiceFileNumber()
+    if (numberError || nextGlobalNumber === null) {
+      throw numberError || new Error('Nu s-a putut obține numărul următor pentru fișă')
     }
+    currentNumber = nextGlobalNumber
   }
-  
-  // Dacă am epuizat retry-urile fără succes
-  if (!data) {
-    throw lastError || new Error('Failed to create service file after retries')
+
+  const tryCreate = async (num: string): Promise<{ data: ServiceFile | null; error: any }> => {
+    return createServiceFile({
+      lead_id: leadId,
+      number: num,
+      date: new Date().toISOString().split('T')[0],
+      status: 'noua',
+      notes: null,
+    })
   }
+
+  let result = await tryCreate(!name ? `Fisa ${currentNumber}` : name)
+
+  // Pentru auto-number: la duplicate, o singură încercare cu un număr random mai mare decât cel care a dat eroarea
+  if (result.error && !name && isDuplicateError(String(result.error?.message || ''))) {
+    const randomOffset = 1 + Math.floor(Math.random() * 999)
+    const fallbackNumber = currentNumber! + randomOffset
+    result = await tryCreate(`Fisa ${fallbackNumber}`)
+  }
+
+  if (result.error) {
+    throw result.error
+  }
+  if (!result.data) {
+    throw new Error('Crearea fișei a eșuat')
+  }
+
+  const data = result.data
 
   // Continuă cu restul logicii doar dacă crearea a reușit
   try {

@@ -44,6 +44,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+} from '@/components/ui/alert-dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { AlertTriangle } from 'lucide-react'
@@ -405,8 +412,9 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
 
   // Normalizează array-urile pentru a evita erorile de tip "Cannot read properties of undefined"
   const quotesArray = Array.isArray(quotes) ? quotes : []
-  // Pentru modalul "Trimite în Departamente": numără tăvițe cu număr; dacă toate sunt fără număr dar există tăvițe, afișăm 1
-  const traysWithNumber = quotesArray.filter((q: LeadQuote) => q?.number != null && String(q.number).trim() !== '').length
+  // Tăvițe cu număr care au cel puțin un item (evită "2 tăvițe dar arată 3" când una e goală)
+  const trayIdsWithItems = new Set((Array.isArray(props.items) ? props.items : []).map((it: { tray_id?: string }) => it?.tray_id).filter(Boolean))
+  const traysWithNumber = quotesArray.filter((q: LeadQuote) => q?.number != null && String(q.number).trim() !== '' && trayIdsWithItems.has(q.id)).length
   const sendableTraysCount = traysWithNumber > 0 ? traysWithNumber : (quotesArray.length > 0 ? 1 : 0)
 
   // Creare automată a unei tăvițe "undefined" dacă nu există tăvițe și suntem în Recepție sau Vânzări.
@@ -564,6 +572,7 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
           onCurierTrimisChange={props.onCurierTrimisChange}
           onReturChange={props.onReturChange}
           onSubscriptionChange={props.onSubscriptionChange}
+          onDeleteTray={props.onDeleteTray}
         />
         <CreateTrayDialog
           open={props.showCreateTrayDialog}
@@ -582,6 +591,27 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
           onConfirm={props.onConfirmSendTrays}
           onCancel={props.onCancelSendTrays}
         />
+        <AlertDialog open={props.showDeleteTrayConfirmation} onOpenChange={(open) => { if (!open) props.onCancelDeleteTray() }}>
+          <AlertDialogContent className="sm:max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Ștergi tăvița?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {props.trayToDelete && (() => {
+                  const t = quotesArray.find((q: LeadQuote) => q.id === props.trayToDelete)
+                  const num = t?.number ? `#${t.number}` : 'această tăviță'
+                  return <>Această acțiune va șterge permanent {num} și toate item-urile din ea. <strong className="text-red-600 dark:text-red-400">Ireversibil.</strong></>
+                })()}
+                {!props.trayToDelete && <>Această acțiune va șterge permanent tăvița și toate item-urile din ea. <strong className="text-red-600 dark:text-red-400">Ireversibil.</strong></>}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={props.onCancelDeleteTray} disabled={props.deletingTray}>Anulează</Button>
+              <Button variant="destructive" onClick={() => props.onConfirmDeleteTray()} disabled={props.deletingTray}>
+                {props.deletingTray ? 'Se șterge...' : 'Șterge'}
+              </Button>
+            </DialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <Dialog open={!!departmentMismatchPending} onOpenChange={(open) => { if (!open) setDepartmentMismatchPending(null) }}>
           <DialogContent showCloseButton={true} className="sm:max-w-md">
             <DialogHeader>
@@ -709,6 +739,7 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
           onCurierTrimisChange={props.onCurierTrimisChange}
           onReturChange={props.onReturChange}
           onSubscriptionChange={props.onSubscriptionChange}
+          onDeleteTray={props.onDeleteTray}
         />
         <CreateTrayDialog
           open={props.showCreateTrayDialog}
@@ -727,6 +758,27 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
           onConfirm={props.onConfirmSendTrays}
           onCancel={props.onCancelSendTrays}
         />
+        <AlertDialog open={props.showDeleteTrayConfirmation} onOpenChange={(open) => { if (!open) props.onCancelDeleteTray() }}>
+          <AlertDialogContent className="sm:max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Ștergi tăvița?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {props.trayToDelete && (() => {
+                  const t = quotesArray.find((q: LeadQuote) => q.id === props.trayToDelete)
+                  const num = t?.number ? `#${t.number}` : 'această tăviță'
+                  return <>Această acțiune va șterge permanent {num} și toate item-urile din ea. <strong className="text-red-600 dark:text-red-400">Ireversibil.</strong></>
+                })()}
+                {!props.trayToDelete && <>Această acțiune va șterge permanent tăvița și toate item-urile din ea. <strong className="text-red-600 dark:text-red-400">Ireversibil.</strong></>}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={props.onCancelDeleteTray} disabled={props.deletingTray}>Anulează</Button>
+              <Button variant="destructive" onClick={() => props.onConfirmDeleteTray()} disabled={props.deletingTray}>
+                {props.deletingTray ? 'Se șterge...' : 'Șterge'}
+              </Button>
+            </DialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         {selectedQuoteId && (
           <>
             <SplitTrayTechnicianDialog
@@ -902,6 +954,7 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
         onCurierTrimisChange={props.onCurierTrimisChange}
         onReturChange={props.onReturChange}
         onSubscriptionChange={props.onSubscriptionChange}
+        onDeleteTray={props.onDeleteTray}
       />
       <CreateTrayDialog
         open={props.showCreateTrayDialog}
@@ -1012,6 +1065,27 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
         onConfirm={props.onConfirmSendTrays}
         onCancel={props.onCancelSendTrays}
       />
+      <AlertDialog open={props.showDeleteTrayConfirmation} onOpenChange={(open) => { if (!open) props.onCancelDeleteTray() }}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ștergi tăvița?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {props.trayToDelete && (() => {
+                const t = quotesArray.find((q: LeadQuote) => q.id === props.trayToDelete)
+                const num = t?.number ? `#${t.number}` : 'această tăviță'
+                return <>Această acțiune va șterge permanent {num} și toate item-urile din ea. <strong className="text-red-600 dark:text-red-400">Ireversibil.</strong></>
+              })()}
+              {!props.trayToDelete && <>Această acțiune va șterge permanent tăvița și toate item-urile din ea. <strong className="text-red-600 dark:text-red-400">Ireversibil.</strong></>}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={props.onCancelDeleteTray} disabled={props.deletingTray}>Anulează</Button>
+            <Button variant="destructive" onClick={() => props.onConfirmDeleteTray()} disabled={props.deletingTray}>
+              {props.deletingTray ? 'Se șterge...' : 'Șterge'}
+            </Button>
+          </DialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

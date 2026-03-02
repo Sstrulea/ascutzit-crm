@@ -43,18 +43,18 @@ function isTodayRO(iso: string | null | undefined): boolean {
 }
 
 /** Pentru query items_events: limita inferioară (acum - 48h) ca să includem toată ziua curentă RO; filtrarea „azi” se face cu isTodayRO în memorie. */
-function getTwoDaysAgoISO(): string {
+function getThreeDaysAgoISO(): string {
   const d = new Date()
-  d.setDate(d.getDate() - 2)
+  d.setDate(d.getDate() - 3)
   return d.toISOString()
 }
 
-/** Fișa creată acum mai mult de 2 zile (data de azi minus data creării fișei > 2 zile) → COLET NERIDICAT. */
-function isOlderThanTwoDays(createdAtIso: string | null | undefined): boolean {
+/** Fișa creată acum mai mult de 3 zile (data de azi minus data creării fișei > 3 zile) → COLET NERIDICAT. */
+function isOlderThanThreeDays(createdAtIso: string | null | undefined): boolean {
   if (!createdAtIso) return false
   const created = new Date(createdAtIso).getTime()
-  const twoDaysAgo = Date.now() - 2 * 24 * 60 * 60 * 1000
-  return created < twoDaysAgo
+  const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000
+  return created < threeDaysAgo
 }
 
 const MS_24H = 24 * 60 * 60 * 1000
@@ -114,7 +114,7 @@ export class StandardPipelineStrategy implements PipelineStrategy {
         }) || null
       : null
 
-    // Stage "Colet Neridicat": fișe cu curier_trimis a căror dată de creare e mai veche de 2 zile (data azi - data creării > 2 zile)
+    // Stage "Colet Neridicat": fișe cu curier_trimis a căror dată de creare e mai veche de 3 zile (data azi - data creării > 3 zile)
     const coletNeridicatStage = isVanzari
       ? context.allStages.find(s => {
           if (s.pipeline_id !== context.pipelineId) return false
@@ -163,7 +163,7 @@ export class StandardPipelineStrategy implements PipelineStrategy {
           .select('item_id, payload, created_at')
           .eq('type', 'service_file')
           .eq('event_type', 'delivery_started')
-          .gte('created_at', getTwoDaysAgoISO())
+          .gte('created_at', getThreeDaysAgoISO())
         if (!context.isAdminOrOwner && context.currentUserId) {
           query = query.eq('actor_id', context.currentUserId)
         }
@@ -216,11 +216,11 @@ export class StandardPipelineStrategy implements PipelineStrategy {
           console.error('[StandardPipelineStrategy] Eroare la query service_files:', serviceFilesError)
         }
         
-        // Doar în Vânzări: carduri doar dacă evenimentul „a intrat în Curier Trimis” (delivery_started) este în ziua de azi (RO). Excluzem fișele mai vechi de 2 zile (acestea merg în COLET NERIDICAT).
+        // Doar în Vânzări: carduri doar dacă evenimentul „a intrat în Curier Trimis” (delivery_started) este în ziua de azi (RO). Excluzem fișele mai vechi de 3 zile (acestea merg în COLET NERIDICAT).
         const directServiceFiles = (rawCurierFiles || []).filter((sf: any) => {
           if (allowedCurierTrimisIds === null) return false
           if (!context.isAdminOrOwner && !context.currentUserId) return false
-          if (isOlderThanTwoDays(sf.created_at)) return false // mai vechi de 2 zile → COLET NERIDICAT
+          if (isOlderThanThreeDays(sf.created_at)) return false // mai vechi de 3 zile → COLET NERIDICAT
           return allowedCurierTrimisIds.has(sf.id)
         })
         
@@ -313,7 +313,7 @@ export class StandardPipelineStrategy implements PipelineStrategy {
     if (false && isVanzari && coletNeridicatStage) {
       try {
         const supabase = supabaseBrowser()
-        const twoDaysAgoISO = getTwoDaysAgoISO()
+        const threeDaysAgoISO = getThreeDaysAgoISO()
         const { data: rawColetNeridicatFiles, error: cnErr } = await supabase
           .from('service_files')
           .select(`
@@ -321,12 +321,12 @@ export class StandardPipelineStrategy implements PipelineStrategy {
             lead:leads(id, full_name, email, phone_number, created_at, campaign_name, ad_name, form_name, tray_details, details, city, company_name, company_address, address, address2, zip)
           `)
           .eq('curier_trimis', true)
-          .lt('created_at', twoDaysAgoISO)
+          .lt('created_at', threeDaysAgoISO)
 
         if (cnErr) {
           console.error('[StandardPipelineStrategy] Eroare la query service_files Colet Neridicat:', cnErr)
         } else if (rawColetNeridicatFiles && rawColetNeridicatFiles.length > 0) {
-          let coletNeridicatFiles = (rawColetNeridicatFiles as any[]).filter((sf: any) => isOlderThanTwoDays(sf.created_at) && sf.lead)
+          let coletNeridicatFiles = (rawColetNeridicatFiles as any[]).filter((sf: any) => isOlderThanThreeDays(sf.created_at) && sf.lead)
           // Exclude fișe care au ajuns deja în stage Colet ajuns
           if (coletNeridicatFiles.length > 0 && coletAjunsStage) {
             const cnSfIds = coletNeridicatFiles.map((sf: any) => sf.id)
