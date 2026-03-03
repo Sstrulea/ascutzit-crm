@@ -85,8 +85,12 @@ export default function PipelineEditor({
   }
 
   const handleSave = async () => {
-    await onSubmit({ pipelineName: name.trim(), stages: items })
-    onOpenChange(false)
+    try {
+      await onSubmit({ pipelineName: name.trim(), stages: items })
+      onOpenChange(false)
+    } catch {
+      // Eroare afișată de parent; dialogul rămâne deschis
+    }
   }
 
   return (

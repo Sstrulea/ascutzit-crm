@@ -973,11 +973,28 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
         return
       }
       
-      // Pentru alte cazuri (service_files sau tăvițe în alte pipeline-uri), doar update vizual
-      // OPTIMISTIC UPDATE: Actualizează UI-ul imediat pentru feedback vizual
-      setLeads(prev => prev.map(l => (l.id === leadId ? { ...l, stage: newStageName, stageId: newStage.id } : l)))
+      // Fișă de serviciu în Receptie: persistă mutarea în DB (altfel la refresh revine în stage-ul vechi)
+      if (leadAny.isFisa && isInReceptie && currentPipelineId) {
+        setLeads(prev => prev.map(l => (l.id === leadId ? { ...l, stage: newStageName, stageId: newStage.id } : l)))
+        const itemType = getItemType(lead)
+        const itemId = getItemId(lead)
+        lastMovedItemIdRef.current = itemId
+        lastMovedAtRef.current = Date.now()
+        try {
+          const { error: moveErr } = await moveItemToStage(itemType, itemId, currentPipelineId, newStage.id)
+          if (moveErr) {
+            setLeads(prev => prev.map(l => (l.id === leadId ? previousLead : l)))
+            setError('Failed to move card')
+            throw moveErr instanceof Error ? moveErr : new Error((moveErr as any)?.message ?? 'Mutarea fișei a eșuat')
+          }
+        } catch (err) {
+          throw err instanceof Error ? err : new Error('Mutarea fișei a eșuat')
+        }
+        return
+      }
       
-      // Pentru tăvițe/service_files în alte pipeline-uri, mutarea este doar vizuală
+      // Pentru tăvițe în pipeline-uri non-departament (ex. quote), doar update vizual
+      setLeads(prev => prev.map(l => (l.id === leadId ? { ...l, stage: newStageName, stageId: newStage.id } : l)))
       return
     }
     
@@ -1143,9 +1160,27 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
             toast.error('Arhivarea nu s-a putut finaliza. Verifică și reîncearcă.')
           }
         }
-        // Log mutare lead în Vânzări (fire-and-forget): nu blocăm UI-ul, mutarea = 1 call
+        // Receptie: la mutare fișă în „De trimis” / „Ridic personal” / „Office direct”, logăm stage_change cu payload.to
+        // ca strategia Receptie să păstreze stage-ul (altfel recalculează din tăvițe și pune cardul în „In lucru”).
         const effectivePipeline = pipelinesDataToUse.find((p: any) => p.id === usedPipelineId) || targetPipeline
         const pipelineName = String((effectivePipeline as any)?.name || '').toLowerCase()
+        const isReceptie = pipelineName.includes('receptie') || pipelineName.includes('recep')
+        if (isReceptie && itemType === 'service_file') {
+          const stageNorm = newStageNameLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          const isDeTrimisOrRidic = (stageNorm.includes('detrimis') || stageNorm.includes('de trimis') || stageNorm.includes('office') && stageNorm.includes('direct') || stageNorm.includes('ridic') && stageNorm.includes('personal'))
+          if (isDeTrimisOrRidic) {
+            logItemEvent(
+              'service_file',
+              itemId,
+              `Mutare în ${newStageName} (Receptie)`,
+              'stage_change',
+              { to: newStageName },
+              undefined,
+              { currentUserId: user?.id ?? undefined, currentUserName: user?.email?.split('@')[0] ?? null, currentUserEmail: user?.email ?? null }
+            ).catch((logErr) => console.error('[handleLeadMove] logItemEvent (Receptie de trimis/ridic):', logErr))
+          }
+        }
+        // Log mutare lead în Vânzări (fire-and-forget): nu blocăm UI-ul, mutarea = 1 call
         const isVanzari = pipelineName.includes('vanzari') || pipelineName.includes('sales')
         if (isVanzari && previousLead.stageId && newStage.id) {
           if (itemType === 'lead') {

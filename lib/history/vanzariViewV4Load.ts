@@ -205,12 +205,20 @@ export async function loadVanzariViewV4FromDb(
 
     const instrumentsOut = Array.from(instrumentsMap.values())
 
+    // Map tray_id -> număr tăviță (pentru grupare: tăvițe duplicate cu același număr = un singur rând)
+    const trayIdToNumber = new Map<string, string>()
+    for (const t of traysToUse) {
+      const num = String(t.number ?? '').trim().toLowerCase()
+      trayIdToNumber.set(t.id, num)
+    }
+
     // Normalizează datele: uneori în DB pot exista mai multe rânduri tray_items pentru
-    // același (instrument, serviciu, tăviță). Pentru UX, un serviciu ar trebui să apară
-    // o singură dată per instrument/tăviță, cu cantități însumate.
+    // același (instrument, serviciu, tăviță). La fel, pot exista mai multe tăvițe cu același
+    // număr (ID-uri diferite) – grupăm după numărul tăviței ca să nu apară același articol de două ori.
     const mergedServicesMap = new Map<string, V4LoadedService>()
     for (const svc of servicesOut) {
-      const key = `${svc.instrumentLocalId}__${svc.serviceId}__${svc.trayId ?? ''}`
+      const trayNumberKey = svc.trayId ? (trayIdToNumber.get(svc.trayId) ?? svc.trayId) : ''
+      const key = `${svc.instrumentLocalId}__${svc.serviceId}__${trayNumberKey}`
       const existing = mergedServicesMap.get(key)
       if (!existing) {
         mergedServicesMap.set(key, { ...svc })

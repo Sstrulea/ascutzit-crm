@@ -31,7 +31,7 @@ function isCurierTrimisStage(name: string): boolean {
 
 function isColetAjunsStage(name: string): boolean {
   const n = NORM(name)
-  return (n.includes('colet') && n.includes('ajuns')) || n.includes('colet_ajuns')
+  return (n.includes('colet') && n.includes('ajuns')) || n.includes('colet_ajuns') || (n.includes('tavite') && n.includes('raft'))
 }
 
 function isColetNeridicatStage(name: string): boolean {

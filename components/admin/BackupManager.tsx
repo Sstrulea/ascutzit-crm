@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Download, RefreshCw, Trash2, Database, Shield } from 'lucide-react';
+import { Loader2, Download, RefreshCw, Trash2, Database, Shield, Table2 } from 'lucide-react';
 
 interface BackupFile {
   filename: string;
@@ -32,6 +32,7 @@ export default function BackupManager() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [exportingSchema, setExportingSchema] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Încărcare backup-uri
@@ -114,6 +115,34 @@ export default function BackupManager() {
       showMessage('error', 'Eroare la ștergerea backup-ului');
     } finally {
       setDeleting(null);
+    }
+  };
+
+  // Export doar schema tabele (fără date)
+  const exportSchemaOnly = async () => {
+    try {
+      setExportingSchema(true);
+      const response = await fetch('/api/admin/export-schema', { credentials: 'include' });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        showMessage('error', data.error || 'Eroare la exportul schemei');
+        return;
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition');
+      const match = disposition?.match(/filename="?([^";]+)"?/);
+      const filename = match?.[1] || `schema-tables-${new Date().toISOString().slice(0, 10)}.json`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      showMessage('success', 'Schema tabele descărcată cu succes!');
+    } catch (error) {
+      showMessage('error', 'Eroare la descărcarea schemei tabele');
+    } finally {
+      setExportingSchema(false);
     }
   };
 
@@ -274,6 +303,20 @@ export default function BackupManager() {
         </Button>
 
         <Button
+          onClick={exportSchemaOnly}
+          disabled={exportingSchema}
+          variant="outline"
+          className="flex items-center gap-2"
+        >
+          {exportingSchema ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Table2 className="w-4 h-4" />
+          )}
+          Export doar tabele (schema)
+        </Button>
+
+        <Button
           onClick={loadBackups}
           disabled={loading}
           variant="outline"
@@ -310,6 +353,13 @@ export default function BackupManager() {
         <AlertDescription className="ml-2">
           <strong>Export Complet:</strong> Butonul "Export Complet Bază de Date" creează și descarcă automat
           un backup complet al tuturor datelor din baza de date într-un singur fișier JSON.
+        </AlertDescription>
+      </Alert>
+      <Alert>
+        <Table2 className="w-4 h-4" />
+        <AlertDescription className="ml-2">
+          <strong>Export doar tabele:</strong> "Export doar tabele (schema)" descarcă un JSON cu lista tabelelor
+          și coloanele fiecăruia, fără date (conform schemei din <code>docs/Data base.sql</code>).
         </AlertDescription>
       </Alert>
 

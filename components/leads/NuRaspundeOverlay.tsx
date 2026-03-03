@@ -395,7 +395,7 @@ export function NuRaspundeOverlay({
     const receptieStages = receptie.stages || []
     const coletAjunsStage = findStageByPattern(receptieStages, 'COLET_AJUNS')
     if (!coletAjunsStage) {
-      toast({ title: 'Eroare', description: 'Stage „Colet ajuns” negăsit în Recepție', variant: 'destructive' })
+      toast({ title: 'Eroare', description: 'Stage „TAVITE RAFT” (Colet ajuns) negăsit în Recepție', variant: 'destructive' })
       return
     }
     setRetrimiteLoading(true)

@@ -394,9 +394,9 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
             const eventType = ev?.event_type || ''
             const toStageLower = typeof toStage === 'string' ? toStage.toLowerCase() : ''
             
-            // Verifică dacă este mutare în "Colet Ajuns"
+            // Verifică dacă este mutare în "Colet Ajuns" / "TAVITE RAFT"
             if (eventType === 'colet_ajuns' || 
-                (eventType === 'stage_change' && toStageLower.includes('colet') && toStageLower.includes('ajuns'))) {
+                (eventType === 'stage_change' && (toStageLower.includes('colet') && toStageLower.includes('ajuns') || toStageLower.includes('tavite') && toStageLower.includes('raft')))) {
               if (!coletAjunsMap.has(itemId)) {
                 coletAjunsMap.set(itemId, createdAt)
               }
@@ -958,8 +958,8 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
         // Fallback: dacă nu găsim în items_events, verifică dacă service file-ul este în "Colet Ajuns"
         // și folosește updated_at când a ajuns acolo
         if (!coletAjunsAt && coletAjunsStage) {
-          const currentStageName = String((pipelineItem as any)?.stage?.name || '').toLowerCase()
-          const isInColetAjuns = currentStageName.includes('colet') && currentStageName.includes('ajuns')
+          const currentStageName = String((pipelineItem as any)?.stage?.name || '')
+          const isInColetAjuns = matchesStagePattern(currentStageName, 'COLET_AJUNS')
           
           if (isInColetAjuns) {
             // Dacă este în "Colet Ajuns", folosește updated_at

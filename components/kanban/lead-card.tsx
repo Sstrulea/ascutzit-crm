@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, useMemo, useRef } from "react"
-import { MoreHorizontal, Mail, Calendar, Clock, User, Phone, Pin, Trash2, CheckCircle2, Circle, Building2, Sparkles, Scissors, Wrench, Building, PhoneOff, PhoneCall, PhoneMissed, XCircle, Info, Package, Pencil, Tag, MessageCircle, UserCheck, UserX, Archive, Loader2 } from "lucide-react"
+import { MoreHorizontal, Mail, Calendar, Clock, User, Phone, Pin, Trash2, CheckCircle2, Circle, Building2, Sparkles, Scissors, Wrench, Building, PhoneOff, PhoneCall, PhoneMissed, XCircle, Info, Package, Pencil, Tag, MessageCircle, UserCheck, UserX, Archive, Loader2, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -23,7 +23,7 @@ import { isTagHiddenFromUI } from "@/hooks/leadDetails/useLeadDetailsTags"
 import { deleteLead, updateLead, updateLeadWithHistory, logLeadEvent, logButtonEvent } from "@/lib/supabase/leadOperations"
 import { setLeadNoDeal, setLeadCurierTrimis, setLeadOfficeDirect } from "@/lib/vanzari/leadOperations"
 import { recordVanzariApelForDeliveryByStageName } from "@/lib/supabase/vanzariApeluri"
-import { deleteServiceFile, deleteTray, updateServiceFileWithHistory, updateTray } from "@/lib/supabase/serviceFileOperations"
+import { deleteServiceFile, deleteTray, updateServiceFile, updateServiceFileWithHistory, updateTray } from "@/lib/supabase/serviceFileOperations"
 import { supabaseBrowser } from "@/lib/supabase/supabaseClient"
 import { CallbackDialog } from "@/components/leads/vanzari/CallbackDialog"
 import { NuRaspundeDialog } from "@/components/leads/vanzari/NuRaspundeDialog"
@@ -32,7 +32,7 @@ import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns"
 import { ro } from "date-fns/locale"
 import { useToast } from "@/hooks/use-toast"
 import { formatExactDuration } from "@/lib/utils/service-time"
-import { isLivrariOrCurierAjunsAziStage, isLivrariOrCurierAjunsStage } from "@/lib/supabase/kanban/constants"
+import { isLivrariOrCurierAjunsAziStage, isLivrariOrCurierAjunsStage, matchesStagePattern } from "@/lib/supabase/kanban/constants"
 
 /** Render details text: Instrument/Problemă în bold roșu; Număr De Telefon în albastru marin bold. */
 function renderDetailsWithRedHighlight(text: string): React.ReactNode {
@@ -109,12 +109,14 @@ interface LeadCardProps {
   onSunaTagAdded?: (leadId: string) => void
   /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
   onSunaTagRemoved?: (leadId: string, phone: string | undefined) => void
+  /** Receptie – Colet Neridicat: afișează buton vizibil „Tag” pe card (atribuire per card) */
+  showTagButton?: boolean
 }
 
 /** Taguri care nu apar în popup-ul „Taguri” de pe card (nu pot fi alocate de aici). */
 const TAGURI_ASCUNSE_DIN_POPUP = ['Follow Up', 'Frizerii', 'Horeca', 'Nevalidata', 'PINNED', 'Reparatii', 'Retur', 'RETUR', 'Saloane']
 
-export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDragging, stages, onPinToggle, isSelected = false, onSelectChange, leadTotal = 0, pipelineName, onRefresh, onClaimChange, onTagsChange, onDeliveryClear, showArchiveButton, onArchive, onNuRaspundeClearedForReceptie, onSunaTagAdded, onSunaTagRemoved }: LeadCardProps) {
+export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDragging, stages, onPinToggle, isSelected = false, onSelectChange, leadTotal = 0, pipelineName, onRefresh, onClaimChange, onTagsChange, onDeliveryClear, showArchiveButton, onArchive, onNuRaspundeClearedForReceptie, onSunaTagAdded, onSunaTagRemoved, showTagButton = false }: LeadCardProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -147,6 +149,10 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
   const [assignableTagsList, setAssignableTagsList] = useState<{ id: string; name: string; color: TagColor }[]>([])
   const [loadingTags, setLoadingTags] = useState(false)
   const [togglingTagId, setTogglingTagId] = useState<string | null>(null)
+  const [showCurierTrimisOverlay, setShowCurierTrimisOverlay] = useState(false)
+  const [curierTrimisDate, setCurierTrimisDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [curierTrimisTime, setCurierTrimisTime] = useState('10:00')
+  const [isSavingCurierTrimisMove, setIsSavingCurierTrimisMove] = useState(false)
   const [unassigningTrayId, setUnassigningTrayId] = useState<string | null>(null)
   const ignoreNextCardClickRef = useRef<boolean>(false)
   
@@ -156,7 +162,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
   // Indicator vizual pentru "Colet ajuns" - starea tăvițelor în departamente
   const [trayStatus, setTrayStatus] = useState<'red' | 'yellow' | 'green' | 'purple' | 'loading' | null>(null)
   const [trayDetails, setTrayDetails] = useState<any[]>([])  // Detaliile tăvițelor pentru a afișa pipeline-ul
-  const isInColetAjunsStage = (lead.stage || '').toLowerCase() === 'colet ajuns'
+  const isInColetAjunsStage = matchesStagePattern(lead.stage || '', 'COLET_AJUNS')
   
   // Încarcă status-ul tăvițelor dacă este în stage-ul "Colet ajuns"
   useEffect(() => {
@@ -594,7 +600,10 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
   const followUpCallbackAt = (lead as any).follow_up_callback_at
   const followUpOra = followUpCallbackAt || followUpSetAt
   const isFollowUpInLeaduri = isInLeaduriStage && !!hasFollowUp
-  const isInCurierTrimisStage = (lead.stage || '').toLowerCase().includes('curier')
+  const isInCurierTrimisStage = (lead.stage || '').toLowerCase().includes('curier') && (lead.stage || '').toLowerCase().includes('trimis')
+  const curierTrimisStageName = stages?.find(s => /curier\s*trimis/i.test(s))
+  const isInColetNeridicatStage = (lead.stage || '').toLowerCase().includes('colet') && (lead.stage || '').toLowerCase().includes('neridicat')
+  const showMoveToCurierTrimisButton = !!(pipelineName?.toLowerCase().includes('receptie') && isInColetNeridicatStage && curierTrimisStageName)
   const isInOfficeDirectStage = (lead.stage || '').toLowerCase().includes('office') && (lead.stage || '').toLowerCase().includes('direct')
   const hasCurierTrimisTag = (lead.tags || []).some((t: { name?: string }) => (t?.name || '').trim() === 'Curier Trimis')
   const hasOfficeDirectTag = (lead.tags || []).some((t: { name?: string }) => (t?.name || '').trim() === 'Office direct')
@@ -765,6 +774,17 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
     onSelectChange?.(checked)
   }
 
+  const handleCopyName = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const name = (lead?.name ?? "").trim() || "N/A"
+    try {
+      await navigator.clipboard.writeText(name)
+      toast({ title: "Nume copiat", description: "Numele clientului a fost copiat în clipboard." })
+    } catch {
+      toast({ variant: "destructive", title: "Eroare", description: "Nu s-a putut copia numele." })
+    }
+  }
+
   const handleStageSelect = (newStage: string) => {
     ignoreNextCardClickRef.current = true
     // Blochează mutarea în stage-urile restricționate în Receptie
@@ -794,6 +814,29 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
     
     onMove(lead.id, newStage)
     setIsMenuOpen(false)
+  }
+
+  const handleCurierTrimisConfirm = async () => {
+    if (!curierTrimisStageName || isSavingCurierTrimisMove) return
+    const dateTimeIso = `${curierTrimisDate}T${curierTrimisTime}:00.000Z`
+    setIsSavingCurierTrimisMove(true)
+    try {
+      if (itemType === 'service_file') {
+        const { error: sfErr } = await updateServiceFile(lead.id, { curier_trimis: true, curier_scheduled_at: dateTimeIso })
+        if (sfErr) throw sfErr
+        const leadId = (lead as any).leadId || (lead as any).lead_id
+        if (leadId && currentUser?.id) {
+          updateLead(leadId, { curier_trimis_at: dateTimeIso, curier_trimis_user_id: currentUser.id }).catch(() => {})
+        }
+      }
+      onMove(lead.id, curierTrimisStageName)
+      setShowCurierTrimisOverlay(false)
+      toast({ title: 'Mutat în Curier Trimis', description: `Data programării curierului: ${curierTrimisDate} ${curierTrimisTime}` })
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Eroare', description: err?.message ?? 'Nu s-a putut actualiza data sau muta cardul.' })
+    } finally {
+      setIsSavingCurierTrimisMove(false)
+    }
   }
 
   const handlePinToggle = async (e: React.MouseEvent) => {
@@ -1036,18 +1079,33 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                         </div>
                       </HoverCardContent>
                     </HoverCard>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 rounded-full flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                      onClick={handleCopyName}
+                      title="Copiază numele clientului"
+                      data-menu
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
                     {leadIdForTags && (
                       <Popover open={tagPopoverOpen} onOpenChange={(open) => { setTagPopoverOpen(open); if (open) logButtonEvent({ leadId: leadIdForDb, buttonId: 'vanzariCardTagButton', buttonLabel: 'Taguri', actorOption }).catch(() => {}) }}>
                         <PopoverTrigger asChild>
                           <Button
-                            variant="ghost"
+                            variant={showTagButton ? "secondary" : "ghost"}
                             size="sm"
-                            className="h-6 w-6 p-0 rounded-full flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                            className={cn(
+                              "flex-shrink-0 text-muted-foreground hover:text-foreground",
+                              showTagButton ? "h-7 px-2 gap-1 text-xs font-medium" : "h-6 w-6 p-0 rounded-full hover:bg-muted/80"
+                            )}
                             onClick={(e) => e.stopPropagation()}
                             data-menu
+                            data-button-id={showTagButton ? "coletNeridicatCardTagButton" : undefined}
                             title="Atribuie taguri"
                           >
                             <Tag className="h-3.5 w-3.5" />
+                            {showTagButton && <span>Tag</span>}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent side="top" align="end" className="w-64 p-3" onClick={(e) => e.stopPropagation()}>
@@ -1307,11 +1365,16 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                   </div>
                 </div>
               ) : (lead.isQuote || (lead as any).type === 'tray') ? (
-                // Afișare minimalistă pentru tăviță (tray)
+                // Afișare minimalistă pentru tăviță (tray) – nume și telefon vizibile
                 <>
-                  {/* Header: Client (fără suma în header) */}
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-sm text-foreground truncate">{lead.name}</h4>
+                  <div className="flex-1 min-w-0 space-y-0.5">
+                    <h4 className="font-medium text-sm text-foreground break-words leading-tight">{lead.name}</h4>
+                    {lead.phone && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0 overflow-hidden">
+                        <Phone className="h-3 w-3 flex-shrink-0" />
+                        <span className="whitespace-nowrap overflow-hidden text-ellipsis" title={lead.phone}>{lead.phone}</span>
+                      </div>
+                    )}
                     {((lead as any).trayNumber || (lead as any).isSplitChild) && (
                       <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                         {(lead as any).trayNumber && (
@@ -1325,13 +1388,6 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                       </div>
                     )}
                   </div>
-                  
-                  {lead.phone && (
-                    <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                      <Phone className="h-3 w-3 flex-shrink-0" />
-                      <span className="truncate">{lead.phone}</span>
-                    </div>
-                  )}
                   
                   {/* Info row: Tehnicieni + Timp estimat + Timp lucrat */}
                   {(lead.technician || (lead as any).technician2 || (lead as any).technician3 || (lead as any).estimatedTime) && (
@@ -1378,23 +1434,22 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                   )}
                 </>
               ) : (lead as any).type === 'service_file' ? (
-                // Afișare minimalistă pentru fișă de serviciu (fără status aici; statusul e la MIJLOC)
+                // Afișare minimalistă pentru fișă de serviciu – nume și telefon vizibile, fără tăiere
                 <>
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-medium text-foreground truncate text-sm">{lead.name}</h4>
-                    {(lead as any).serviceFileNumber && (
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        #{(lead as any).serviceFileNumber}
-                      </span>
-                    )}
-                  </div>
-                  
-                  {lead.phone && (
-                    <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                      <Phone className="h-3 w-3" />
-                      <span className="truncate">{lead.phone}</span>
+                  <div className="min-w-0 space-y-1">
+                    <h4 className="font-semibold text-sm text-foreground break-words leading-tight">{lead.name}</h4>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                      {lead.phone && (
+                        <span className="flex items-center gap-1 min-w-0 max-w-full overflow-hidden">
+                          <Phone className="h-3 w-3 flex-shrink-0" />
+                          <span className="whitespace-nowrap overflow-hidden text-ellipsis" title={lead.phone}>{lead.phone}</span>
+                        </span>
+                      )}
+                      {(lead as any).serviceFileNumber && (
+                        <span className="whitespace-nowrap">#Fisa {(lead as any).serviceFileNumber}</span>
+                      )}
                     </div>
-                  )}
+                  </div>
                   {/* Buton "Nu A Venit" pentru fișe în Office Direct */}
                   {itemType === 'service_file' && isInOfficeDirectStage && (
                     <Button
@@ -1469,10 +1524,10 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                   )}
                 </>
               ) : (
-                // Afișare pentru lead / service_file
+                // Afișare pentru lead / service_file – nume și telefon vizibile
                 <>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-medium text-foreground truncate">{lead.name}</h4>
+                  <div className="flex flex-wrap items-start gap-2 mb-1">
+                    <h4 className="font-semibold text-sm text-foreground break-words leading-tight min-w-0">{lead.name}</h4>
                     {isNewBadgeVisible && (
                       <span 
                         className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-sm animate-pulse border border-red-300 cursor-help"
@@ -1515,9 +1570,9 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                   )}
                   
                   {lead.phone && (
-                    <div className="flex items-center gap-1 mt-1">
+                    <div className="flex items-center gap-1 mt-1 min-w-0">
                       <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                      <p className="text-xs text-muted-foreground truncate">{lead.phone}</p>
+                      <p className="text-xs text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis max-w-[180px]" title={lead.phone}>{lead.phone}</p>
                     </div>
                   )}
                   
@@ -1603,8 +1658,9 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
 
           {/* Controale (dreapta) - ascunse pentru card Vânzări lead/fișă (sunt în grid) */}
           {!(pipelineName && pipelineName.toLowerCase().includes('vanzari') && !((lead as any).type === 'tray') && !lead.isQuote) && (
+          <div className={cn("flex gap-1", isInColetNeridicatStage ? "flex-col" : "flex-row items-center")}>
+          {/* Rând 1 (Colet Neridicat) sau toate într-un rând: mesaje, copiază, Curier Trimis, Tag */}
           <div className="flex items-center gap-1">
-          {/* Iconiță mesaje: badge cu număr (Receptie – fișă; departamente – tăviță; alte pipeline-uri – lead/fișă) */}
           {(itemType === 'lead' || itemType === 'service_file' || itemType === 'tray') && (lead as any).userMessageCount != null && (lead as any).userMessageCount > 0 && (
             <span className="relative inline-flex h-6 w-6 flex-shrink-0 items-center justify-center text-muted-foreground" title="Mesaje de la utilizatori">
               <MessageCircle className="h-3.5 w-3.5" />
@@ -1613,7 +1669,96 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
               </span>
             </span>
           )}
-          {/* Checkbox pentru selectie multipla */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted/80"
+            onClick={handleCopyName}
+            title="Copiază numele clientului"
+            data-menu
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+          {showMoveToCurierTrimisButton && curierTrimisStageName && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 w-6 p-0 flex-shrink-0 border-sky-300 text-sky-700 hover:bg-sky-50 dark:border-sky-600 dark:text-sky-300 dark:hover:bg-sky-950/50"
+              onClick={(e) => {
+                e.stopPropagation()
+                const existing = (lead as any).curier_scheduled_at
+                if (existing) {
+                  try {
+                    const d = new Date(existing)
+                    setCurierTrimisDate(d.toISOString().slice(0, 10))
+                    setCurierTrimisTime(d.toTimeString().slice(0, 5))
+                  } catch {
+                    setCurierTrimisDate(new Date().toISOString().slice(0, 10))
+                    setCurierTrimisTime('10:00')
+                  }
+                } else {
+                  setCurierTrimisDate(new Date().toISOString().slice(0, 10))
+                  setCurierTrimisTime('10:00')
+                }
+                setShowCurierTrimisOverlay(true)
+              }}
+              title="Mută cardul în Curier Trimis"
+              data-menu
+            >
+              <Package className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {showTagButton && leadIdForTags && (
+            <Popover open={tagPopoverOpen} onOpenChange={(open) => { setTagPopoverOpen(open); if (open && leadIdForDb) logButtonEvent({ leadId: leadIdForDb, buttonId: 'receptieCardTagButton', buttonLabel: 'Taguri', actorOption }).catch(() => {}) }}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className={cn("flex-shrink-0", isInColetNeridicatStage ? "h-6 w-6 p-0" : "h-7 px-2 gap-1 text-xs font-medium")}
+                  onClick={(e) => e.stopPropagation()}
+                  data-menu
+                  data-button-id="coletNeridicatCardTagButton"
+                  title="Atribuie taguri"
+                >
+                  <Tag className="h-3.5 w-3.5" />
+                  {!isInColetNeridicatStage && <span>Tag</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="end" className="w-64 p-3" onClick={(e) => e.stopPropagation()}>
+                <div className="font-medium text-sm mb-2">Taguri</div>
+                {loadingTags ? (
+                  <div className="text-xs text-muted-foreground">Se încarcă...</div>
+                ) : assignableTagsList.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">Nu există taguri configurate.</div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {assignableTagsList.map((tag) => {
+                      const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string }[]) : []
+                      const isSelected = currentTags.some((t) => t.id === tag.id)
+                      const isToggling = togglingTagId === tag.id
+                      return (
+                        <Badge
+                          key={tag.id}
+                          variant={isSelected ? "default" : "outline"}
+                          className={cn(
+                            "cursor-pointer transition-all text-xs font-medium",
+                            isSelected ? tagClass(tag.color) : "bg-muted/50 hover:bg-muted"
+                          )}
+                          onClick={() => handleToggleAssignTag(tag.id)}
+                        >
+                          {tag.name}
+                          {isToggling ? "..." : ""}
+                        </Badge>
+                      )
+                    })}
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+          )}
+          </div>
+          {/* Rând 2 (Colet Neridicat) sau același rând: Checkbox, Pin, Arhivă; „Mai mult” doar în afara Colet Neridicat */}
+          <div className="flex items-center gap-1">
           {onSelectChange && (
             <div className="flex-shrink-0" data-checkbox onClick={(e) => e.stopPropagation()}>
               <Checkbox
@@ -1623,8 +1768,6 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
               />
             </div>
           )}
-          
-          {/* Butonul Pin - ascuns în pipeline-ul Vânzări */}
           {(!pipelineName || !pipelineName.toLowerCase().includes('vanzari')) && (
             <Button
               variant="ghost"
@@ -1663,6 +1806,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
               {isArchiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
             </Button>
           )}
+          {!isInColetNeridicatStage && (
           <DropdownMenu open={isMenuOpen} onOpenChange={(open) => { setIsMenuOpen(open); if (open && leadIdForDb) logButtonEvent({ leadId: leadIdForDb, buttonId: 'vanzariCardMenuButton', buttonLabel: 'Meniu', actorOption }).catch(() => {}) }}>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="h-6 w-6 p-0" data-menu onClick={(e) => e.stopPropagation()}>
@@ -1727,6 +1871,8 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
+          </div>
           </div>
           )}
         </div>
@@ -2230,6 +2376,53 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
             <DialogFooter>
               <Button onClick={() => handleDeliveryConfirm()} disabled={isSavingDelivery}>
                 {isSavingDelivery ? "Se salvează..." : "Confirmă"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Overlay Curier Trimis (Colet Neridicat): selectezi data, se actualizează în DB, apoi cardul se mută în Curier Trimis */}
+      {showMoveToCurierTrimisButton && curierTrimisStageName && (
+        <Dialog open={showCurierTrimisOverlay} onOpenChange={(open) => { setShowCurierTrimisOverlay(open); if (!open) { setCurierTrimisDate(new Date().toISOString().slice(0, 10)); setCurierTrimisTime('10:00') } }}>
+          <DialogContent className="sm:max-w-[400px]" onClick={(e) => e.stopPropagation()}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-sky-600" />
+                Mută în Curier Trimis
+              </DialogTitle>
+              <DialogDescription>
+                Alege data și ora pentru programarea curierului. Data veche (dacă există) va fi înlocuită în baza de date, apoi cardul fișei se mută în stage-ul Curier Trimis.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="curier-trimis-date">Data</Label>
+                  <Input
+                    id="curier-trimis-date"
+                    type="date"
+                    value={curierTrimisDate}
+                    onChange={(e) => setCurierTrimisDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="curier-trimis-time">Ora</Label>
+                  <Input
+                    id="curier-trimis-time"
+                    type="time"
+                    value={curierTrimisTime}
+                    onChange={(e) => setCurierTrimisTime(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCurierTrimisOverlay(false)}>
+                Anulare
+              </Button>
+              <Button onClick={handleCurierTrimisConfirm} disabled={isSavingCurierTrimisMove}>
+                {isSavingCurierTrimisMove ? 'Se salvează...' : 'Confirmă și mută'}
               </Button>
             </DialogFooter>
           </DialogContent>

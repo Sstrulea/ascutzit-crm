@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
     const updatedIds = (data || []).map((r: { id?: string }) => r.id).filter(Boolean)
     const nowIso = new Date().toISOString()
-    const stageName = 'Colet ajuns'
+    const stageName = 'TAVITE RAFT'
 
     if (updatedIds.length > 0) {
       const eventRows = updatedIds.map((item_id: string) => ({

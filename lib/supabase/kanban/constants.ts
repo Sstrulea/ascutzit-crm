@@ -22,7 +22,7 @@ export const STAGE_PATTERNS = {
   DE_FACTURAT: ['facturat', 'to invoice', 'de facturat', 'de facturată'],
   NOUA: ['noua', 'new', 'nouă'],
   ASTEPT_PIESE: ['astept piese', 'asteptare piese', 'waiting parts', 'aștept piese', 'așteptare piese'],
-  COLET_AJUNS: ['colet ajuns', 'colet ajuns la', 'colet a ajuns', 'colet-ajuns', 'coletajuns'],
+  COLET_AJUNS: ['colet ajuns', 'colet ajuns la', 'colet a ajuns', 'colet-ajuns', 'coletajuns', 'tavite raft', 'tăvițe raft'],
   COLET_NERIDICAT: ['colet neridicat', 'colet-neridicat', 'neridicat'],
   DE_TRIMIS: ['de trimis', 'detrimis', 'to send', 'trimis'],
   RIDIC_PERSONAL: ['ridic personal', 'ridicpersonal', 'ridica personal', 'ridică personal'],

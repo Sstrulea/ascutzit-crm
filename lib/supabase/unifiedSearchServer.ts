@@ -6,7 +6,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { searchTraysGloballyWithClient } from './traySearchServer'
-import { normalizePhoneNumber, getPhoneVariants, removeDiacritics } from '@/lib/utils'
+import { normalizePhoneNumber, getPhoneVariants, removeDiacritics, getDiacriticVariants } from '@/lib/utils'
 
 export type UnifiedSearchItemType = 'lead' | 'service_file' | 'tray'
 
@@ -196,22 +196,21 @@ async function searchViaDirectQueries(
       rawResults.push(row)
     }
 
-    // 1. LEADS: nume (token-based, ordine independentă + diacritice)
+    // 1. LEADS: nume (token-based; diacritice ignorate: "popescu" găsește "Popeșcu")
     const nameTokens = termNorm
       .toLowerCase()
       .split(/\s+/)
       .filter((w) => w.length > 0)
     let leadsByName: Array<{ id: string; full_name: string | null; company_name: string | null; phone_number: string | null; email: string | null }> = []
     if (nameTokens.length > 0) {
+      const firstTokenVariants = getDiacriticVariants(nameTokens[0])
+      const orParts = firstTokenVariants.map((v) => `full_name.ilike.%${v}%`)
       let q = supabase
         .from('leads')
         .select('id, full_name, company_name, phone_number, email')
-        .limit(LIMIT_PER_TYPE * 2)
-      for (const token of nameTokens) {
-        q = q.ilike('full_name', `%${token}%`)
-      }
+        .limit(LIMIT_PER_TYPE * 4)
+      q = orParts.length > 0 ? q.or(orParts.join(',')) : q.ilike('full_name', `%${nameTokens[0]}%`)
       const { data: d } = await q.order('full_name', { ascending: true, nullsFirst: false })
-      // Filtrare în memorie: toate token-urile (sau varianta fără diacritice) trebuie să apară în nume
       const normTokens = nameTokens.map((t) => t.toLowerCase())
       leadsByName = (d || []).filter((l) => {
         const name = (l.full_name || '').toLowerCase()
@@ -220,12 +219,13 @@ async function searchViaDirectQueries(
       }) as typeof leadsByName
     }
 
-    // 1b. LEADS: companie, email (ilike)
+    // 1b. LEADS: companie (cu variante diacritice), email (ilike)
+    const companyVariants = getDiacriticVariants(termNorm).map((v) => `company_name.ilike.%${v}%`)
     const { data: leadsByCompany } = await supabase
       .from('leads')
       .select('id, full_name, company_name, phone_number, email')
-      .ilike('company_name', termLike)
       .limit(LIMIT_PER_TYPE)
+      .or(companyVariants.length > 0 ? companyVariants.join(',') : `company_name.ilike.${termLike}`)
     const { data: leadsByEmail } = await supabase
       .from('leads')
       .select('id, full_name, company_name, phone_number, email')
@@ -278,8 +278,13 @@ async function searchViaDirectQueries(
       push({ type: 'lead', id: leadId, title, subtitle: subtitle || undefined, openId: leadId, fallbackSlug: 'vanzari', fallbackName: 'Vânzări', leadId, matchedBy })
     }
 
-    // 2. LEADS + FIȘE + TĂVIȚE: tag (lead_tags + tags)
-    const { data: tagsByName } = await supabase.from('tags').select('id').ilike('name', termLike).limit(20)
+    // 2. LEADS + FIȘE + TĂVIȚE: tag (lead_tags + tags; diacritice ignorate)
+    const tagNameVariants = getDiacriticVariants(termNorm).map((v) => `name.ilike.%${v}%`)
+    const { data: tagsByName } = await supabase
+      .from('tags')
+      .select('id')
+      .limit(20)
+      .or(tagNameVariants.length > 0 ? tagNameVariants.join(',') : `name.ilike.${termLike}`)
     const tagIds = (tagsByName || []).map((t: { id: string }) => t.id).filter(Boolean)
     if (tagIds.length > 0) {
       const { data: leadTagsRows } = await supabase.from('lead_tags').select('lead_id').in('tag_id', tagIds)
@@ -298,8 +303,13 @@ async function searchViaDirectQueries(
       }
     }
 
-    // 3. Tehnician: app_members (name ilike) → user_id; trays (technician_id / 2 / 3) → lead_id
-    const { data: members } = await supabase.from('app_members').select('user_id, name').ilike('name', termLike).limit(30)
+    // 3. Tehnician: app_members (name ilike, diacritice ignorate) → user_id; trays (technician_id / 2 / 3) → lead_id
+    const memberNameVariants = getDiacriticVariants(termNorm).map((v) => `name.ilike.%${v}%`)
+    const { data: members } = await supabase
+      .from('app_members')
+      .select('user_id, name')
+      .limit(30)
+      .or(memberNameVariants.length > 0 ? memberNameVariants.join(',') : `name.ilike.${termLike}`)
     const technicianUserIds = [...new Set((members || []).map((m: { user_id: string }) => m.user_id).filter(Boolean))]
     if (technicianUserIds.length > 0) {
       const orParts = technicianUserIds.flatMap((uid) => [`technician_id.eq.${uid}`, `technician2_id.eq.${uid}`, `technician3_id.eq.${uid}`])
