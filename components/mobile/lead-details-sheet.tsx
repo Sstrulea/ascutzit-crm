@@ -23,7 +23,7 @@ import { uploadTrayImage, deleteTrayImage, listTrayImages, saveTrayImageReferenc
 import { moveItemToStage } from '@/lib/supabase/pipelineOperations'
 import { startWorkSession } from '@/lib/supabase/workSessionOperations'
 import { logTrayItemChange, logLeadEvent, updateLeadWithHistory, getTrayDetails, logItemEvent, getPipelineStageDetails, logTrayImageAdded, logTrayImageDeleted } from '@/lib/supabase/leadOperations'
-import { toggleLeadTag } from '@/lib/supabase/tagOperations'
+import { toggleLeadTag, getTagColorClassWithBorder } from '@/lib/supabase/tagOperations'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/contexts/AuthContext'
 import { toast } from 'sonner'
@@ -1678,16 +1678,8 @@ export function LeadDetailsSheet({
     }
   }
 
-  const getTagColor = (color?: string) => {
-    switch (color) {
-      case 'green': return 'bg-green-100 text-green-800 border-green-200'
-      case 'yellow': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'red': return 'bg-red-100 text-red-800 border-red-200'
-      case 'blue': return 'bg-blue-100 text-blue-800 border-blue-200'
-      case 'orange': return 'bg-orange-100 text-orange-800 border-orange-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
-    }
-  }
+  const getTagColor = (color?: string) =>
+    color ? getTagColorClassWithBorder(color) : 'bg-gray-100 text-gray-800 border-gray-200'
 
   const getStatusLabel = (status: string) => {
     const statusMap: Record<string, string> = {
@@ -1720,8 +1712,8 @@ export function LeadDetailsSheet({
         side="bottom" 
         className="h-[90vh] max-h-[100dvh] flex flex-col overflow-hidden p-4 sm:p-6 rounded-t-2xl pb-[max(1.5rem,env(safe-area-inset-bottom))]"
       >
-        <SheetHeader className="mb-4 flex-shrink-0 pb-2">
-          <SheetTitle className="text-xl font-semibold leading-tight">{lead.name || 'Fără nume'}</SheetTitle>
+        <SheetHeader className="mb-4 flex-shrink-0 pb-2 pr-12">
+          <SheetTitle className="text-xl font-semibold leading-tight truncate">{lead.name || 'Fără nume'}</SheetTitle>
           <SheetDescription className="text-muted-foreground text-sm mt-1">
             {lead?.stage ?? ''} • {getTimeAgo((lead as any)?.createdAt ?? (lead as any)?.created_at ?? '')}
           </SheetDescription>

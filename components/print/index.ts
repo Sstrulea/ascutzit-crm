@@ -7,6 +7,7 @@
 
 export { PrintView } from './print-view'
 export { PrintTraysView } from './print-trays-view'
+export { PrintPredarePrimireView } from './print-predare-primire-view'
 
 
 

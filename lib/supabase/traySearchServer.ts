@@ -1,9 +1,11 @@
 /**
  * Căutare tăvițe pe server (API routes). Nu folosește supabaseBrowser – primește
  * clientul Supabase creat pe server (createApiSupabaseClient / createAdminClient).
+ * Căutarea ignoră diacritice: "tavita" găsește "tăviță", "38m" etc.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { removeDiacritics, getDiacriticVariants } from '@/lib/utils'
 
 export interface TraySearchResultServer {
   trayId: string
@@ -28,7 +30,9 @@ export async function searchTraysGloballyWithClient(
     }
 
     const searchTerm = query.trim()
-    const searchTermLower = searchTerm.toLowerCase()
+    const termNorm = removeDiacritics(searchTerm).toLowerCase()
+    const numberVariants = getDiacriticVariants(termNorm).map((v) => `number.ilike.%${v}%`)
+    const numberOr = numberVariants.length > 0 ? numberVariants.join(',') : `number.ilike.%${searchTerm}%`
 
     const { data: traysByNumber } = await supabase
       .from('trays')
@@ -43,7 +47,7 @@ export async function searchTraysGloballyWithClient(
           lead:leads!inner(id, full_name, email, phone_number)
         )
       `)
-      .or(`number.ilike.%${searchTermLower}%`)
+      .or(numberOr)
 
     const results: TraySearchResultServer[] = []
 

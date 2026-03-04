@@ -94,11 +94,11 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
     const supabase = supabaseBrowser()
     logReceptieDb("supabase.from('service_files').select(...) office_direct/curier_trimis", false)
     const selectWithColet = `
-      id, lead_id, number, status, created_at, office_direct, curier_trimis, colet_neridicat, urgent, nu_raspunde_callback_at,
+      id, lead_id, number, status, created_at, office_direct, curier_trimis, curier_scheduled_at, colet_neridicat, urgent, nu_raspunde_callback_at,
       lead:leads(id, full_name, email, phone_number, created_at, campaign_name, ad_name, form_name, tray_details, details, city, company_name, company_address, address, address2, zip)
     `
     const selectWithoutColet = `
-      id, lead_id, number, status, created_at, office_direct, curier_trimis, urgent, nu_raspunde_callback_at,
+      id, lead_id, number, status, created_at, office_direct, curier_trimis, curier_scheduled_at, urgent, nu_raspunde_callback_at,
       lead:leads(id, full_name, email, phone_number, created_at, campaign_name, ad_name, form_name, tray_details, details, city, company_name, company_address, address, address2, zip)
     `
     let directServiceFilesRaw: any[] | null = null

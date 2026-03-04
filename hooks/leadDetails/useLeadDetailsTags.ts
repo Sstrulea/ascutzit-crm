@@ -4,7 +4,7 @@
 
 import { useCallback, useMemo } from 'react'
 import { toggleLeadTag } from '@/lib/supabase/tagOperations'
-import type { Tag, TagColor } from '@/lib/supabase/tagOperations'
+import { getTagColorClass, type Tag, type TagColor } from '@/lib/supabase/tagOperations'
 import { updateLead, logLeadEvent } from '@/lib/supabase/leadOperations'
 
 /** Taguri atribuite automat (department, Follow Up, PINNED) — nu pot fi selectate la „Atribuie tag”. */
@@ -80,14 +80,7 @@ export function useLeadDetailsTags({
     return styles[tagName] || 'bg-gradient-to-r from-gray-500 to-gray-600 border-gray-300'
   }, [])
 
-  // Obține clasa CSS pentru tag
-  const tagClass = useCallback((c: TagColor) =>
-    c === "green" ? "bg-emerald-100 text-emerald-800"
-    : c === "yellow" ? "bg-amber-100  text-amber-800"
-    : c === "orange" ? "bg-orange-100 text-orange-800"
-    : c === "blue" ? "bg-blue-100 text-blue-800"
-    :                  "bg-rose-100   text-rose-800"
-  , [])
+  const tagClass = useCallback((c: TagColor) => getTagColorClass(c), [])
 
   // Handler pentru toggle tag (adăugare/înlăturare) — folosește leadId real pentru lead/fișă/tăviță
   const handleToggleTag = useCallback(async (tagId: string) => {

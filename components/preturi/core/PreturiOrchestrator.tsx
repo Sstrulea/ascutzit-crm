@@ -171,6 +171,8 @@ interface PreturiOrchestratorProps {
   /** Motiv afișat la hover când butonul Trimite tăvițele este dezactivat. */
   sendTraysDisabledReason?: string
   onPrintTrays?: () => void
+  /** Deschide dialogul de print „Fisă predare/primire” (Recepție). */
+  onPrintPredarePrimire?: () => void
   setQuotes?: (quotes: LeadQuote[] | ((prev: LeadQuote[]) => LeadQuote[])) => void
   setSelectedQuoteId?: (id: string | null) => void
   onUrgentChange: (checked: boolean) => Promise<void>
@@ -573,6 +575,8 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
           onReturChange={props.onReturChange}
           onSubscriptionChange={props.onSubscriptionChange}
           onDeleteTray={props.onDeleteTray}
+          onPrintTrays={props.onPrintTrays}
+          onPrintPredarePrimire={props.onPrintPredarePrimire}
         />
         <CreateTrayDialog
           open={props.showCreateTrayDialog}
@@ -943,6 +947,7 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
         onSaveOptionsOnly={props.onSaveOptionsOnly}
         onClose={props.onClose}
         onPrintTrays={props.onPrintTrays}
+        onPrintPredarePrimire={props.onPrintPredarePrimire}
         fisaIdForCache={props.fisaId ?? undefined}
         serviceFileId={props.fisaId ?? undefined}
         onUrgentChange={props.onUrgentChange}

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { isTagHiddenFromUI } from '@/hooks/leadDetails/useLeadDetailsTags'
+import { getTagColorClassWithBorder } from '@/lib/supabase/tagOperations'
 import { useAuth } from '@/lib/contexts/AuthContext'
 import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
 import { useState, useEffect } from 'react'
@@ -106,16 +107,8 @@ export function LeadCardMobile({
     return 'Data necunoscută'
   }
 
-  const getTagColor = (color?: string) => {
-    switch (color) {
-      case 'green': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-      case 'yellow': return 'bg-amber-100 text-amber-800 border-amber-200'
-      case 'red': return 'bg-rose-100 text-rose-800 border-rose-200'
-      case 'blue': return 'bg-blue-100 text-blue-800 border-blue-200'
-      case 'orange': return 'bg-orange-100 text-orange-800 border-orange-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
-    }
-  }
+  const getTagColor = (color?: string) =>
+    color ? getTagColorClassWithBorder(color) : 'bg-gray-100 text-gray-800 border-gray-200'
 
   // Tag-uri departament – stil ca pe desktop (Horeca, Saloane, Frizerii, Reparatii)
   const isDepartmentTag = (tagName: string) => {

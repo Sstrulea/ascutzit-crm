@@ -21,6 +21,7 @@ import { fetchStagesForPipeline } from '@/lib/supabase/kanban/fetchers'
 import { PreturiOrchestrator } from './PreturiOrchestrator'
 import { BillingDialog } from '../dialogs/BillingDialog'
 import { PrintTraysDialog } from '../dialogs/PrintTraysDialog'
+import { PrintPredarePrimireDialog } from '../dialogs/PrintPredarePrimireDialog'
 import type { PreturiRef, PreturiProps, FacturareMode } from '@/lib/types/preturi'
 import type { LeadQuoteItem } from '@/lib/types/preturi'
 import type { Lead } from '@/lib/types/database'
@@ -61,6 +62,7 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
   // State pentru dialog-ul de facturare
   const [showBillingDialog, setShowBillingDialog] = useState(false)
   const [showPrintTraysDialog, setShowPrintTraysDialog] = useState(false)
+  const [showPrintPredarePrimireDialog, setShowPrintPredarePrimireDialog] = useState(false)
   /** Ref setat de VanzariViewV4 cu getter pentru datele curente – folosit la confirmare Trimite tăvițele. */
   const getV4DataRef = useRef<(() => V4SaveData) | null>(null)
   /** Instrumente fără tăviță raportate de VanzariViewV4 (Recepție) – folosit pentru buton + toast. */
@@ -936,6 +938,7 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
       getV4DataRef={getV4DataRef}
       onSendTraysValidityChange={setViewUnassignedNames}
       onPrintTrays={() => setShowPrintTraysDialog(true)}
+      onPrintPredarePrimire={(pipeline.isReceptiePipeline || pipeline.isVanzariPipeline) ? () => setShowPrintPredarePrimireDialog(true) : undefined}
       onUrgentChange={async (checked: boolean) => business.handleUrgentChange(checked)}
       showUrgentareButton={showUrgentareButton}
       isUrgentare={isUrgentare}
@@ -1249,6 +1252,20 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
         serviceFileNumber={serviceFileNumber}
         serviceFileId={fisaId || undefined}
         directPrint={true}
+      />
+    )}
+
+    {/* Dialog Print fisă predare/primire – pipeline Recepție */}
+    {lead && (
+      <PrintPredarePrimireDialog
+        open={showPrintPredarePrimireDialog}
+        onOpenChange={setShowPrintPredarePrimireDialog}
+        lead={lead as Lead}
+        quotes={state.quotes}
+        instruments={state.instruments}
+        services={state.services}
+        serviceFileNumber={serviceFileNumber}
+        serviceFileId={fisaId || undefined}
       />
     )}
     </>

@@ -120,7 +120,7 @@ export interface KanbanLead {
     stageId: string
     pipelineId: string
     assignmentId: string
-    tags?: { id: string; name: string; color: 'green' | 'yellow' | 'red' }[]
+    tags?: { id: string; name: string; color: 'green' | 'yellow' | 'red' | 'orange' | 'blue' | 'pink' | 'slate' | 'gray' | 'zinc' | 'neutral' | 'stone' | 'lime' | 'amber' | 'emerald' | 'teal' | 'cyan' | 'sky' | 'indigo' | 'violet' | 'purple' | 'fuchsia' | 'rose' | 'black' | 'white' }[]
     stageMovedAt?: string // data cand lead-ul a fost mutat in stage-ul curent
     technician?: string | null // Tehnicianul atribuit lead-ului
     // Câmpuri pentru quotes (când isQuote = true)

@@ -18,9 +18,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import type { Lead } from "@/app/(crm)/dashboard/page"
 import type { TagColor } from "@/lib/supabase/tagOperations"
-import { getOrCreatePinnedTag, getOrCreateNuRaspundeTag, getOrCreateSunaTag, getOrCreateCurierTrimisTag, getOrCreateOfficeDirectTag, getOrCreateReturTag, getOrCreateUrgentTag, getOrCreateNuAVenitTag, toggleLeadTag, addLeadTagIfNotPresent, listTags } from "@/lib/supabase/tagOperations"
+import { getTagColorClass, getOrCreatePinnedTag, getOrCreateNuRaspundeTag, getOrCreateSunaTag, getOrCreateCurierTrimisTag, getOrCreateOfficeDirectTag, getOrCreateReturTag, getOrCreateUrgentTag, getOrCreateNuAVenitTag, toggleLeadTag, addLeadTagIfNotPresent, listTags } from "@/lib/supabase/tagOperations"
 import { isTagHiddenFromUI } from "@/hooks/leadDetails/useLeadDetailsTags"
-import { deleteLead, updateLead, updateLeadWithHistory, logLeadEvent, logButtonEvent } from "@/lib/supabase/leadOperations"
+import { deleteLead, updateLead, updateLeadWithHistory, logLeadEvent, logButtonEvent, logItemEvent } from "@/lib/supabase/leadOperations"
 import { setLeadNoDeal, setLeadCurierTrimis, setLeadOfficeDirect } from "@/lib/vanzari/leadOperations"
 import { recordVanzariApelForDeliveryByStageName } from "@/lib/supabase/vanzariApeluri"
 import { deleteServiceFile, deleteTray, updateServiceFile, updateServiceFileWithHistory, updateTray } from "@/lib/supabase/serviceFileOperations"
@@ -153,6 +153,10 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
   const [curierTrimisDate, setCurierTrimisDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [curierTrimisTime, setCurierTrimisTime] = useState('10:00')
   const [isSavingCurierTrimisMove, setIsSavingCurierTrimisMove] = useState(false)
+  const [showReprogramareCurierOverlay, setShowReprogramareCurierOverlay] = useState(false)
+  const [reprogramareCurierDate, setReprogramareCurierDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [reprogramareCurierTime, setReprogramareCurierTime] = useState('10:00')
+  const [isSavingReprogramareCurier, setIsSavingReprogramareCurier] = useState(false)
   const [unassigningTrayId, setUnassigningTrayId] = useState<string | null>(null)
   const ignoreNextCardClickRef = useRef<boolean>(false)
   
@@ -697,12 +701,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
     }
   }, [lead.stage, lead.stageMovedAt, currentTime])
 
-  const tagClass = (c: TagColor) =>
-    c === "green" ? "bg-emerald-100 text-emerald-800"
-  : c === "yellow" ? "bg-amber-100 text-amber-800"
-  : c === "orange" ? "bg-orange-100 text-orange-800"
-  : c === "blue" ? "bg-blue-100 text-blue-800"
-  :                  "bg-rose-100 text-rose-800"
+  const tagClass = (c: TagColor) => getTagColorClass(c)
 
   // verifica daca un tag este un tag de departament
   const isDepartmentTag = (tagName: string) => {
@@ -836,6 +835,33 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
       toast({ variant: 'destructive', title: 'Eroare', description: err?.message ?? 'Nu s-a putut actualiza data sau muta cardul.' })
     } finally {
       setIsSavingCurierTrimisMove(false)
+    }
+  }
+
+  const handleReprogramareCurierConfirm = async () => {
+    if (itemType !== 'service_file' || isSavingReprogramareCurier) return
+    const dateTimeIso = `${reprogramareCurierDate}T${reprogramareCurierTime}:00.000Z`
+    setIsSavingReprogramareCurier(true)
+    try {
+      const { error: sfErr } = await updateServiceFile(lead.id, { curier_scheduled_at: dateTimeIso })
+      if (sfErr) throw sfErr
+      const prevAt = (lead as any).curier_scheduled_at ?? null
+      await logItemEvent(
+        'service_file',
+        lead.id,
+        `Curier reprogramat: ${prevAt ? format(new Date(prevAt), 'd MMM yyyy, HH:mm', { locale: ro }) : '—'} → ${format(new Date(dateTimeIso), 'd MMM yyyy, HH:mm', { locale: ro })}`,
+        'curier_reprogramat',
+        { curier_scheduled_at: dateTimeIso, previous_curier_scheduled_at: prevAt },
+        undefined,
+        { currentUserId: currentUser?.id, currentUserName: (currentUser as any)?.email?.split('@')[0] ?? null, currentUserEmail: (currentUser as any)?.email ?? null }
+      ).catch(() => {})
+      setShowReprogramareCurierOverlay(false)
+      toast({ title: 'Curier reprogramat', description: `Noua dată: ${format(new Date(dateTimeIso), 'd MMM yyyy, HH:mm', { locale: ro })}` })
+      onRefresh?.()
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Eroare', description: err?.message ?? 'Nu s-a putut reprograma curierul.' })
+    } finally {
+      setIsSavingReprogramareCurier(false)
     }
   }
 
@@ -1448,6 +1474,12 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                       {(lead as any).serviceFileNumber && (
                         <span className="whitespace-nowrap">#Fisa {(lead as any).serviceFileNumber}</span>
                       )}
+                      {itemType === 'service_file' && isInCurierTrimisStage && (lead as any).curier_scheduled_at && (
+                        <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium" title="Data programării curierului">
+                          <Calendar className="h-3 w-3 flex-shrink-0" />
+                          Curier: {format(new Date((lead as any).curier_scheduled_at), 'd MMM yyyy, HH:mm', { locale: ro })}
+                        </span>
+                      )}
                     </div>
                   </div>
                   {/* Buton "Nu A Venit" pentru fișe în Office Direct */}
@@ -1706,6 +1738,36 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
               data-menu
             >
               <Package className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {itemType === 'service_file' && isInCurierTrimisStage && pipelineName?.toLowerCase().includes('receptie') && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 w-6 p-0 flex-shrink-0 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-950/50"
+              onClick={(e) => {
+                e.stopPropagation()
+                ignoreNextCardClickRef.current = true
+                const existing = (lead as any).curier_scheduled_at
+                if (existing) {
+                  try {
+                    const d = new Date(existing)
+                    setReprogramareCurierDate(d.toISOString().slice(0, 10))
+                    setReprogramareCurierTime(d.toTimeString().slice(0, 5))
+                  } catch {
+                    setReprogramareCurierDate(new Date().toISOString().slice(0, 10))
+                    setReprogramareCurierTime('10:00')
+                  }
+                } else {
+                  setReprogramareCurierDate(new Date().toISOString().slice(0, 10))
+                  setReprogramareCurierTime('10:00')
+                }
+                setShowReprogramareCurierOverlay(true)
+              }}
+              title="Reprogramează curier"
+              data-menu
+            >
+              <Calendar className="h-3.5 w-3.5" />
             </Button>
           )}
           {showTagButton && leadIdForTags && (
@@ -2423,6 +2485,53 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
               </Button>
               <Button onClick={handleCurierTrimisConfirm} disabled={isSavingCurierTrimisMove}>
                 {isSavingCurierTrimisMove ? 'Se salvează...' : 'Confirmă și mută'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialog Reprogramare curier (Recepție – fișă în stage Curier Trimis) */}
+      {itemType === 'service_file' && (
+        <Dialog open={showReprogramareCurierOverlay} onOpenChange={(open) => { setShowReprogramareCurierOverlay(open); if (!open) { setReprogramareCurierDate(new Date().toISOString().slice(0, 10)); setReprogramareCurierTime('10:00') } }}>
+          <DialogContent className="sm:max-w-[400px]" onClick={(e) => e.stopPropagation()}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-blue-600" />
+                Reprogramează curier
+              </DialogTitle>
+              <DialogDescription>
+                Schimbă data și ora programate pentru trimiterea curierului. Fișa rămâne în stage-ul Curier Trimis; doar data este actualizată.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="reprogramare-curier-date">Data</Label>
+                  <Input
+                    id="reprogramare-curier-date"
+                    type="date"
+                    value={reprogramareCurierDate}
+                    onChange={(e) => setReprogramareCurierDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reprogramare-curier-time">Ora</Label>
+                  <Input
+                    id="reprogramare-curier-time"
+                    type="time"
+                    value={reprogramareCurierTime}
+                    onChange={(e) => setReprogramareCurierTime(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowReprogramareCurierOverlay(false)}>
+                Anulare
+              </Button>
+              <Button onClick={handleReprogramareCurierConfirm} disabled={isSavingReprogramareCurier}>
+                {isSavingReprogramareCurier ? 'Se salvează...' : 'Reprogramează'}
               </Button>
             </DialogFooter>
           </DialogContent>

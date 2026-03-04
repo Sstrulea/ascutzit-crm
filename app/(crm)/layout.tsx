@@ -3,7 +3,7 @@
 import { Suspense } from 'react'
 import { AppSidebar as Sidebar } from '@/components/layout'
 import { SidebarProvider } from '@/lib/contexts/SidebarContext'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Toaster } from '@/components/ui/sonner'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -11,8 +11,10 @@ import { Button } from '@/components/ui/button'
 import { Menu, Search } from 'lucide-react'
 import { AuthStatus } from '@/components/auth'
 import { useAuth } from '@/lib/contexts/AuthContext'
+import { ThemeSync } from '@/components/layout/ThemeSync'
+import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { usePipelinesCache } from '@/hooks/usePipelinesCache'
-import { GlobalSearchBar } from '@/components/search/GlobalSearchBar'
+import { GlobalSearchBar, type GlobalSearchBarRef } from '@/components/search/GlobalSearchBar'
 
 export default function CrmShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -20,6 +22,8 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const headerSearchRef = useRef<GlobalSearchBarRef>(null)
+  const sheetSearchRef = useRef<GlobalSearchBarRef>(null)
   const { getPipelines } = usePipelinesCache()
 
   // Redirect la login dacă nu este autentificat (sursă unică: AuthContext, fără getSession/onAuthStateChange aici)
@@ -42,6 +46,24 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
     setMobileSearchOpen(false)
   }, [pathname])
 
+  // ⌘+K / Ctrl+K – deschide căutarea globală (navbar / modal pe mobil)
+  useEffect(() => {
+    const handle = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
+        if (isMobile) {
+          setMobileSearchOpen(true)
+          setTimeout(() => sheetSearchRef.current?.focus(), 150)
+        } else {
+          headerSearchRef.current?.focus()
+        }
+      }
+    }
+    document.addEventListener('keydown', handle)
+    return () => document.removeEventListener('keydown', handle)
+  }, [])
+
   // [DEV] Contor requesturi Supabase – activează cu NEXT_PUBLIC_DEBUG_SUPABASE_REQUESTS=true
   useEffect(() => {
     if (
@@ -62,15 +84,19 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-screen flex flex-col min-w-0 overflow-hidden w-full max-w-[100vw]">
+      <ThemeSync />
       {/* Header cu SmartSearch tăviță și notificări - doar pentru desktop */}
       <header className="hidden md:flex items-center justify-between gap-4 px-6 py-3 border-b bg-background shrink-0">
         <div className="shrink-0 w-24 min-w-0" aria-hidden />
         <div className="flex-1 max-w-md min-w-[200px]">
           <Suspense fallback={<div className="h-10 w-full rounded-md border bg-muted/50 animate-pulse" />}>
-            <GlobalSearchBar className="w-full" />
+            <GlobalSearchBar ref={headerSearchRef} className="w-full" />
           </Suspense>
         </div>
-        <AuthStatus />
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <AuthStatus />
+        </div>
       </header>
 
       {/* Container principal cu sidebar și content */}
@@ -92,8 +118,10 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
             >
               <Search className="h-4 w-4 shrink-0" />
               <span className="truncate">Caută lead, fișă, tăviță...</span>
+              <kbd className="ml-auto hidden sm:inline-flex h-5 select-none items-center gap-0.5 rounded border bg-muted px-1 font-mono text-[10px]">⌘K</kbd>
             </Button>
             <div className="flex items-center gap-1 shrink-0">
+              <ThemeToggle />
               <AuthStatus />
               <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                 <SheetTrigger asChild>
@@ -118,6 +146,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
             <div className="p-3 border-b shrink-0">
               <Suspense fallback={<div className="h-10 w-full rounded-md border bg-muted/50 animate-pulse" />}>
                 <GlobalSearchBar
+                  ref={sheetSearchRef}
                   className="w-full"
                   onAfterSelect={() => setMobileSearchOpen(false)}
                 />

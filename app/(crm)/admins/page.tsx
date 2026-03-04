@@ -5,7 +5,7 @@ import { useRole, useAuthContext } from "@/lib/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Loader2, Users, Database, Package, FileSearch, List, UserPlus, RefreshCw } from "lucide-react"
+import { Loader2, Users, Database, UserPlus, RefreshCw, Tag as TagIcon } from "lucide-react"
 import { toast } from "sonner"
 import dynamic from "next/dynamic"
 import {
@@ -26,21 +26,6 @@ const BackupManager = dynamic(() => import('@/components/admin/BackupManager').t
   loading: () => <Loader2 className="h-8 w-8 animate-spin" />
 })
 
-const TrayPipelineAssigner = dynamic(() => import('@/components/admin/TrayPipelineAssigner').then(mod => mod.default), {
-  ssr: false,
-  loading: () => <Loader2 className="h-8 w-8 animate-spin" />
-})
-
-const TrayFileFinder = dynamic(() => import('@/components/admin/TrayFileFinder').then(mod => mod.default), {
-  ssr: false,
-  loading: () => <Loader2 className="h-8 w-8 animate-spin" />
-})
-
-const PipelineItemsManager = dynamic(() => import('@/components/admin/PipelineItemsManager').then(mod => mod.default), {
-  ssr: false,
-  loading: () => <Loader2 className="h-8 w-8 animate-spin" />
-})
-
 // Import new components
 const OverviewDashboard = dynamic(() => import('@/components/admin/OverviewDashboard').then(mod => mod.default), {
   ssr: false,
@@ -53,6 +38,11 @@ const MemberTable = dynamic(() => import('@/components/admin/MemberTable').then(
 })
 
 const MemberDetailsModal = dynamic(() => import('@/components/admin/MemberDetailsModal').then(mod => mod.default), {
+  ssr: false,
+  loading: () => <Loader2 className="h-8 w-8 animate-spin" />
+})
+
+const TagsManager = dynamic(() => import('@/components/admin/TagsManager').then(mod => mod.default), {
   ssr: false,
   loading: () => <Loader2 className="h-8 w-8 animate-spin" />
 })
@@ -94,7 +84,7 @@ export default function AdminsPage() {
       userEmail: user?.email
     })
   }, [isOwner, role, roleLoading, user])
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'backups' | 'trays' | 'tray-finder' | 'pipeline-items'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'backups' | 'tags'>('dashboard')
   const [members, setMembers] = useState<ExtendedMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -508,28 +498,12 @@ export default function AdminsPage() {
             Backup-uri
           </Button>
           <Button
-            variant={activeTab === 'trays' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('trays')}
+            variant={activeTab === 'tags' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('tags')}
             className="flex items-center gap-2"
           >
-            <Package className="w-4 h-4" />
-            Tăvițe
-          </Button>
-          <Button
-            variant={activeTab === 'tray-finder' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('tray-finder')}
-            className="flex items-center gap-2"
-          >
-            <FileSearch className="w-4 h-4" />
-            Caută Fișă
-          </Button>
-          <Button
-            variant={activeTab === 'pipeline-items' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('pipeline-items')}
-            className="flex items-center gap-2"
-          >
-            <List className="w-4 h-4" />
-            Pipeline Items
+            <TagIcon className="w-4 h-4" />
+            Tag-uri
           </Button>
         </div>
 
@@ -539,9 +513,7 @@ export default function AdminsPage() {
               {activeTab === 'dashboard' ? 'ADMIN DASHBOARD' :
                activeTab === 'members' ? 'ADMINISTRARE ECHIPA' : 
                activeTab === 'backups' ? 'MANAGER BACKUP-URI' : 
-               activeTab === 'trays' ? 'ASIGNARE TĂVIȚE ÎN PIPELINE' :
-               activeTab === 'tray-finder' ? 'CĂUTARE FIȘĂ DUPĂ ID TĂVIȚĂ' :
-               'MANAGEMENT INTRĂRI PIPELINE'}
+               'ADMINISTRARE TAG-URI LEAD'}
             </CardTitle>
             {activeTab === 'members' && (
               <Button
@@ -634,12 +606,8 @@ export default function AdminsPage() {
               </>
             ) : activeTab === 'backups' ? (
               <BackupManager />
-            ) : activeTab === 'trays' ? (
-              <TrayPipelineAssigner />
-            ) : activeTab === 'tray-finder' ? (
-              <TrayFileFinder />
             ) : (
-              <PipelineItemsManager />
+              <TagsManager />
             )}
           </CardContent>
         </Card>

@@ -2,6 +2,7 @@
 
 import { supabaseBrowser } from './supabaseClient'
 import type { Pipeline, Stage, Lead, PipelineWithStages } from '../types/database'
+import { removeDiacritics, getDiacriticVariants, getPhoneVariants } from '@/lib/utils'
 import { moveLeadToPipeline as moveLeadToPipelineFn, type MoveItemResult } from './pipelineOperations'
 
 const supabase = supabaseBrowser()
@@ -724,10 +725,21 @@ export async function deleteLead(leadId: string) {
  */
 export async function searchLeads(searchTerm: string) {
   try {
+    const term = searchTerm.trim()
+    const termNorm = removeDiacritics(term)
+    const nameVariants = getDiacriticVariants(termNorm).map((v) => `full_name.ilike.%${v}%`)
+    const phoneVariants = getPhoneVariants(term).map((p) => `phone_number.ilike.%${p}%`)
+    const orParts = [
+      ...nameVariants,
+      `email.ilike.%${term}%`,
+      ...(phoneVariants.length > 0 ? phoneVariants : [`phone_number.ilike.%${term}%`]),
+    ].filter(Boolean)
+    const orClause = orParts.length > 0 ? orParts.join(',') : `full_name.ilike.%${term}%,email.ilike.%${term}%`
+
     const { data, error } = await supabase
       .from('leads')
       .select('*')
-      .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,phone_number.ilike.%${searchTerm}%`)
+      .or(orClause)
 
     if (error) throw error
     return { data, error: null }

@@ -7,6 +7,7 @@ import { Suspense } from "react"
 import { QueryProvider } from '@/lib/providers/query-provider'
 import { AuthProvider } from '@/lib/contexts/AuthContext'
 import { TrackingProvider } from '@/components/tracking/TrackingProvider'
+import { ThemeProvider } from '@/components/layout/theme-provider'
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -27,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         {supabaseUrl ? (
           <>
@@ -37,13 +38,15 @@ export default function RootLayout({
         ) : null}
       </head>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-<AuthProvider>
-        <QueryProvider>
-            <TrackingProvider sendToApi="/api/tracking" />
-            <Suspense fallback={null}>{children}</Suspense>
-            <Analytics />
-          </QueryProvider>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <QueryProvider>
+              <TrackingProvider sendToApi="/api/tracking" />
+              <Suspense fallback={null}>{children}</Suspense>
+              <Analytics />
+            </QueryProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

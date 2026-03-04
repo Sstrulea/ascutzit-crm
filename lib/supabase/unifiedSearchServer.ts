@@ -39,6 +39,39 @@ const LIMIT = 25
 const LIMIT_PER_TYPE = 8
 const LIMIT_TRAYS = 9
 
+/** Scor pentru ranking: exact match > partial > subtitle; matchedBy și type pentru ordonare. */
+function scoreForRanking(
+  title: string,
+  subtitle: string | undefined,
+  matchedBy: MatchedByType | undefined,
+  type: UnifiedSearchItemType,
+  queryNorm: string
+): number {
+  const q = queryNorm.toLowerCase()
+  if (!q) return 0
+  const t = removeDiacritics(title || '').toLowerCase()
+  const s = removeDiacritics(subtitle || '').toLowerCase()
+  let score = 0
+  if (t === q) score += 100
+  else if (t.startsWith(q)) score += 50
+  else if (t.includes(q)) score += 20
+  if (s.includes(q)) score += 10
+  const matchedByScore: Record<MatchedByType, number> = {
+    phone: 8,
+    name: 7,
+    email: 6,
+    company: 5,
+    serial: 4,
+    number: 3,
+    tag: 2,
+    technician: 1,
+  }
+  score += (matchedBy && matchedByScore[matchedBy]) ? matchedByScore[matchedBy] : 0
+  const typeScore = type === 'lead' ? 3 : type === 'service_file' ? 2 : 1
+  score += typeScore
+  return score
+}
+
 const toSlug = (name: string) =>
   String(name || '')
     .toLowerCase()
@@ -333,12 +366,13 @@ async function searchViaDirectQueries(
       }
     }
 
-    // 4. FIȘE (număr) + prin lead
+    // 4. FIȘE (număr) + prin lead (fără diacritice: "fisa" găsește "Fișă 123")
+    const sfNumberVariants = getDiacriticVariants(termNorm).map((v) => `number.ilike.%${v}%`)
     const { data: serviceFiles } = await supabase
       .from('service_files')
       .select('id, number, lead_id, lead:leads(id, full_name, company_name)')
-      .ilike('number', termLike)
       .limit(LIMIT_PER_TYPE)
+      .or(sfNumberVariants.length > 0 ? sfNumberVariants.join(',') : `number.ilike.${termLike}`)
     for (const sf of serviceFiles || []) {
       const id = sf.id as string
       const leadId = (sf as any).lead_id as string
@@ -406,6 +440,13 @@ async function searchViaDirectQueries(
             trayWithSf.map((r) => ({ type: 'service_file' as const, id: r.serviceFileId }))
           )
         : new Map<string, { slug: string; name: string; stageName?: string }>()
+
+    const queryNorm = removeDiacritics(term)
+    rawResults.sort((a, b) => {
+      const scoreA = scoreForRanking(a.title, a.subtitle, a.matchedBy, a.type, queryNorm)
+      const scoreB = scoreForRanking(b.title, b.subtitle, b.matchedBy, b.type, queryNorm)
+      return scoreB - scoreA
+    })
 
     const results: UnifiedSearchResult[] = rawResults.slice(0, LIMIT).map((r) => {
       const pi = pipelineInfo.get(r.id)

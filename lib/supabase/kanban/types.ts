@@ -89,6 +89,8 @@ export interface KanbanItem {
   suna_acknowledged_at?: string | null
   /** Data când a fost setat Curier Trimis pe lead – afișare tag cu posibilitate eliminare */
   curier_trimis_at?: string | null
+  /** Data programării curierului (service_file) – afișată pe card în stage Curier Trimis (Recepție) */
+  curier_scheduled_at?: string | null
   /** Data când a fost setat Office Direct pe lead – afișare tag cu posibilitate eliminare */
   office_direct_at?: string | null
   /** Numele utilizatorului care a preluat lead-ul (claimed_by) */

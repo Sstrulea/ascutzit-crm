@@ -161,6 +161,7 @@ export function transformServiceFileToKanbanItem(
     claimed_by: lead?.claimed_by ?? null,
     nu_raspunde_callback_at: (serviceFile as any).nu_raspunde_callback_at ?? lead?.nu_raspunde_callback_at ?? null,
     curier_trimis: (serviceFile as any).curier_trimis ?? false,
+    curier_scheduled_at: (serviceFile as any).curier_scheduled_at ?? null,
     office_direct: (serviceFile as any).office_direct ?? false,
     retur: (serviceFile as any).retur ?? false,
     userMessageCount,

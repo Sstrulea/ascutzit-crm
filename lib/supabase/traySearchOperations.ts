@@ -1,4 +1,5 @@
 import { supabaseBrowser } from './supabaseClient'
+import { removeDiacritics, getDiacriticVariants } from '@/lib/utils'
 
 export interface TraySearchResult {
   trayId: string
@@ -29,7 +30,9 @@ export async function searchTraysGlobally(query: string): Promise<{ data: TraySe
     if (!supabase || typeof supabase.from !== 'function') {
       return { data: [], error: null }
     }
-    const searchTerm = query.toLowerCase().trim()
+    const termNorm = removeDiacritics(query).toLowerCase().trim()
+    const numberVariants = getDiacriticVariants(termNorm).map((v) => `number.ilike.%${v}%`)
+    const numberOr = numberVariants.length > 0 ? numberVariants.join(',') : `number.ilike.%${query.trim()}%`
 
     const { data: traysByNumber } = await supabase
       .from('trays')
@@ -44,7 +47,7 @@ export async function searchTraysGlobally(query: string): Promise<{ data: TraySe
           lead:leads!inner(id, full_name, email, phone_number)
         )
       `)
-      .ilike('number', `%${searchTerm}%`)
+      .or(numberOr)
 
     const results: TraySearchResult[] = []
 

@@ -138,6 +138,8 @@ export interface VanzariViewV4Props {
   onValidateTrayQc?: (trayId: string) => Promise<void>
   /** Deschide dialogul de print tăvițe (A4). */
   onPrintTrays?: () => void
+  /** Deschide dialogul de print „Fisă predare/primire” (Recepție). */
+  onPrintPredarePrimire?: () => void
   /** Pentru departamente tehnice: acțiuni extra (Împarte tăvița, Reunește, etc.) afișate într-un dropdown */
   departmentActions?: Array<{ label: string; onClick: () => void }>
   /** Urgentare (fișe/tăvițe): buton lângă Urgent în Recepție Comandă */
@@ -1227,6 +1229,7 @@ export function VanzariViewV4({
   serviceFileId,
   onValidateTrayQc,
   onPrintTrays,
+  onPrintPredarePrimire,
   departmentActions,
   showUrgentareButton = false,
   isUrgentare = false,
@@ -1841,8 +1844,8 @@ export function VanzariViewV4({
           </Button>
           </div>
           <div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
-          {/* Pe telefon acțiunile sunt în bara fixă de jos */}
-          <div className={cn("flex items-center gap-2 ml-auto shrink-0", isMobile && "hidden")}>
+          {/* Pe telefon acțiunile sunt în bara fixă de jos; pe desktop/tablet butonul Închide rămâne vizibil */}
+          <div className={cn("flex flex-wrap items-center justify-end gap-2 ml-auto shrink-0 min-w-0 overflow-x-auto", isMobile && "hidden")}>
             {departmentActions && departmentActions.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1861,8 +1864,8 @@ export function VanzariViewV4({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {onClose && (
-              <Button data-button-id="vanzariViewCloseButton" variant="outline" size="sm" onClick={() => { logBtn('vanzariViewCloseButton', 'Închide'); onClose() }} title="Închide panoul de detalii">
+            {onClose != null && (
+              <Button data-button-id="vanzariViewCloseButton" variant="outline" size="sm" className="shrink-0" onClick={() => { logBtn('vanzariViewCloseButton', 'Închide'); onClose() }} title="Închide panoul de detalii">
                 Închide
               </Button>
             )}
@@ -1904,6 +1907,20 @@ export function VanzariViewV4({
               >
                 <Printer className="h-4 w-4 mr-1.5" />
                 Print tăvițe
+              </Button>
+            )}
+            {onPrintPredarePrimire && (
+              <Button
+                data-button-id="vanzariViewPrintPredarePrimireButton"
+                variant="outline"
+                size="sm"
+                onClick={() => { logBtn('vanzariViewPrintPredarePrimireButton', 'Print predare/primire'); onPrintPredarePrimire() }}
+                disabled={loading}
+                className="text-xs"
+                title="Fisă predare / primire în service"
+              >
+                <Printer className="h-4 w-4 mr-1.5" />
+                Predare/Primire
               </Button>
             )}
             {!isLocked && onSaveOptionsOnly && (
@@ -2179,8 +2196,8 @@ export function VanzariViewV4({
       {/* Bară fixă pentru telefon: acțiuni mereu vizibile */}
       {isMobile && (
         <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 p-3 safe-area-pb flex flex-wrap items-center justify-center gap-2 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
-          {onClose && (
-            <Button data-button-id="vanzariViewMobileCloseButton" variant="outline" size="sm" onClick={() => { logBtn('vanzariViewMobileCloseButton', 'Închide'); onClose() }} className="text-xs" title="Închide panoul">
+          {onClose != null && (
+            <Button data-button-id="vanzariViewMobileCloseButton" variant="outline" size="sm" className="text-xs shrink-0" onClick={() => { logBtn('vanzariViewMobileCloseButton', 'Închide'); onClose() }} title="Închide panoul">
               Închide
             </Button>
           )}
@@ -2207,6 +2224,11 @@ export function VanzariViewV4({
           {onPrintTrays && (
           <Button data-button-id="vanzariViewMobilePrintButton" variant="outline" size="sm" onClick={() => { logBtn('vanzariViewMobilePrintButton', 'Print'); onPrintTrays() }} disabled={loading} className="text-xs" title="Print tăvițe">
               Print
+            </Button>
+          )}
+          {onPrintPredarePrimire && (
+            <Button data-button-id="vanzariViewMobilePrintPredarePrimireButton" variant="outline" size="sm" onClick={() => { logBtn('vanzariViewMobilePrintPredarePrimireButton', 'Predare/Primire'); onPrintPredarePrimire() }} disabled={loading} className="text-xs" title="Fisă predare/primire">
+              Predare/Primire
             </Button>
           )}
           {!isLocked && onSaveOptionsOnly && (

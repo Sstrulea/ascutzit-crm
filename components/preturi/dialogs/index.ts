@@ -13,6 +13,7 @@ export { MoveInstrumentDialog } from './MoveInstrumentDialog'
 export { SendConfirmationDialog } from './SendConfirmationDialog'
 export { BillingDialog } from './BillingDialog'
 export { PrintTraysDialog } from './PrintTraysDialog'
+export { PrintPredarePrimireDialog } from './PrintPredarePrimireDialog'
 
 
 

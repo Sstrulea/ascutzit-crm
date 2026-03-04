@@ -206,8 +206,8 @@ export function LeadDetailsHeader({
   }, [callbackDate])
 
   return (
-    <header className="bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-b border-slate-200 dark:border-slate-700 min-h-[4.5rem]">
-      {/* Main Header Row — flex-wrap: pe ecran îngust (ex. 2 ferestre) butoanele trec pe rândul următor */}
+    <header className="flex-shrink-0 bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-b border-slate-200 dark:border-slate-700 min-h-[4.5rem]">
+      {/* Main Header Row — flex-wrap: pe ecran îngust butoanele trec pe rândul următor; Close rămâne accesibil */}
       <div className="px-4 py-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         {/* Left: Name & Tags */}
         <div className="flex items-center gap-3 min-w-0 flex-1 shrink-0 basis-auto">
@@ -429,8 +429,8 @@ export function LeadDetailsHeader({
           </div>
         )}
 
-        {/* Right: Action Buttons — flex-wrap: butoanele trec pe rândul următor când nu mai au loc */}
-        <div className="flex flex-wrap items-center justify-end gap-2 flex-shrink-0 basis-auto w-full min-[900px]:w-auto">
+        {/* Right: Action Buttons — flex-wrap + overflow-x-auto ca Close să rămână vizibil pe ecrane înguste */}
+        <div className="flex flex-wrap items-center justify-end gap-2 flex-shrink-0 basis-auto w-full min-[900px]:w-auto min-w-0 overflow-x-auto overflow-y-hidden">
           {showPinButton && onPinClick && (
             <Button
               variant="outline"
@@ -534,7 +534,7 @@ export function LeadDetailsHeader({
             variant="outline" 
             size="sm" 
             onClick={wrap('vanzariPanelCloseButton', 'Close', onClose)} 
-            className="h-8 gap-1.5 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 dark:border-red-900 dark:hover:bg-red-950"
+            className="h-8 gap-1.5 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 dark:border-red-900 dark:hover:bg-red-950 shrink-0"
             title="Închide panoul de detalii"
           >
             Close

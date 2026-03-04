@@ -344,16 +344,16 @@ export async function fetchLeadsByIds(
  * @returns Obiect cu array-ul de RawServiceFile (cu lead inclus) sau array gol dacă nu există sau apare o eroare
  */
 const SERVICE_FILES_SELECT = `
-  id, lead_id, number, status, created_at, office_direct, curier_trimis, urgent, nu_raspunde_callback_at,
+  id, lead_id, number, status, created_at, office_direct, curier_trimis, curier_scheduled_at, urgent, nu_raspunde_callback_at,
   lead:leads(id, full_name, email, phone_number, created_at, campaign_name, ad_name, form_name, tray_details, details, city, company_name, company_address, address, address2, zip, strada, judet, contact_person, contact_phone, billing_nume_prenume, billing_nume_companie, billing_cui, billing_strada, billing_oras, billing_judet, billing_cod_postal)
 `
 const SERVICE_FILES_SELECT_WITH_COLET = `
-  id, lead_id, number, status, created_at, office_direct, curier_trimis, colet_neridicat, colet_ajuns, urgent, nu_raspunde_callback_at,
+  id, lead_id, number, status, created_at, office_direct, curier_trimis, curier_scheduled_at, colet_neridicat, colet_ajuns, urgent, nu_raspunde_callback_at,
   lead:leads(id, full_name, email, phone_number, created_at, campaign_name, ad_name, form_name, tray_details, details, city, company_name, company_address, address, address2, zip, strada, judet, contact_person, contact_phone, billing_nume_prenume, billing_nume_companie, billing_cui, billing_strada, billing_oras, billing_judet, billing_cod_postal)
 `
 /** Fallback cu lead minimal – doar coloane esențiale (când schema leads e incompatibilă). */
 const SERVICE_FILES_SELECT_MINIMAL_LEAD = `
-  id, lead_id, number, status, created_at, office_direct, curier_trimis, urgent, nu_raspunde_callback_at,
+  id, lead_id, number, status, created_at, office_direct, curier_trimis, curier_scheduled_at, urgent, nu_raspunde_callback_at,
   lead:leads(id, full_name, email, phone_number, created_at, campaign_name, ad_name, form_name, tray_details, details, city, company_name, company_address, address)
 `
 

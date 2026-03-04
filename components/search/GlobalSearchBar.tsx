@@ -1,19 +1,43 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useImperativeHandle, forwardRef, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Search, Loader2, Package, FileText, User, ChevronRight } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, removeDiacritics } from '@/lib/utils'
 import type { UnifiedSearchResult } from '@/lib/supabase/unifiedSearchServer'
 
-const DEBOUNCE_MS = 300
+const DEBOUNCE_MS = 400
 const URL_DEBOUNCE_MS = 400
 const MIN_CHARS = 2
 const MAX_PER_GROUP = 5
+const SEARCH_PAGE_PATH = '/search'
 const TRAY_SEARCH_OPEN_KEY = 'traySearchOpen'
 const PENDING_SEARCH_OPEN_KEY = 'crm:pending-search-open'
+const SEARCH_HISTORY_KEY = 'crm:global-search-history'
+const SEARCH_HISTORY_MAX = 8
+
+function getSearchHistory(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(SEARCH_HISTORY_KEY)
+    const arr = raw ? JSON.parse(raw) : []
+    return Array.isArray(arr) ? arr.slice(0, SEARCH_HISTORY_MAX) : []
+  } catch {
+    return []
+  }
+}
+
+function pushSearchHistory(term: string) {
+  const t = term.trim()
+  if (!t || t.length < 2) return
+  try {
+    const prev = getSearchHistory()
+    const next = [t, ...prev.filter((x) => x.toLowerCase() !== t.toLowerCase())].slice(0, SEARCH_HISTORY_MAX)
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next))
+  } catch {}
+}
 
 const DEPT_SLUGS = ['saloane', 'horeca', 'frizerii', 'reparatii']
 const toSlug = (s: string) => String(s).toLowerCase().replace(/\s+/g, '-')
@@ -27,21 +51,36 @@ function buildOpenPayload(u: UnifiedSearchResult, currentPipelineSlug: string | 
   return { pipelineSlug, openType: u.type, openId: u.openId }
 }
 
-/** Highlight query terms in text (case-insensitive) */
+/** Map: fiecare index în text normalizat -> index start în textul original */
+function buildNormToOrigMap(text: string): number[] {
+  const map: number[] = []
+  for (let i = 0; i < text.length; i++) {
+    const norm = removeDiacritics(text[i]).toLowerCase()
+    for (let k = 0; k < norm.length; k++) map.push(i)
+    if (norm.length === 0) map.push(i)
+  }
+  return map
+}
+
+/** Highlight terms in text (case + diacritics insensitive: "popescu" match "Popeșcu") */
 function highlightText(text: string, terms: string[]): React.ReactNode {
   if (!text || terms.length === 0) return text
-  const filtered = terms.map((t) => t.trim().toLowerCase()).filter(Boolean)
+  const filtered = terms.map((t) => removeDiacritics(t).trim().toLowerCase()).filter(Boolean)
   if (filtered.length === 0) return text
-  const lower = text.toLowerCase()
+  const normMap = buildNormToOrigMap(text)
+  const normText = removeDiacritics(text).toLowerCase()
   const segments: Array<{ start: number; end: number; match: boolean }> = []
-  let pos = 0
-  while (pos < text.length) {
+  let normPos = 0
+  while (normPos < normText.length) {
     let found = false
     for (const t of filtered) {
       if (t.length === 0) continue
-      if (lower.slice(pos, pos + t.length) === t) {
-        segments.push({ start: pos, end: pos + t.length, match: true })
-        pos += t.length
+      if (normText.slice(normPos, normPos + t.length) === t) {
+        const oStart = normMap[normPos] ?? 0
+        const oEndIdx = normPos + t.length - 1
+        const oEnd = oEndIdx < normMap.length ? (normMap[oEndIdx] ?? 0) + 1 : text.length
+        segments.push({ start: oStart, end: oEnd, match: true })
+        normPos += t.length
         found = true
         break
       }
@@ -49,16 +88,25 @@ function highlightText(text: string, terms: string[]): React.ReactNode {
     if (!found) {
       const nextMatch = filtered.reduce((best, t) => {
         if (!t) return best
-        const i = lower.indexOf(t, pos)
+        const i = normText.indexOf(t, normPos)
         return i >= 0 && (best === -1 || i < best) ? i : best
       }, -1)
       if (nextMatch === -1) {
-        segments.push({ start: pos, end: text.length, match: false })
+        const oStart = normMap[normPos] ?? 0
+        segments.push({ start: oStart, end: text.length, match: false })
         break
       }
-      if (nextMatch > pos) segments.push({ start: pos, end: nextMatch, match: false })
-      segments.push({ start: nextMatch, end: nextMatch + (filtered.find((t) => lower.slice(nextMatch, nextMatch + t.length) === t)?.length ?? 0), match: true })
-      pos = nextMatch + (filtered.find((t) => lower.slice(nextMatch, nextMatch + t.length) === t)?.length ?? 0)
+      if (nextMatch > normPos) {
+        const oStart = normMap[normPos] ?? 0
+        const oEnd = normMap[nextMatch] ?? text.length
+        segments.push({ start: oStart, end: oEnd, match: false })
+      }
+      const tLen = filtered.find((t) => normText.slice(nextMatch, nextMatch + (t?.length ?? 0)) === t)?.length ?? 0
+      const oStart = normMap[nextMatch] ?? 0
+      const oEndIdx = nextMatch + tLen - 1
+      const oEnd = oEndIdx < normMap.length ? (normMap[oEndIdx] ?? 0) + 1 : text.length
+      segments.push({ start: oStart, end: oEnd, match: true })
+      normPos = nextMatch + tLen
     }
   }
   return (
@@ -83,13 +131,17 @@ export interface GlobalSearchBarProps {
   onValueChange?: (value: string) => void
 }
 
-export function GlobalSearchBar({
+export interface GlobalSearchBarRef {
+  focus: () => void
+}
+
+export const GlobalSearchBar = forwardRef<GlobalSearchBarRef, GlobalSearchBarProps>(function GlobalSearchBar({
   placeholder = 'Caută lead, fișă, tăviță, serial, tag...',
   className,
   onAfterSelect,
   value: controlledValue,
   onValueChange,
-}: GlobalSearchBarProps) {
+}, ref) {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -144,32 +196,55 @@ export function GlobalSearchBar({
   const [error, setError] = useState<string | null>(null)
   const [isOpen, setIsOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [searchHistory, setSearchHistory] = useState<string[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
   const resultsRef = useRef<UnifiedSearchResult[]>([])
   const flatListRef = useRef<UnifiedSearchResult[]>([])
+  const searchGenerationRef = useRef(0)
+  const mountedRef = useRef(true)
+
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      setIsOpen(true)
+      setTimeout(() => inputRef.current?.focus(), 0)
+    },
+  }), [])
 
   useEffect(() => { resultsRef.current = results }, [results])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const performSearch = useCallback(async (q: string) => {
     const trimmed = q.trim()
     if (trimmed.length < MIN_CHARS) {
-      setResults([])
-      setError(null)
+      if (mountedRef.current) {
+        setResults([])
+        setError(null)
+      }
       return
     }
     if (abortRef.current) abortRef.current.abort()
     abortRef.current = new AbortController()
     const signal = abortRef.current.signal
-    setLoading(true)
-    setError(null)
+    const generation = ++searchGenerationRef.current
+    if (mountedRef.current) {
+      setLoading(true)
+      setError(null)
+    }
     try {
       const res = await fetch(`/api/search/unified?q=${encodeURIComponent(trimmed)}`, { signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
-      if (signal.aborted) return
+      if (signal.aborted || !mountedRef.current) return
+      if (generation !== searchGenerationRef.current) return
       if (!data.success) {
         setError(data.error || 'Eroare la căutare')
         setResults([])
@@ -177,15 +252,24 @@ export function GlobalSearchBar({
         const list = Array.isArray(data.data) ? data.data : []
         setResults(list)
         setSelectedIndex(list.length > 0 ? 0 : -1)
+        if (trimmed.length >= 2) pushSearchHistory(trimmed)
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return
-      setError(err instanceof Error ? err.message : 'Eroare la conectare')
-      setResults([])
+      if (mountedRef.current && generation === searchGenerationRef.current) {
+        setError(err instanceof Error ? err.message : 'Eroare la conectare')
+        setResults([])
+      }
     } finally {
-      if (!signal.aborted) setLoading(false)
+      if (mountedRef.current && generation === searchGenerationRef.current && !signal.aborted) {
+        setLoading(false)
+      }
     }
   }, [])
+
+  useEffect(() => {
+    if (isOpen && query.length === 0) setSearchHistory(getSearchHistory())
+  }, [isOpen, query.length])
 
   const handleInputChange = useCallback((value: string) => {
     setQuery(value)
@@ -247,13 +331,29 @@ export function GlobalSearchBar({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const leads = results.filter((r) => r.type === 'lead')
-  const serviceFiles = results.filter((r) => r.type === 'service_file')
-  const trays = results.filter((r) => r.type === 'tray')
-  const termsForHint = query.includes(',') ? query.split(',').map((t) => t.trim()).filter(Boolean) : []
-  const flatList: UnifiedSearchResult[] = []
-  ;[leads.slice(0, MAX_PER_GROUP), serviceFiles.slice(0, MAX_PER_GROUP), trays.slice(0, MAX_PER_GROUP)].forEach((g) => flatList.push(...g))
+  const leads = useMemo(() => results.filter((r) => r.type === 'lead'), [results])
+  const serviceFiles = useMemo(() => results.filter((r) => r.type === 'service_file'), [results])
+  const trays = useMemo(() => results.filter((r) => r.type === 'tray'), [results])
+  const flatList = useMemo(
+    () => [
+      ...leads.slice(0, MAX_PER_GROUP),
+      ...serviceFiles.slice(0, MAX_PER_GROUP),
+      ...trays.slice(0, MAX_PER_GROUP),
+    ],
+    [leads, serviceFiles, trays]
+  )
   flatListRef.current = flatList
+  const termsForHint = useMemo(
+    () => (query.includes(',') ? query.split(',').map((t) => t.trim()).filter(Boolean) : []),
+    [query]
+  )
+
+  useEffect(() => {
+    setSelectedIndex((prev) => {
+      if (flatList.length === 0) return -1
+      return Math.min(prev, flatList.length - 1)
+    })
+  }, [flatList.length])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -269,8 +369,10 @@ export function GlobalSearchBar({
         const r = flatListRef.current[selectedIndex]
         if (r) handleSelect(r)
       } else if (e.key === 'Escape') {
+        e.preventDefault()
         setIsOpen(false)
         setSelectedIndex(-1)
+        inputRef.current?.focus()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -325,7 +427,7 @@ export function GlobalSearchBar({
           placeholder={placeholder}
           value={query}
           onChange={(e) => handleInputChange(e.target.value)}
-          onFocus={() => query && setIsOpen(true)}
+          onFocus={() => setIsOpen(true)}
           className="pl-10 pr-10"
           onKeyDown={(e) => {
             if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && isOpen) e.preventDefault()
@@ -337,11 +439,39 @@ export function GlobalSearchBar({
             ✕
           </button>
         )}
+        {!query && !loading && (
+          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-5 select-none items-center rounded border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground">
+            ⌘K
+          </kbd>
+        )}
       </div>
 
-      {isOpen && query.length > 0 && (
+      {isOpen && (
         <Card className="absolute top-full left-0 right-0 mt-2 z-50 max-h-[28rem] overflow-y-auto shadow-xl">
           <CardContent className="p-0">
+            {(query.length === 0 || query.trim().length < MIN_CHARS) && searchHistory.length > 0 && (
+              <div className="px-3 py-2 border-b bg-muted/20">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Căutări recente</p>
+                <div className="space-y-0.5">
+                  {searchHistory.slice(0, 5).map((item, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        setQuery(item)
+                        performSearch(item)
+                      }}
+                      className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-accent/50 flex items-center gap-2"
+                    >
+                      <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate">{item}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {query.length > 0 && (
+            <>
             {loading && (
               <div className="p-8 text-center">
                 <Loader2 className="h-5 w-5 animate-spin mx-auto text-primary" />
@@ -352,9 +482,12 @@ export function GlobalSearchBar({
               <div className="p-4 text-sm text-destructive bg-destructive/10">{error}</div>
             )}
             {!loading && !error && results.length === 0 && query.trim().length >= MIN_CHARS && (
-              <div className="p-8 text-center">
+              <div className="p-6 text-center">
                 <Package className="h-10 w-10 mx-auto text-muted-foreground opacity-50" />
-                <p className="text-sm text-muted-foreground mt-2">Nu s-a găsit nimic</p>
+                <p className="text-sm font-medium text-muted-foreground mt-2">Nu s-a găsit nimic</p>
+                <p className="text-xs text-muted-foreground mt-2 max-w-[260px] mx-auto">
+                  Încearcă cu mai puține caractere sau alt termen. Poți scrie fără diacritice (ex. popescu, tavita).
+                </p>
               </div>
             )}
 
@@ -501,11 +634,28 @@ export function GlobalSearchBar({
                     </div>
                   )}
                 </div>
+                <div className="border-t bg-muted/30 px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false)
+                      setResults([])
+                      const q = query.trim()
+                      if (q) router.push(`${SEARCH_PAGE_PATH}?q=${encodeURIComponent(q)}`)
+                      onAfterSelect?.()
+                    }}
+                    className="w-full text-center text-xs font-medium text-primary hover:underline"
+                  >
+                    Vezi toate rezultatele ({results.length})
+                  </button>
+                </div>
               </>
+            )}
+            </>
             )}
           </CardContent>
         </Card>
       )}
     </div>
   )
-}
+})
