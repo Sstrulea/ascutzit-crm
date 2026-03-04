@@ -34,6 +34,7 @@ import {
 import { 
   DEPARTMENT_PIPELINES, 
   findStageByPattern,
+  findColetAjunsStage,
   matchesStagePattern 
 } from '../constants'
 
@@ -341,7 +342,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
     const inLucruStage = findStageByPattern(receptieStages, 'IN_LUCRU')
     const inAsteptareStage = findStageByPattern(receptieStages, 'IN_ASTEPTARE')
     const deFacturatStage = findStageByPattern(receptieStages, 'DE_FACTURAT')
-    const coletAjunsStage = findStageByPattern(receptieStages, 'COLET_AJUNS')
+    const coletAjunsStage = findColetAjunsStage(receptieStages)
     const coletNeridicatStage = findStageByPattern(receptieStages, 'COLET_NERIDICAT')
     const curierTrimisStage = findStageByPattern(receptieStages, 'CURIER_TRIMIS')
     const officeDirectStage = findStageByPattern(receptieStages, 'OFFICE_DIRECT')
@@ -1390,12 +1391,12 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
         receptieStage = findStageByPattern(receptieStages, 'IN_LUCRU')
       } else if (hasNewUnassigned) {
         // Dacă sunt tăvițe neatribuite din stagiul NOUĂ, pune-le în COLET AJUNS
-        receptieStage = findStageByPattern(receptieStages, 'COLET_AJUNS')
+        receptieStage = findColetAjunsStage(receptieStages)
       }
       
       // Fallback - dacă nu e nicio altă situație
       if (!receptieStage) {
-        receptieStage = findStageByPattern(receptieStages, 'COLET_AJUNS')
+        receptieStage = findColetAjunsStage(receptieStages)
       }
       
       if (receptieStage) {

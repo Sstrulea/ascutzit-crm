@@ -165,66 +165,8 @@ export function LeadServiceFilesSelector({
   return (
     <div className="mb-1.5">
       <div className="flex items-center gap-3 flex-wrap">
-        {!sheetSelectorInHeader && (
+        {!sheetSelectorInHeader && !isDepartmentPipeline && (
         <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-          {isDepartmentPipeline ? (
-          <>
-            {/* Pentru vânzători / admin / owner: selector de tăviță */}
-            {!isTechnician ? (
-              <>
-                <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
-                  Selectează tăvița:
-                </label>
-                <div className="flex items-center gap-2 flex-1">
-                  <Select
-                    value={selectedTrayId || ''}
-                    onValueChange={(value) => {
-                      const tray = allTrays.find(t => t.id === value)
-                      if (tray) {
-                        onTrayIdChange(tray.id, tray.service_file_id)
-                      }
-                    }}
-                    disabled={loadingTrays}
-                  >
-                    <SelectTrigger className="w-full max-w-md">
-                      <SelectValue placeholder={loadingTrays ? "Se încarcă..." : "Selectează o tăviță"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allTrays.map((tray, index) => {
-                        const num = (tray.number || '').trim()
-                        const sameNumberBefore = allTrays.slice(0, index).filter((t) => (t.number || '').trim().toLowerCase() === num.toLowerCase()).length
-                        const suffix = sameNumberBefore > 0 ? ` (${sameNumberBefore + 1})` : ''
-                        const displayText = num ? `Tăviță #${tray.number}${suffix}` : `Tăviță fără număr${suffix}`
-                        return (
-                          <SelectItem key={tray.id} value={tray.id}>
-                            {displayText}
-                          </SelectItem>
-                        );
-                      })}
-                      {allTrays.length === 0 && !loadingTrays && (
-                        <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                          Nu există tăvițe
-                        </div>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onCreateServiceSheet}
-                    className="flex items-center gap-2"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Adaugă Fișă Serviciu
-                  </Button>
-                </div>
-              </>
-            ) : (
-              /* Pentru tehnicieni: se afișează în header-ul DepartmentView, nu aici */
-              null
-            )}
-          </>
-        ) : (
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full max-w-2xl mx-auto">
             <label className="text-sm font-medium text-foreground whitespace-nowrap sm:self-center">
               Selectează fișa de serviciu:
@@ -274,7 +216,6 @@ export function LeadServiceFilesSelector({
               )}
             </div>
           </div>
-        )}
         </div>
         )}
         

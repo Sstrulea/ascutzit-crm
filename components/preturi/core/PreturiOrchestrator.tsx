@@ -53,7 +53,14 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Loader2 } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface PreturiOrchestratorProps {
   // Pipeline checks
@@ -251,6 +258,8 @@ interface PreturiOrchestratorProps {
     originalTrayId: string
     assignments: Array<{ technicianId: string; displayName: string; trayItemIds: string[] }>
   }) => Promise<void>
+  /** Pasare tăviță: atribuie tăvița curentă unui alt tehnician */
+  onPassTray?: (trayId: string, targetTechnicianId: string) => Promise<void>
   
   // Quick actions for department view
   onMarkInProgress?: () => void
@@ -326,10 +335,13 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
   }
   const [departmentMismatchPending, setDepartmentMismatchPending] = useState<DepartmentMismatchPending | null>(null)
   const [assignTrayToInstrument, setAssignTrayToInstrument] = useState(false)
-  // Dialoguri departament: Împarte către tehnician / Împarte în 2-3 tăvițe / Reunește
+  // Dialoguri departament: Împarte către tehnician / Împarte în 2-3 tăvițe / Reunește / Pasare
   const [showSplitTechnicianDialog, setShowSplitTechnicianDialog] = useState(false)
   const [showSplitRealTraysDialog, setShowSplitRealTraysDialog] = useState(false)
   const [showMergeTrayDialog, setShowMergeTrayDialog] = useState(false)
+  const [showPassTrayDialog, setShowPassTrayDialog] = useState(false)
+  const [passTrayTechnicianId, setPassTrayTechnicianId] = useState('')
+  const [passTrayLoading, setPassTrayLoading] = useState(false)
 
   const doAddInstrument = async (
     instrumentId: string,
@@ -676,14 +688,17 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
   }
   
   if (isDepartmentPipeline) {
-    // Imagini tăviță afișate primele, apoi conținutul VanzariViewV4 + Acțiuni tăviță
+    // Imagini tăviță afișate primele, apoi conținutul VanzariViewV4 + Acțiuni tăviță (Împărțire, Întregire, Pasare)
     const departmentActions: Array<{ label: string; onClick: () => void }> = []
     if (props.onSplitTrayItemsToTechnician) {
-      departmentActions.push({ label: 'Împarte volum către tehnician', onClick: () => setShowSplitTechnicianDialog(true) })
-      departmentActions.push({ label: 'Reunește către tehnician', onClick: () => setShowMergeTrayDialog(true) })
+      departmentActions.push({ label: 'Împărțire – volum către tehnician', onClick: () => setShowSplitTechnicianDialog(true) })
+      departmentActions.push({ label: 'Întregire – reunește către tehnician', onClick: () => setShowMergeTrayDialog(true) })
     }
     if (props.onSplitTrayToRealTrays && props.currentUserId) {
-      departmentActions.push({ label: 'Împarte tăvița în 2 sau 3 tăvițe', onClick: () => setShowSplitRealTraysDialog(true) })
+      departmentActions.push({ label: 'Împărțire – în 2 sau 3 tăvițe', onClick: () => setShowSplitRealTraysDialog(true) })
+    }
+    if (props.onPassTray && props.technicians && props.technicians.length > 0 && selectedQuoteId) {
+      departmentActions.push({ label: 'Pasare – atribuie tăvița unui tehnician', onClick: () => { setPassTrayTechnicianId(''); setShowPassTrayDialog(true) } })
     }
 
     const itemsArray = Array.isArray(props.items) ? props.items : []
@@ -865,6 +880,49 @@ export function PreturiOrchestrator(props: PreturiOrchestratorProps) {
                 })
               }}
             />
+            {props.onPassTray && selectedQuoteId && (
+              <Dialog open={showPassTrayDialog} onOpenChange={(open) => { setShowPassTrayDialog(open); if (!open) setPassTrayTechnicianId('') }}>
+                <DialogContent showCloseButton className="sm:max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle>Pasare tăviță</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-sm text-muted-foreground">Atribuie tăvița selectată unui tehnician.</p>
+                  <Select value={passTrayTechnicianId} onValueChange={setPassTrayTechnicianId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Alege tehnician" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(props.technicians || []).map((t) => (
+                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowPassTrayDialog(false)}>Anulează</Button>
+                    <Button
+                      disabled={!passTrayTechnicianId || passTrayLoading}
+                      onClick={async () => {
+                        if (!passTrayTechnicianId || !props.onPassTray || !selectedQuoteId) return
+                        setPassTrayLoading(true)
+                        try {
+                          await props.onPassTray(selectedQuoteId, passTrayTechnicianId)
+                          setShowPassTrayDialog(false)
+                          setPassTrayTechnicianId('')
+                          props.onRefreshItems?.()
+                        } catch (e) {
+                          toast.error((e as Error)?.message ?? 'Eroare la pasarea tăviței')
+                        } finally {
+                          setPassTrayLoading(false)
+                        }
+                      }}
+                    >
+                      {passTrayLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      {passTrayLoading ? 'Se atribuie…' : 'Pasare'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
           </>
         )}
         <Dialog open={!!departmentMismatchPending} onOpenChange={(open) => { if (!open) setDepartmentMismatchPending(null) }}>

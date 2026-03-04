@@ -9,7 +9,11 @@ export type TagColor =
   | 'lime' | 'amber' | 'emerald' | 'teal' | 'cyan' | 'sky'
   | 'indigo' | 'violet' | 'purple' | 'fuchsia' | 'rose'
   | 'black' | 'white'
-export type Tag = { id: string; name: string; color: TagColor }
+
+/** Tipuri de item pe care poate fi atribuit un tag. Gol/null = toate. */
+export type TagItemType = 'lead' | 'service_file' | 'tray'
+
+export type Tag = { id: string; name: string; color: TagColor; item_types?: TagItemType[] | null }
 
 /** Clase Tailwind pentru fiecare culoare de tag (culori solide, nu nuante). */
 export const TAG_COLOR_CLASSES: Record<TagColor, string> = {
@@ -88,14 +92,43 @@ function canonicalTagName(name: string): string {
     .replace(/[^a-z0-9]/g, '')
 }
 
-/** Admin list (configurari) */
-export async function listTags(): Promise<Tag[]> {
+/** Selectează taguri; dacă coloana item_types lipsește (migrare nerulată), folosește doar id,name,color. */
+async function listTagsRaw(includeItemTypes: boolean): Promise<Tag[]> {
+  const cols = includeItemTypes ? 'id,name,color,item_types' : 'id,name,color'
   const { data, error } = await supabase
     .from('tags')
-    .select('id,name,color')
+    .select(cols)
     .order('name', { ascending: true })
   if (error) throw error
   return (data ?? []) as Tag[]
+}
+
+/** Admin list (configurari). Toleră lipsa coloanei item_types. */
+export async function listTags(): Promise<Tag[]> {
+  try {
+    return await listTagsRaw(true)
+  } catch {
+    return await listTagsRaw(false)
+  }
+}
+
+/**
+ * Taguri care pot fi atribuite unui anumit tip de item (lead, fișă, tăviță).
+ * Un tag fără item_types sau cu array gol se consideră disponibil pentru toate tipurile.
+ * Dacă coloana item_types lipsește în DB, returnează toate tagurile.
+ */
+export async function listTagsForItemType(itemType: TagItemType): Promise<Tag[]> {
+  let all: Tag[]
+  try {
+    all = await listTagsRaw(true)
+  } catch {
+    all = await listTagsRaw(false)
+  }
+  return all.filter((t) => {
+    const types = t.item_types
+    if (!types || types.length === 0) return true
+    return types.includes(itemType)
+  })
 }
 
 /** Toggle assign/unassign a tag on a lead */
@@ -139,11 +172,13 @@ export async function toggleLeadTag(leadId: string, tagId: string) {
  * @param name - Tag name
  * @param color - Tag color from predefined options
  */
-export async function createTag(name: string, color: TagColor) {
+export async function createTag(name: string, color: TagColor, item_types?: TagItemType[] | null) {
+  const payload: Record<string, unknown> = { name, color }
+  if (item_types !== undefined) payload.item_types = item_types?.length ? item_types : null
   const { data, error } = await supabase
     .from('tags')
-    .insert([{ name, color }] as any)
-    .select('id,name,color')
+    .insert([payload] as any)
+    .select('id,name,color,item_types')
     .single()
   if (error) throw error
   return data as Tag
@@ -159,20 +194,21 @@ export async function deleteTag(tagId: string) {
 }
 
 /**
- * Updates a tag's name or color.
+ * Updates a tag's name, color or item_types.
  * @param tagId - The ID of the tag to update
- * @param patch - Partial update object with name or color
+ * @param patch - Partial update object with name, color, item_types
  */
-export async function updateTag(tagId: string, patch: Partial<Pick<Tag,'name'|'color'>>) {
+export async function updateTag(tagId: string, patch: Partial<Pick<Tag, 'name' | 'color' | 'item_types'>>) {
   const updateData: any = {}
   if (patch.name !== undefined) updateData.name = patch.name
   if (patch.color !== undefined) updateData.color = patch.color
-  
+  if (patch.item_types !== undefined) updateData.item_types = patch.item_types?.length ? patch.item_types : null
+
   const { data, error } = await supabase
     .from('tags')
     .update(updateData as any)
     .eq('id', tagId)
-    .select('id,name,color')
+    .select('id,name,color,item_types')
     .single()
   if (error) throw error
   return data as Tag

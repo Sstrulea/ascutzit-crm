@@ -1197,6 +1197,7 @@ const PreturiMain = forwardRef<PreturiRef, PreturiProps>(function PreturiMain({
       currentUserId={user?.id ?? ''}
       currentUserDisplayName={(user?.user_metadata as any)?.full_name ?? user?.email?.split('@')[0] ?? 'Eu'}
       onSplitTrayToRealTrays={SPLIT_TRAY_FEATURE_ENABLED ? (business.handleSplitTrayToRealTrays as any) : undefined}
+      onPassTray={isDepartmentPipeline && business.handlePassTray ? (business.handlePassTray as (trayId: string, targetTechnicianId: string) => Promise<void>) : undefined}
       // Quick actions for department view
       onMarkInProgress={() => {
         // TODO: Implementare logică pentru "În lucru"

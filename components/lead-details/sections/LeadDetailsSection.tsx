@@ -76,9 +76,13 @@ export function LeadDetailsSection({
     if (isEditing) setEditValue(trayDetails)
   }, [isEditing, trayDetails])
 
-  const handleEdit = () => {
-    setEditValue(trayDetails)
-    setIsEditing(true)
+  /** Un singur buton: deschide secțiunea și intră în mod edit (când canEdit) */
+  const handleOpenAndEdit = () => {
+    if (!isOpen) onOpenChange(true)
+    if (canEdit && onSave) {
+      setEditValue(trayDetails)
+      setIsEditing(true)
+    }
   }
 
   const handleCancel = () => {
@@ -95,21 +99,33 @@ export function LeadDetailsSection({
   }
 
   return (
-    <Collapsible open={isOpen} onOpenChange={onOpenChange}>
+    <Collapsible open={isOpen} onOpenChange={(open) => { onOpenChange(open); if (!open) setIsEditing(false) }}>
       <div className="rounded-xl border bg-gradient-to-br from-slate-50/80 to-white dark:from-slate-900/80 dark:to-slate-800/50 shadow-sm overflow-hidden">
-        <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amber-400/20 to-orange-500/10 flex items-center justify-center">
+        <div className="flex items-center justify-between w-full p-3 gap-2">
+          <CollapsibleTrigger className="flex items-center gap-2 flex-1 min-w-0 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 rounded-md transition-colors text-left p-1 -m-1">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amber-400/20 to-orange-500/10 flex items-center justify-center shrink-0">
               <MessageSquare className="h-4 w-4 text-amber-600 dark:text-amber-400" />
             </div>
-            <span className="font-semibold text-sm">Detalii comunicate de client</span>
-          </div>
-          {isOpen ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <span className="font-semibold text-sm truncate">Detalii comunicate de client</span>
+            {isOpen ? (
+              <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            )}
+          </CollapsibleTrigger>
+          {canEdit && onSave && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenAndEdit}
+              className="h-8 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:border-primary shrink-0"
+              title={isOpen ? 'Editează' : 'Deschide și editează'}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              {isOpen ? 'Editează' : 'Deschide'}
+            </Button>
           )}
-        </CollapsibleTrigger>
+        </div>
         <CollapsibleContent>
           <div className="px-3 pb-4">
             <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent" />
@@ -152,28 +168,13 @@ export function LeadDetailsSection({
                 </div>
               </>
             ) : (
-              <>
-                <div className="min-h-[80px] sm:min-h-[100px] text-xs sm:text-sm text-foreground whitespace-pre-wrap rounded-md border border-transparent bg-transparent py-2 px-0">
-                  {trayDetails ? renderDetailsWithInstrumentHighlight(trayDetails) : (
-                    <span className="text-muted-foreground">
-                      {canEdit ? 'Introduceți detaliile comunicate de client (din formular sau manual)...' : 'Doar utilizatorii cu acces la Receptie sau Vânzări pot edita.'}
-                    </span>
-                  )}
-                </div>
-                {canEdit && onSave && (
-                  <div className="flex justify-end mt-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleEdit}
-                      className="h-8 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:border-primary"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Editează
-                    </Button>
-                  </div>
+              <div className="min-h-[80px] sm:min-h-[100px] text-xs sm:text-sm text-foreground whitespace-pre-wrap rounded-md border border-transparent bg-transparent py-2 px-0">
+                {trayDetails ? renderDetailsWithInstrumentHighlight(trayDetails) : (
+                  <span className="text-muted-foreground">
+                    {canEdit ? 'Apasă „Deschide” sau „Editează” pentru a modifica.' : 'Doar utilizatorii cu acces la Receptie sau Vânzări pot edita.'}
+                  </span>
                 )}
-              </>
+              </div>
             )}
           </div>
         </CollapsibleContent>

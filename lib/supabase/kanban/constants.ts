@@ -123,3 +123,20 @@ export function findStageByPattern(
   return stages.find(s => matchesStagePattern(s.name, pattern))
 }
 
+/**
+ * Găsește stage-ul „Colet Ajuns” în Recepție.
+ * Preferă un stage numit „Colet Ajuns” / „Colet AJUNS” față de „TAVITE RAFT” – toate funcțiile (mutări, evenimente) folosesc acest stage.
+ */
+export function findColetAjunsStage(
+  stages: Array<{ id: string; name: string }>
+): { id: string; name: string } | undefined {
+  if (!Array.isArray(stages)) return undefined
+  const norm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+  const preferColetAjuns = stages.find(s => {
+    const n = norm(s.name)
+    return n.includes('colet') && n.includes('ajuns')
+  })
+  if (preferColetAjuns) return preferColetAjuns
+  return stages.find(s => matchesStagePattern(s.name, 'COLET_AJUNS'))
+}
+

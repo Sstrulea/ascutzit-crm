@@ -29,7 +29,7 @@ import {
   calculateTrayTotals
 } from '../transformers'
 import type { PipelineItemWithStage } from '../types'
-import { isLivrariOrCurierAjunsAziStage } from '../constants'
+import { isLivrariOrCurierAjunsAziStage, findColetAjunsStage } from '../constants'
 import { isForeignPhone } from '@/lib/facebook-lead-helpers'
 
 const TZ_RO = 'Europe/Bucharest'
@@ -124,13 +124,9 @@ export class StandardPipelineStrategy implements PipelineStrategy {
         }) || null
       : null
 
-    // Stage "Colet Ajuns" / "TAVITE RAFT": exclude fișe care au ajuns deja aici din COLET NERIDICAT
+    // Stage "Colet Ajuns" – preia toate funcțiile fostului "TAVITE RAFT"
     const coletAjunsStage = isVanzari
-      ? context.allStages.find(s => {
-          if (s.pipeline_id !== context.pipelineId) return false
-          const nameLower = (s.name || '').toLowerCase().trim()
-          return (nameLower.includes('colet') && nameLower.includes('ajuns')) || nameLower.includes('colet_ajuns') || (nameLower.includes('tavite') && nameLower.includes('raft'))
-        }) || null
+      ? findColetAjunsStage(context.allStages.filter(s => s.pipeline_id === context.pipelineId)) ?? null
       : null
 
     // Stage "Curier Ajuns Azi" / "LIVRARI": lead-uri pentru care s-a creat azi (RO) o fișă cu Curier trimis sau Office direct activ

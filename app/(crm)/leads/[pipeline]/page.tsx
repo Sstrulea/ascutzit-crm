@@ -13,7 +13,7 @@ import type { KanbanLead } from '@/lib/types/database'
 import { useParams, useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Plus, Settings2, Filter, X, UserPlus, Loader2, User, MapPin, Building2, Phone, Mail, LayoutGrid, Package, ChevronDown, SlidersHorizontal, Eye, EyeOff, Archive, ChevronsLeft, ChevronsRight, Minus } from "lucide-react"
+import { Plus, Settings2, Filter, X, UserPlus, Loader2, User, MapPin, Building2, Phone, Mail, LayoutGrid, Package, ChevronDown, SlidersHorizontal, Eye, EyeOff, ChevronsLeft, ChevronsRight, Minus } from "lucide-react"
 import { useRole, useAuthContext } from '@/lib/contexts/AuthContext'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
 import { AppSidebar as Sidebar, LoadingScreen } from '@/components/layout'
@@ -21,7 +21,7 @@ import { moveLeadToPipelineByName, getPipelineOptions, updatePipelineAndStages, 
 import { invalidateStageIdsCache } from "@/lib/supabase/tehnicianDashboardStageIdsCache"
 import { clearDashboardFullCache } from "@/lib/supabase/tehnicianDashboard"
 import { usePipelinesCache } from "@/hooks/usePipelinesCache"
-import { PipelineEditor, StageOrderCustomizer } from "@/components/settings"
+import { PipelineEditor } from "@/components/settings"
 import { Tag } from "@/lib/supabase/tagOperations"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -124,7 +124,7 @@ export default function CRMPage() {
     stages: { id: string; name: string }[]
   } | null>(null)
 
-  // State pentru dialog customizare ordine stage-uri
+  // (păstrat pentru compatibilitate – referințe posibile din cache; un singur buton „Editează stage-uri” deschide PipelineEditor)
   const [customizeOpen, setCustomizeOpen] = useState(false)
 
   // Navigare stage (Primul / Mijloc / Ultimul) – expusă de KanbanBoard, randată în header centrat
@@ -449,19 +449,8 @@ export default function CRMPage() {
     return getStageOrder(pipelineSlug, stages)
   }, [pipelineSlug, stages, getStageOrder])
 
-  // Arhivare Ridicat + Trimis (Receptie): stage Arhivat și fișe din De trimis / Ridic personal
+  // Stage Arhivat (Receptie): folosit la arhivare din card (onArchiveCard)
   const arhivatStageName = useMemo(() => stages.find(s => String(s || '').toLowerCase().includes('arhivat')) ?? null, [stages])
-  const ridicatTrimisFiseIds = useMemo(() => {
-    if (pipelineSlug?.toLowerCase() !== 'receptie') return []
-    return leads
-      .filter((l: any) => (l as any).type === 'service_file' && (l as any).stage)
-      .filter((l: any) => {
-        const s = String((l as any).stage || '').toLowerCase()
-        return s.includes('de trimis') || s.includes('ridic personal')
-      })
-      .map(l => l.id)
-  }, [pipelineSlug, leads])
-  const [archiveRidicatTrimisLoading, setArchiveRidicatTrimisLoading] = useState(false)
 
   // Vânzări: stage-urile Avem Comandă, Curier trimis, Office direct sunt ascunse; admin poate le afișa cu butonul dedicat
   const isVanzariPipeline = pipelineSlug?.toLowerCase() === 'vanzari'
@@ -2054,32 +2043,6 @@ export default function CRMPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-lg font-semibold text-foreground shrink-0">{activePipelineName}</h1>
 
-            {/* Vânzări: pill-uri compacte */}
-            {pipelineSlug?.toLowerCase() === 'vanzari' && (
-              <div className="flex items-center gap-1">
-                <Button data-button-id="vanzariFilterToate" variant={vanzariQuickFilter === null ? 'default' : 'outline'} size="sm" onClick={() => setVanzariQuickFilter(null)} className="h-7 text-xs px-2" title="Toate">Toate</Button>
-                <Button data-button-id="vanzariFilterSunati" variant={vanzariQuickFilter === 'sunati' ? 'default' : 'outline'} size="sm" onClick={() => setVanzariQuickFilter('sunati')} className="h-7 text-xs px-2" title="Sunați">Sunați ({vanzariCounts.sunati})</Button>
-                <Button data-button-id="vanzariFilterCallback" variant={vanzariQuickFilter === 'callback' ? 'default' : 'outline'} size="sm" onClick={() => setVanzariQuickFilter('callback')} className="h-7 text-xs px-2" title="Call Back">CB ({vanzariCounts.callback})</Button>
-                <Button data-button-id="vanzariFilterNoDeal" variant={vanzariQuickFilter === 'no_deal' ? 'default' : 'outline'} size="sm" onClick={() => setVanzariQuickFilter('no_deal')} className="h-7 text-xs px-2" title="No deal">No deal ({vanzariCounts.noDeal})</Button>
-                <Button data-button-id="vanzariFilterYesDeal" variant={vanzariQuickFilter === 'yes_deal' ? 'default' : 'outline'} size="sm" onClick={() => setVanzariQuickFilter('yes_deal')} className="h-7 text-xs px-2" title="Yes deal">Deal ({vanzariCounts.yesDeal})</Button>
-                <Button data-button-id="vanzariFilterCurierTrimis" variant={vanzariQuickFilter === 'curier_trimis' ? 'default' : 'outline'} size="sm" onClick={() => setVanzariQuickFilter('curier_trimis')} className="h-7 text-xs px-2" title="Curier Ajuns Azi">Curier trimis ({vanzariCounts.curierTrimis})</Button>
-                <Button data-button-id="vanzariFilterOfficeDirect" variant={vanzariQuickFilter === 'office_direct' ? 'default' : 'outline'} size="sm" onClick={() => setVanzariQuickFilter('office_direct')} className="h-7 text-xs px-2" title="Office direct">Office direct ({vanzariCounts.officeDirect})</Button>
-                {(role === 'admin' || isOwner) && (
-                  <Button
-                    data-button-id="vanzariToggleHiddenStages"
-                    variant={showHiddenVanzariStages ? 'secondary' : 'outline'}
-                    size="sm"
-                    className="h-7 text-xs px-2 gap-1"
-                    title={showHiddenVanzariStages ? 'Ascunde stage-urile Avem Comandă, Curier trimis, Office direct' : 'Arată stage-urile ascunse (Avem Comandă, Curier trimis, Office direct)'}
-                    onClick={() => setShowHiddenVanzariStages((v) => !v)}
-                  >
-                    {showHiddenVanzariStages ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    {showHiddenVanzariStages ? 'Ascunde stage-uri' : 'Stage-uri ascunse'}
-                  </Button>
-                )}
-              </div>
-            )}
-
             {/* Filtre: un singur buton cu popover (dată + tehnician + resetează) */}
             <Popover>
               <PopoverTrigger asChild>
@@ -2232,49 +2195,10 @@ export default function CRMPage() {
 
             {/* Acțiuni – aliniate la dreapta */}
             <div className="flex items-center gap-1.5 ml-auto shrink-0">
-              {pipelineSlug?.toLowerCase() === 'receptie' && arhivatStageName && (
-                <Button
-                  data-button-id="receptieArchiveRidicatTrimisButton"
-                  variant="outline"
-                  size="sm"
-                  disabled={archiveRidicatTrimisLoading || ridicatTrimisFiseIds.length === 0}
-                  onClick={async () => {
-                    if (ridicatTrimisFiseIds.length === 0) return
-                    setArchiveRidicatTrimisLoading(true)
-                    try {
-                      await handleBulkMoveToStage(ridicatTrimisFiseIds, arhivatStageName)
-                      toast({
-                        title: 'Arhivare Ridicat și Trimis',
-                        description: ridicatTrimisFiseIds.length === 1
-                          ? '1 fișă arhivată (fișă + tăvițe + lead mutat la Arhivat).'
-                          : `${ridicatTrimisFiseIds.length} fișe arhivate (fișe + tăvițe + lead-uri mutate la Arhivat).`,
-                        duration: 4000,
-                      })
-                      refresh?.()
-                    } catch (e) {
-                      toast({ title: 'Eroare la arhivare', variant: 'destructive', description: (e as Error)?.message })
-                    } finally {
-                      setArchiveRidicatTrimisLoading(false)
-                    }
-                  }}
-                  className="h-8 gap-1.5 px-2.5"
-                  title="Arhivează toate fișele din De trimis și Ridic personal (fișă + tăvițe + lead la Arhivat)"
-                >
-                  {archiveRidicatTrimisLoading ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Archive className="h-3.5 w-3.5" />
-                  )}
-                  <span className="hidden lg:inline">Arhivează Ridicat și Trimis</span>
-                  {ridicatTrimisFiseIds.length > 0 && (
-                    <span className="hidden sm:inline text-muted-foreground">({ridicatTrimisFiseIds.length})</span>
-                  )}
-                </Button>
-              )}
-              {stages.length > 0 && (
-                <Button data-button-id="receptieLayoutButton" variant="outline" size="sm" onClick={() => setCustomizeOpen(true)} className="h-8 gap-1.5 px-2.5" aria-label="Customizare layout" title="Reordonează coloanele">
+              {stages.length > 0 && isOwner && (
+                <Button data-button-id="receptieLayoutButton" variant="outline" size="sm" onClick={openEditor} className="h-8 gap-1.5 px-2.5" aria-label="Editează poziția și denumirile stage-urilor" title="Editează poziția stage-urilor, denumirile și salvează">
                   <SlidersHorizontal className="h-3.5 w-3.5" />
-                  <span className="hidden lg:inline">Layout</span>
+                  <span className="hidden lg:inline">Editează stage-uri</span>
                 </Button>
               )}
               {(pipelineSlug?.toLowerCase() === 'vanzari' || pipelineSlug?.toLowerCase() === 'receptie' || pipelineSlug?.toLowerCase() === 'parteneri') && (
@@ -2284,16 +2208,10 @@ export default function CRMPage() {
                 </Button>
               )}
               {isOwner && (
-                <>
-                  <Button data-button-id="vanzariAddStageButton" variant="outline" size="sm" onClick={() => setCreateStageOpen(true)} className="h-8 gap-1.5 px-2.5" title="Adaugă un stage nou">
-                    <Plus className="h-3.5 w-3.5" />
-                    <span className="hidden lg:inline">Stage</span>
-                  </Button>
-                  <Button data-button-id="vanzariEditBoardButton" variant="outline" size="sm" onClick={openEditor} className="h-8 gap-1.5 px-2.5" aria-label="Edit board" title="Editează pipeline (ordine coloane, nume)">
-                    <Settings2 className="h-3.5 w-3.5" />
-                    <span className="hidden lg:inline">Edit</span>
-                  </Button>
-                </>
+                <Button data-button-id="vanzariAddStageButton" variant="outline" size="sm" onClick={() => setCreateStageOpen(true)} className="h-8 gap-1.5 px-2.5" title="Adaugă un stage nou">
+                  <Plus className="h-3.5 w-3.5" />
+                  <span className="hidden lg:inline">Stage</span>
+                </Button>
               )}
             </div>
           </div>
@@ -2311,11 +2229,12 @@ export default function CRMPage() {
                 toast({ variant: "destructive", title: "Salvare eșuată", description: String(error.message ?? error) })
                 throw error
               }
-              await refresh?.()
               const newSlug = toSlug(pipelineName)
+              if (pipelineSlug) setStageOrder(newSlug, stages.map((s) => s.name))
+              await refresh?.()
               if (newSlug !== pipelineSlug) router.replace(`/leads/${newSlug}`)
               setEditorOpen(false)
-              toast({ title: "Board actualizat" })
+              toast({ title: "Stage-uri actualizate" })
               if (typeof window !== "undefined") window.dispatchEvent(new Event("pipelines:updated"))
             }}
           />
@@ -2706,25 +2625,25 @@ export default function CRMPage() {
       <Toaster />
 
       <Dialog open={createStageOpen} onOpenChange={setCreateStageOpen}>
-        <DialogContent className="sm:max-w-md p-0 overflow-hidden border-0 shadow-2xl">
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden border border-border/80 rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.4)]">
           <DialogHeader className="sr-only">
             <DialogTitle>Creează Stage Nou</DialogTitle>
           </DialogHeader>
           
-          {/* Header cu gradient */}
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-lg bg-white/20 flex items-center justify-center">
-                <LayoutGrid className="h-6 w-6 text-white" />
+          {/* Header – același design ca overlay Creează Leaduri */}
+          <div className="relative bg-gradient-to-br from-[#A5B3C6] via-[#9aa9bd] to-[#8a9aaf] text-[#1a1a2e] px-6 py-5 rounded-t-xl overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/5 to-transparent pointer-events-none" />
+            <div className="relative flex items-center gap-3">
+              <div className="h-12 w-12 rounded-xl bg-white/25 backdrop-blur-sm border border-white/30 flex items-center justify-center shadow-sm">
+                <LayoutGrid className="h-6 w-6 text-[#1a1a2e]" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white">Creează Stage Nou</h2>
-                <p className="text-indigo-100 text-sm">Adaugă un nou stage în pipeline</p>
+                <h2 className="text-xl font-bold text-[#1a1a2e] tracking-tight">Creează Stage Nou</h2>
+                <p className="text-[#1a1a2e]/75 text-sm mt-0.5">Adaugă un nou stage în pipeline</p>
               </div>
             </div>
           </div>
           
-          {/* Content */}
           <form
             onSubmit={async (e) => {
               e.preventDefault()
@@ -2741,7 +2660,6 @@ export default function CRMPage() {
 
                 invalidateStageIdsCache()
                 clearDashboardFullCache()
-                // close + clear + refresh local data
                 setCreateStageOpen(false)
                 setStageName("")
                 await refresh()
@@ -2751,53 +2669,42 @@ export default function CRMPage() {
                 setCreatingStage(false)
               }
             }}
-            className="p-6 space-y-5"
+            className="flex flex-col"
           >
-            {/* Info box */}
-            <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-lg border border-indigo-200 dark:border-indigo-800">
-              <div className="flex items-center gap-3">
-                <LayoutGrid className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                <div>
-                  <p className="font-medium text-indigo-900 dark:text-indigo-100">Nume stage</p>
-                  <p className="text-sm text-indigo-700 dark:text-indigo-300 mt-1">
-                    Introdu numele noului stage (ex: LEADURI, ÎN PROCES, FINALIZAT)
-                  </p>
-                </div>
+            {/* Content – gradient discret ca la Creează Leaduri, fără casetă redundantă */}
+            <div className="p-6 bg-gradient-to-b from-background to-muted/20">
+              <div className="space-y-2">
+                <Label htmlFor="stage-name" className="text-sm font-medium text-foreground">
+                  Nume stage <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="stage-name"
+                  autoFocus
+                  required
+                  value={stageName}
+                  onChange={(e) => setStageName(e.target.value)}
+                  placeholder="ex: LEADURI, ÎN PROCES, FINALIZAT"
+                  disabled={creatingStage}
+                  className="h-12 text-base border-input focus-visible:border-[#A5B3C6] focus-visible:ring-[#A5B3C6]/20"
+                />
               </div>
-            </div>
-            
-            {/* Input field */}
-            <div className="space-y-2">
-              <Label htmlFor="stage-name" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Nume stage <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="stage-name"
-                autoFocus
-                required
-                value={stageName}
-                onChange={(e) => setStageName(e.target.value)}
-                placeholder="ex: LEADURI"
-                disabled={creatingStage}
-                className="h-12 text-lg font-semibold border-2 focus:border-indigo-500 focus:ring-indigo-500/20"
-              />
-            </div>
 
-            {createErr && (
-              <div className="p-3 bg-red-50 dark:bg-red-950/30 rounded-md border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-600 dark:text-red-400">{createErr}</p>
-              </div>
-            )}
+              {createErr && (
+                <div className="mt-4 p-3 bg-red-50 dark:bg-red-950/30 rounded-md border border-red-200 dark:border-red-800">
+                  <p className="text-sm text-red-600 dark:text-red-400">{createErr}</p>
+                </div>
+              )}
+            </div>
             
-            {/* Footer */}
-            <div className="border-t pt-4 flex items-center justify-between gap-3">
+            {/* Footer – gradient și buton ca la Creează Leaduri */}
+            <div className="border-t border-border px-6 py-4 bg-gradient-to-r from-muted/40 to-muted/60 flex items-center justify-between gap-3 rounded-b-xl">
               <Button
                 data-button-id="vanzariCreateStageCancelButton"
                 type="button"
                 variant="ghost"
                 onClick={() => setCreateStageOpen(false)}
                 disabled={creatingStage}
-                className="text-gray-600 hover:text-gray-900 dark:text-gray-400"
+                className="text-muted-foreground hover:text-foreground"
                 title="Închide fără a crea stage"
               >
                 Anulează
@@ -2806,7 +2713,7 @@ export default function CRMPage() {
                 data-button-id="vanzariCreateStageSubmitButton"
                 type="submit"
                 disabled={creatingStage || !stageName.trim()}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 px-6 shadow-lg"
+                className="min-w-[140px] bg-gradient-to-r from-[#A5B3C6] to-[#8a9aaf] hover:from-[#8a9aaf] hover:to-[#7a8a9f] text-[#1a1a2e] font-medium gap-2 px-6 border-0 shadow-md hover:shadow-lg transition-all duration-200"
                 title="Creează stage"
               >
                 {creatingStage ? (
@@ -2828,36 +2735,37 @@ export default function CRMPage() {
 
       {/* Dialog pentru creare lead nou in Vanzari */}
       <Dialog open={createLeadOpen} onOpenChange={setCreateLeadOpen}>
-        <DialogContent className="sm:max-w-5xl p-0 overflow-hidden border-0 shadow-2xl max-h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-5xl p-0 overflow-hidden border border-border/80 rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.4)] max-h-[90vh] flex flex-col">
           <DialogHeader className="sr-only">
             <DialogTitle>Creează Leaduri</DialogTitle>
           </DialogHeader>
           
-          {/* Header cu gradient */}
-          <div className="bg-gradient-to-r from-emerald-500 to-teal-600 px-6 py-5 flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-lg bg-white/20 flex items-center justify-center">
-                <UserPlus className="h-6 w-6 text-white" />
+          {/* Header – gradient și umbră pentru aspect profesional */}
+          <div className="relative bg-gradient-to-br from-[#A5B3C6] via-[#9aa9bd] to-[#8a9aaf] text-[#1a1a2e] px-6 py-5 flex-shrink-0 rounded-t-xl overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/5 to-transparent pointer-events-none" />
+            <div className="relative flex items-center gap-3">
+              <div className="h-12 w-12 rounded-xl bg-white/25 backdrop-blur-sm border border-white/30 flex items-center justify-center shadow-sm">
+                <UserPlus className="h-6 w-6 text-[#1a1a2e]" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white">Creează Leaduri</h2>
-                <p className="text-emerald-100 text-sm">Completează informațiile pentru noul lead</p>
+                <h2 className="text-xl font-bold text-[#1a1a2e] tracking-tight">Creează Leaduri</h2>
+                <p className="text-[#1a1a2e]/75 text-sm mt-0.5">Completează informațiile pentru noul lead</p>
               </div>
             </div>
           </div>
           
           {/* Content - scrollable */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto bg-gradient-to-b from-background to-muted/20">
             <div className="p-6 space-y-6">
               {/* Informații de bază */}
               <div className="space-y-4">
                 <div className={`grid grid-cols-1 ${pipelineSlug?.toLowerCase() === 'parteneri' ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
                   <div className="space-y-2">
-                    <Label htmlFor="lead-name" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="lead-name" className="text-sm font-medium text-foreground">
                       Nume și Prenume <span className="text-red-500">*</span>
                     </Label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="lead-name"
                         value={newLeadData.full_name}
@@ -2877,18 +2785,18 @@ export default function CRMPage() {
                           })
                         }}
                         placeholder="Nume și prenume"
-                        className="pl-10 h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                        className="pl-10 h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                         disabled={creatingLead}
                       />
                     </div>
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="lead-phone" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="lead-phone" className="text-sm font-medium text-foreground">
                       Telefon <span className="text-red-500">*</span>
                     </Label>
                     <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="lead-phone"
                         type="tel"
@@ -2906,7 +2814,7 @@ export default function CRMPage() {
                           })
                         }}
                         placeholder="+40 123 456 789"
-                        className="pl-10 h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                        className="pl-10 h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                         disabled={creatingLead}
                       />
                     </div>
@@ -2914,18 +2822,18 @@ export default function CRMPage() {
                   
                   {pipelineSlug?.toLowerCase() !== 'parteneri' && (
                   <div className="space-y-2">
-                    <Label htmlFor="lead-email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="lead-email" className="text-sm font-medium text-foreground">
                       Email:
                     </Label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="lead-email"
                         type="email"
                         value={newLeadData.email}
                         onChange={(e) => setNewLeadData(prev => ({ ...prev, email: e.target.value }))}
                         placeholder="email@example.com"
-                        className="pl-10 h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                        className="pl-10 h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                         disabled={creatingLead}
                       />
                     </div>
@@ -2936,7 +2844,7 @@ export default function CRMPage() {
                 {/* Parteneri: alege partenerul (stage-ul) – obligatoriu – afișat imediat sub Nume și Telefon */}
                 {pipelineSlug?.toLowerCase() === 'parteneri' && partnerStagesForSelect.length > 0 && (
                   <div className="space-y-2 pt-2">
-                    <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label className="text-sm font-medium text-foreground">
                       Partener <span className="text-red-500">*</span>
                     </Label>
                     <Select
@@ -2944,7 +2852,7 @@ export default function CRMPage() {
                       onValueChange={(v) => setPartnerStageId(v || null)}
                       disabled={creatingLead}
                     >
-                      <SelectTrigger className="h-12 border-2 focus:border-emerald-500">
+                      <SelectTrigger className="h-12 border-2 focus:border-primary focus:ring-primary/20">
                         <SelectValue placeholder="Alege partenerul" />
                       </SelectTrigger>
                       <SelectContent>
@@ -2961,18 +2869,20 @@ export default function CRMPage() {
               
               {/* Date de livrare – ascunse pentru Parteneri */}
               {pipelineSlug?.toLowerCase() !== 'parteneri' && (<div className="space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
-                  <MapPin className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Date de livrare</h3>
+                <div className="flex items-center gap-2.5 pb-3 border-b-2 border-[#A5B3C6]/30">
+                  <div className="p-1.5 rounded-lg bg-[#A5B3C6]/15">
+                    <MapPin className="h-5 w-5 text-[#6b7b8f]" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground">Date de livrare</h3>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="lead-company" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="lead-company" className="text-sm font-medium text-foreground">
                       Companie:
                     </Label>
                     <div className="relative">
-                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="lead-company"
                         value={newLeadData.company_name}
@@ -2988,14 +2898,14 @@ export default function CRMPage() {
                           })
                         }}
                         placeholder="Nume companie"
-                        className="pl-10 h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                        className="pl-10 h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                         disabled={creatingLead}
                       />
                     </div>
                   </div>
                   
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="lead-strada" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="lead-strada" className="text-sm font-medium text-foreground">
                       Stradă:
                     </Label>
                     <Input
@@ -3013,13 +2923,13 @@ export default function CRMPage() {
                         })
                       }}
                       placeholder="Stradă, număr"
-                      className="h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      className="h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                       disabled={creatingLead}
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="lead-city" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="lead-city" className="text-sm font-medium text-foreground">
                       Oraș:
                     </Label>
                     <Input
@@ -3037,13 +2947,13 @@ export default function CRMPage() {
                         })
                       }}
                       placeholder="București"
-                      className="h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      className="h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                       disabled={creatingLead}
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="lead-judet" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="lead-judet" className="text-sm font-medium text-foreground">
                       Județ:
                     </Label>
                     <Input
@@ -3061,13 +2971,13 @@ export default function CRMPage() {
                         })
                       }}
                       placeholder="Bistrița"
-                      className="h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      className="h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                       disabled={creatingLead}
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="lead-zip" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="lead-zip" className="text-sm font-medium text-foreground">
                       Cod postal:
                     </Label>
                     <Input
@@ -3085,41 +2995,41 @@ export default function CRMPage() {
                         })
                       }}
                       placeholder="123333"
-                      className="h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      className="h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                       disabled={creatingLead}
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="lead-contact-person" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="lead-contact-person" className="text-sm font-medium text-foreground">
                       Persoana de contact:
                     </Label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="lead-contact-person"
                         value={newLeadData.contact_person}
                         onChange={(e) => setNewLeadData(prev => ({ ...prev, contact_person: e.target.value }))}
                         placeholder="Nume și prenume"
-                        className="pl-10 h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                        className="pl-10 h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                         disabled={creatingLead}
                       />
                     </div>
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="lead-contact-phone" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="lead-contact-phone" className="text-sm font-medium text-foreground">
                       Telefon:
                     </Label>
                     <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="lead-contact-phone"
                         type="tel"
                         value={newLeadData.contact_phone}
                         onChange={(e) => setNewLeadData(prev => ({ ...prev, contact_phone: e.target.value }))}
                         placeholder="+40 123 456 789"
-                        className="pl-10 h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                        className="pl-10 h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                         disabled={creatingLead}
                       />
                     </div>
@@ -3129,18 +3039,20 @@ export default function CRMPage() {
               
               {/* Date de facturare – ascunse pentru Parteneri */}
               {pipelineSlug?.toLowerCase() !== 'parteneri' && (<div className="space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
-                  <Building2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Date de facturare</h3>
+                <div className="flex items-center gap-2.5 pb-3 border-b-2 border-[#A5B3C6]/30">
+                  <div className="p-1.5 rounded-lg bg-[#A5B3C6]/15">
+                    <Building2 className="h-5 w-5 text-[#6b7b8f]" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground">Date de facturare</h3>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="billing-nume-prenume" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="billing-nume-prenume" className="text-sm font-medium text-foreground">
                       Nume și Prenume:
                     </Label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="billing-nume-prenume"
                         value={newLeadData.billing_nume_prenume}
@@ -3160,18 +3072,18 @@ export default function CRMPage() {
                           })
                         }}
                         placeholder="Nume și prenume"
-                        className="pl-10 h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                        className="pl-10 h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                         disabled={creatingLead}
                       />
                     </div>
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="billing-nume-companie" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="billing-nume-companie" className="text-sm font-medium text-foreground">
                       Nume Companie:
                     </Label>
                     <div className="relative">
-                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="billing-nume-companie"
                         value={newLeadData.billing_nume_companie}
@@ -3187,14 +3099,14 @@ export default function CRMPage() {
                           })
                         }}
                         placeholder="Nume companie"
-                        className="pl-10 h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                        className="pl-10 h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                         disabled={creatingLead}
                       />
                     </div>
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="billing-cui" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="billing-cui" className="text-sm font-medium text-foreground">
                       CUI:
                     </Label>
                     <Input
@@ -3202,13 +3114,13 @@ export default function CRMPage() {
                       value={newLeadData.billing_cui}
                       onChange={(e) => setNewLeadData(prev => ({ ...prev, billing_cui: e.target.value }))}
                       placeholder="CUI"
-                      className="h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      className="h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                       disabled={creatingLead}
                     />
                   </div>
                   
                   <div className="space-y-2 md:col-span-3">
-                    <Label htmlFor="billing-strada" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="billing-strada" className="text-sm font-medium text-foreground">
                       Strada:
                     </Label>
                     <Input
@@ -3226,13 +3138,13 @@ export default function CRMPage() {
                         })
                       }}
                       placeholder="Stradă, număr"
-                      className="h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      className="h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                       disabled={creatingLead}
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="billing-oras" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="billing-oras" className="text-sm font-medium text-foreground">
                       Oraș:
                     </Label>
                     <Input
@@ -3250,13 +3162,13 @@ export default function CRMPage() {
                         })
                       }}
                       placeholder="Oraș"
-                      className="h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      className="h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                       disabled={creatingLead}
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="billing-judet" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="billing-judet" className="text-sm font-medium text-foreground">
                       Județ:
                     </Label>
                     <Input
@@ -3274,13 +3186,13 @@ export default function CRMPage() {
                         })
                       }}
                       placeholder="Județ"
-                      className="h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      className="h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                       disabled={creatingLead}
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="billing-cod-postal" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Label htmlFor="billing-cod-postal" className="text-sm font-medium text-foreground">
                       Cod postal:
                     </Label>
                     <Input
@@ -3298,7 +3210,7 @@ export default function CRMPage() {
                         })
                       }}
                       placeholder="Cod poștal"
-                      className="h-12 border-2 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      className="h-12 border-2 focus-visible:border-primary focus-visible:ring-primary/20 border-input"
                       disabled={creatingLead}
                     />
                   </div>
@@ -3307,8 +3219,8 @@ export default function CRMPage() {
 
               {/* Receptie: alege stage-ul în care apare fișa (Curier trimis, De facturat, Office direct) */}
               {pipelineSlug?.toLowerCase() === 'receptie' && receptieStagesForSelect.length > 0 && (
-                <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                  <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <div className="space-y-2 pt-2 border-t border-border">
+                  <Label className="text-sm font-medium text-foreground">
                     Fișa va fi adăugată în stage-ul
                   </Label>
                   <Select
@@ -3316,7 +3228,7 @@ export default function CRMPage() {
                     onValueChange={(v) => setReceptieStageId(v || null)}
                     disabled={creatingLead}
                   >
-                    <SelectTrigger className="h-12 border-2 focus:border-emerald-500">
+                    <SelectTrigger className="h-12 border-2 focus:border-primary focus:ring-primary/20">
                       <SelectValue placeholder="Alege stage-ul" />
                     </SelectTrigger>
                     <SelectContent>
@@ -3333,8 +3245,8 @@ export default function CRMPage() {
             </div>
           </div>
           
-          {/* Footer */}
-          <div className="border-t px-6 py-4 bg-gray-50 dark:bg-slate-800/50 flex items-center justify-between gap-3 flex-shrink-0">
+          {/* Footer – gradient discret și umbră */}
+          <div className="border-t border-border px-6 py-4 bg-gradient-to-r from-muted/40 to-muted/60 flex items-center justify-between gap-3 flex-shrink-0 rounded-b-xl">
             <Button
               data-button-id="vanzariCreateLeadCancelButton"
               variant="ghost"
@@ -3362,13 +3274,14 @@ export default function CRMPage() {
                 })
               }}
               disabled={creatingLead}
-              className="text-gray-600 hover:text-gray-900 dark:text-gray-400"
+              className="text-muted-foreground hover:text-foreground"
               title="Închide fără a crea lead"
             >
               Anulează
             </Button>
             <Button
               data-button-id="vanzariCreateLeadSubmitButton"
+              variant="default"
               title="Creează lead în pipeline"
               onClick={async () => {
                 if (!newLeadData.full_name.trim()) {
@@ -3665,7 +3578,7 @@ export default function CRMPage() {
                 }
               }}
               disabled={creatingLead || !newLeadData.full_name.trim() || !newLeadData.phone_number.trim() || (pipelineSlug?.toLowerCase() === 'parteneri' && !partnerStageId)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-6 shadow-lg"
+              className="gap-2 px-6 min-w-[140px] bg-gradient-to-r from-[#A5B3C6] to-[#8a9aaf] hover:from-[#8a9aaf] hover:to-[#7a8a9f] text-[#1a1a2e] font-medium border-0 shadow-md hover:shadow-lg transition-all duration-200"
             >
               {creatingLead ? (
                 <>
@@ -3683,28 +3596,6 @@ export default function CRMPage() {
         </DialogContent>
       </Dialog>
 
-      <StageOrderCustomizer
-        open={customizeOpen}
-        onOpenChange={setCustomizeOpen}
-        pipelineName={activePipelineName || ''}
-        stages={stages}
-        orderedStages={orderedStages}
-        itemCounts={Object.fromEntries(
-          orderedStages.map(s => [s, leads.filter(l => l.stage === s).length])
-        )}
-        onSave={(ordered) => {
-          if (pipelineSlug) {
-            setStageOrder(pipelineSlug, ordered)
-            toast({ title: "Ordinea a fost salvată" })
-          }
-        }}
-        onReset={() => {
-          if (pipelineSlug) {
-            setStageOrder(pipelineSlug, stages)
-            toast({ title: "Ordinea a fost resetată" })
-          }
-        }}
-      />
     </div>
   )
 }

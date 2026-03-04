@@ -993,6 +993,7 @@ export function usePreturiBusiness({
       (trayOperations as any).handleMoveInstrument('new', group, { newTrayNumber: number }),
     handleSplitTrayItemsToTechnician: (trayOperations as any).handleSplitTrayItemsToTechnician,
     handleSplitTrayToRealTrays: (trayOperations as any).handleSplitTrayToRealTrays,
+    handlePassTray: (trayOperations as any).handlePassTray,
     validateTraysBeforeSend: (trayOperations as any).validateTraysBeforeSend,
     checkTraysInDepartments: (trayOperations as any).checkTraysInDepartments,
     sendAllTraysToPipeline: (trayOperations as any).sendAllTraysToPipeline,

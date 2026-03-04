@@ -17,7 +17,7 @@ import { useRole, useAuthContext } from '@/lib/contexts/AuthContext'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
 import { getPipelineOptions, updatePipelineAndStages } from "@/lib/supabase/leadOperations"
 import { usePipelinesCache } from "@/hooks/usePipelinesCache"
-import { PipelineEditor, StageOrderCustomizer } from "@/components/settings"
+import { PipelineEditor } from "@/components/settings"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createLeadWithPipeline } from "@/lib/supabase/leadOperations"
@@ -51,7 +51,9 @@ export default function ParteneriPage() {
     stages: { id: string; name: string }[]
   } | null>(null)
 
+  // (păstrat pentru compatibilitate – referințe posibile din cache; un singur buton „Editează stage-uri” deschide PipelineEditor)
   const [customizeOpen, setCustomizeOpen] = useState(false)
+
   const [createStageOpen, setCreateStageOpen] = useState(false)
   const [stageName, setStageName] = useState("")
   const [creatingStage, setCreatingStage] = useState(false)
@@ -310,10 +312,10 @@ export default function ParteneriPage() {
                 <UserPlus className="h-3.5 w-3.5" />
                 Add Lead
               </Button>
-              {stages.length > 0 && (
-                <Button variant="outline" size="sm" onClick={() => setCustomizeOpen(true)} className="h-8 gap-1.5 px-2.5">
+              {stages.length > 0 && isOwner && (
+                <Button variant="outline" size="sm" onClick={openEditor} className="h-8 gap-1.5 px-2.5" title="Editează poziția stage-urilor, denumirile și salvează">
                   <Settings2 className="h-3.5 w-3.5" />
-                  <span className="hidden lg:inline">Layout</span>
+                  <span className="hidden lg:inline">Editează stage-uri</span>
                 </Button>
               )}
               {isOwner && (
@@ -338,9 +340,10 @@ export default function ParteneriPage() {
                 toast({ variant: "destructive", title: "Salvare eșuată", description: String(error.message ?? error) })
                 throw error
               }
+              setStageOrder('parteneri', stages.map((s) => s.name))
               await refresh?.()
               setEditorOpen(false)
-              toast({ title: "Board actualizat" })
+              toast({ title: "Stage-uri actualizate" })
               if (typeof window !== "undefined") window.dispatchEvent(new Event("pipelines:updated"))
             }}
           />
@@ -444,27 +447,28 @@ export default function ParteneriPage() {
       <Toaster />
 
       <Dialog open={createLeadOpen} onOpenChange={setCreateLeadOpen}>
-        <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border-0 shadow-2xl">
+        <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border border-border/80 rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.4)]">
           <DialogHeader className="sr-only">
             <DialogTitle>Creează Lead Nou - Parteneri</DialogTitle>
           </DialogHeader>
           
-          <div className="bg-gradient-to-r from-purple-500 to-pink-600 px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-lg bg-white/20 flex items-center justify-center">
-                <UserPlus className="h-6 w-6 text-white" />
+          <div className="relative bg-gradient-to-br from-[#A5B3C6] via-[#9aa9bd] to-[#8a9aaf] text-[#1a1a2e] px-6 py-5 rounded-t-xl overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/5 to-transparent pointer-events-none" />
+            <div className="relative flex items-center gap-3">
+              <div className="h-12 w-12 rounded-xl bg-white/25 backdrop-blur-sm border border-white/30 flex items-center justify-center shadow-sm">
+                <UserPlus className="h-6 w-6 text-[#1a1a2e]" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white">Creează Lead Nou - Parteneri</h2>
-                <p className="text-purple-100 text-sm">Completează informațiile pentru noul partener</p>
+                <h2 className="text-xl font-bold text-[#1a1a2e] tracking-tight">Creează Lead Nou - Parteneri</h2>
+                <p className="text-[#1a1a2e]/75 text-sm mt-0.5">Completează informațiile pentru noul partener</p>
               </div>
             </div>
           </div>
           
-          <div className="p-6 space-y-6">
+          <div className="p-6 space-y-6 bg-gradient-to-b from-background to-muted/20">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="partner-full-name" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <Label htmlFor="partner-full-name" className="text-sm font-medium text-foreground">
                   Nume și Prenume <span className="text-red-500">*</span>
                 </Label>
                 <Input
@@ -472,13 +476,13 @@ export default function ParteneriPage() {
                   value={newLeadData.full_name}
                   onChange={(e) => setNewLeadData(prev => ({ ...prev, full_name: e.target.value }))}
                   placeholder="Nume și prenume"
-                  className="h-12 border-2 focus:border-purple-500 focus:ring-purple-500/20"
+                  className="h-12 border-2 border-input focus-visible:border-primary focus-visible:ring-primary/20"
                   disabled={creatingLead}
                 />
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="partner-phone" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <Label htmlFor="partner-phone" className="text-sm font-medium text-foreground">
                   Telefon <span className="text-red-500">*</span>
                 </Label>
                 <Input
@@ -487,13 +491,13 @@ export default function ParteneriPage() {
                   value={newLeadData.phone_number}
                   onChange={(e) => setNewLeadData(prev => ({ ...prev, phone_number: e.target.value }))}
                   placeholder="+40 123 456 789"
-                  className="h-12 border-2 focus:border-purple-500 focus:ring-purple-500/20"
+                  className="h-12 border-2 border-input focus-visible:border-primary focus-visible:ring-primary/20"
                   disabled={creatingLead}
                 />
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="partner-email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <Label htmlFor="partner-email" className="text-sm font-medium text-foreground">
                   Email:
                 </Label>
                 <Input
@@ -502,13 +506,13 @@ export default function ParteneriPage() {
                   value={newLeadData.email}
                   onChange={(e) => setNewLeadData(prev => ({ ...prev, email: e.target.value }))}
                   placeholder="email@example.com"
-                  className="h-12 border-2 focus:border-purple-500 focus:ring-purple-500/20"
+                  className="h-12 border-2 border-input focus-visible:border-primary focus-visible:ring-primary/20"
                   disabled={creatingLead}
                 />
               </div>
 
               <div className="space-y-2 md:col-span-2 pt-2">
-                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <Label className="text-sm font-medium text-foreground">
                   Partener <span className="text-red-500">*</span>
                 </Label>
                 <Select
@@ -516,7 +520,7 @@ export default function ParteneriPage() {
                   onValueChange={(v) => setPartnerStageId(v || null)}
                   disabled={creatingLead}
                 >
-                  <SelectTrigger className="h-12 border-2 focus:border-purple-500">
+                  <SelectTrigger className="h-12 border-2 focus:border-primary focus:ring-primary/20">
                     <SelectValue placeholder="Alege partenerul" />
                   </SelectTrigger>
                   <SelectContent>
@@ -535,7 +539,7 @@ export default function ParteneriPage() {
             )}
           </div>
           
-          <div className="border-t px-6 py-4 bg-gray-50 dark:bg-slate-800/50 flex items-center justify-between gap-3 flex-shrink-0">
+          <div className="border-t border-border px-6 py-4 bg-gradient-to-r from-muted/40 to-muted/60 flex items-center justify-between gap-3 flex-shrink-0 rounded-b-xl">
             <Button
               type="button"
               variant="ghost"
@@ -544,11 +548,12 @@ export default function ParteneriPage() {
                 setNewLeadData({ full_name: '', phone_number: '', email: '' })
               }}
               disabled={creatingLead}
-              className="text-gray-600 hover:text-gray-900 dark:text-gray-400"
+              className="text-muted-foreground hover:text-foreground"
             >
               Anulează
             </Button>
             <Button
+              variant="default"
               onClick={async () => {
                 if (!newLeadData.full_name.trim()) {
                   toast({ title: "Eroare", description: "Numele este obligatoriu", variant: "destructive" })
@@ -593,7 +598,7 @@ export default function ParteneriPage() {
                 }
               }}
               disabled={creatingLead || !newLeadData.full_name.trim() || !newLeadData.phone_number.trim() || !partnerStageId}
-              className="bg-purple-600 hover:bg-purple-700 text-white gap-2 px-6 shadow-lg"
+              className="gap-2 px-6 min-w-[140px] bg-gradient-to-r from-[#A5B3C6] to-[#8a9aaf] hover:from-[#8a9aaf] hover:to-[#7a8a9f] text-[#1a1a2e] font-medium border-0 shadow-md hover:shadow-lg transition-all duration-200"
             >
               {creatingLead ? <><Loader2 className="h-4 w-4 animate-spin" /> Se creează...</> : <><UserPlus className="h-4 w-4" /> Creează Partener</>}
             </Button>
@@ -602,63 +607,54 @@ export default function ParteneriPage() {
       </Dialog>
 
       <Dialog open={createStageOpen} onOpenChange={setCreateStageOpen}>
-        <DialogContent className="sm:max-w-md p-0 overflow-hidden border-0 shadow-2xl">
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden border border-border/80 rounded-xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.4)]">
           <DialogHeader className="sr-only">
             <DialogTitle>Creează Stage Nou</DialogTitle>
           </DialogHeader>
           
-          <div className="bg-gradient-to-r from-purple-500 to-pink-600 px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-lg bg-white/20 flex items-center justify-center">
-                <Plus className="h-6 w-6 text-white" />
+          <div className="relative bg-gradient-to-br from-[#A5B3C6] via-[#9aa9bd] to-[#8a9aaf] text-[#1a1a2e] px-6 py-5 rounded-t-xl overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/5 to-transparent pointer-events-none" />
+            <div className="relative flex items-center gap-3">
+              <div className="h-12 w-12 rounded-xl bg-white/25 backdrop-blur-sm border border-white/30 flex items-center justify-center shadow-sm">
+                <Plus className="h-6 w-6 text-[#1a1a2e]" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white">Creează Stage Nou</h2>
-                <p className="text-purple-100 text-sm">Adaugă un nou stage în pipeline Parteneri</p>
+                <h2 className="text-xl font-bold text-[#1a1a2e] tracking-tight">Creează Stage Nou</h2>
+                <p className="text-[#1a1a2e]/75 text-sm mt-0.5">Adaugă un nou stage în pipeline Parteneri</p>
               </div>
             </div>
           </div>
           
-          <form onSubmit={async (e) => { e.preventDefault(); await handleCreateStage(); }} className="p-6 space-y-5">
-            <div className="p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg border border-purple-200 dark:border-purple-800">
-              <div className="flex items-center gap-3">
-                <Plus className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                <div>
-                  <p className="font-medium text-purple-900 dark:text-purple-100">Nume stage</p>
-                  <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
-                    Introdu numele noului stage (ex: Savy, Annette, PodoCliniq)
-                  </p>
-                </div>
+          <form onSubmit={async (e) => { e.preventDefault(); await handleCreateStage(); }} className="flex flex-col">
+            <div className="p-6 bg-gradient-to-b from-background to-muted/20">
+              <div className="space-y-2">
+                <Label htmlFor="partner-stage-name" className="text-sm font-medium text-foreground">
+                  Nume stage <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="partner-stage-name"
+                  autoFocus
+                  required
+                  value={stageName}
+                  onChange={(e) => setStageName(e.target.value)}
+                  placeholder="ex: Savy, Annette, PodoCliniq"
+                  disabled={creatingStage}
+                  className="h-12 text-base border-input focus-visible:border-[#A5B3C6] focus-visible:ring-[#A5B3C6]/20"
+                />
               </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="partner-stage-name" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Nume stage <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="partner-stage-name"
-                autoFocus
-                required
-                value={stageName}
-                onChange={(e) => setStageName(e.target.value)}
-                placeholder="ex: Savy"
-                disabled={creatingStage}
-                className="h-12 text-lg font-semibold border-2 focus:border-purple-500 focus:ring-purple-500/20"
-              />
-            </div>
 
-            {createErr && (
-              <div className="p-3 bg-red-50 dark:bg-red-950/30 rounded-md border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-600 dark:text-red-400">{createErr}</p>
-              </div>
-            )}
+              {createErr && (
+                <div className="mt-4 p-3 bg-red-50 dark:bg-red-950/30 rounded-md border border-red-200 dark:border-red-800">
+                  <p className="text-sm text-red-600 dark:text-red-400">{createErr}</p>
+                </div>
+              )}
+            </div>
             
-            <div className="border-t pt-4 flex items-center justify-between gap-3">
-              <Button type="button" variant="ghost" onClick={() => setCreateStageOpen(false)} disabled={creatingStage} className="text-gray-600 hover:text-gray-900 dark:text-gray-400">
+            <div className="border-t border-border px-6 py-4 bg-gradient-to-r from-muted/40 to-muted/60 flex items-center justify-between gap-3 rounded-b-xl">
+              <Button type="button" variant="ghost" onClick={() => setCreateStageOpen(false)} disabled={creatingStage} className="text-muted-foreground hover:text-foreground">
                 Anulează
               </Button>
-              <Button type="submit" disabled={creatingStage || !stageName.trim()} className="bg-purple-600 hover:bg-purple-700 text-white gap-2 px-6 shadow-lg">
+              <Button type="submit" disabled={creatingStage || !stageName.trim()} className="min-w-[140px] bg-gradient-to-r from-[#A5B3C6] to-[#8a9aaf] hover:from-[#8a9aaf] hover:to-[#7a8a9f] text-[#1a1a2e] font-medium gap-2 px-6 border-0 shadow-md hover:shadow-lg transition-all duration-200">
                 {creatingStage ? <><Loader2 className="h-4 w-4 animate-spin" /> Se creează...</> : <><Plus className="h-4 w-4" /> Creează Stage</>}
               </Button>
             </div>
@@ -666,16 +662,6 @@ export default function ParteneriPage() {
         </DialogContent>
       </Dialog>
 
-      <StageOrderCustomizer
-        open={customizeOpen}
-        onOpenChange={setCustomizeOpen}
-        pipelineName={activePipelineName}
-        stages={stages}
-        orderedStages={orderedStages}
-        itemCounts={Object.fromEntries(orderedStages.map(s => [s, leads.filter(l => l.stage === s).length]))}
-        onSave={(ordered) => { setStageOrder('parteneri', ordered); toast({ title: "Ordinea a fost salvată" }); }}
-        onReset={() => { setStageOrder('parteneri', stages); toast({ title: "Ordinea a fost resetată" }); }}
-      />
     </div>
   )
 }

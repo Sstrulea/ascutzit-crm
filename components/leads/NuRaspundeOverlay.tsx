@@ -36,7 +36,7 @@ import {
 import { getServiceFile, listTraysForServiceFile } from '@/lib/supabase/serviceFileOperations'
 import { moveItemToStage, getPipelineIdForItem } from '@/lib/supabase/pipelineOperations'
 import { fetchStagesForPipeline } from '@/lib/supabase/kanban/fetchers'
-import { matchesStagePattern, findStageByPattern } from '@/lib/supabase/kanban/constants'
+import { matchesStagePattern, findStageByPattern, findColetAjunsStage } from '@/lib/supabase/kanban/constants'
 import { getOrCreateNuRaspundeTag, toggleLeadTag, getOrCreatePinnedTag, getOrCreateUrgentareTag, addLeadTagIfNotPresent, listTags, type Tag as TagType } from '@/lib/supabase/tagOperations'
 import { listServices } from '@/lib/supabase/serviceOperations'
 import { listQuoteItems } from '@/lib/utils/preturi-helpers'
@@ -393,9 +393,9 @@ export function NuRaspundeOverlay({
       return
     }
     const receptieStages = receptie.stages || []
-    const coletAjunsStage = findStageByPattern(receptieStages, 'COLET_AJUNS')
+    const coletAjunsStage = findColetAjunsStage(receptieStages)
     if (!coletAjunsStage) {
-      toast({ title: 'Eroare', description: 'Stage „TAVITE RAFT” (Colet ajuns) negăsit în Recepție', variant: 'destructive' })
+      toast({ title: 'Eroare', description: 'Stage „Colet ajuns” negăsit în Recepție', variant: 'destructive' })
       return
     }
     setRetrimiteLoading(true)

@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import type { Lead } from "@/app/(crm)/dashboard/page"
 import type { TagColor } from "@/lib/supabase/tagOperations"
-import { getTagColorClass, getOrCreatePinnedTag, getOrCreateNuRaspundeTag, getOrCreateSunaTag, getOrCreateCurierTrimisTag, getOrCreateOfficeDirectTag, getOrCreateReturTag, getOrCreateUrgentTag, getOrCreateNuAVenitTag, toggleLeadTag, addLeadTagIfNotPresent, listTags } from "@/lib/supabase/tagOperations"
+import { getTagColorClass, getOrCreatePinnedTag, getOrCreateNuRaspundeTag, getOrCreateSunaTag, getOrCreateCurierTrimisTag, getOrCreateOfficeDirectTag, getOrCreateReturTag, getOrCreateUrgentTag, getOrCreateNuAVenitTag, toggleLeadTag, addLeadTagIfNotPresent, listTagsForItemType } from "@/lib/supabase/tagOperations"
 import { isTagHiddenFromUI } from "@/hooks/leadDetails/useLeadDetailsTags"
 import { deleteLead, updateLead, updateLeadWithHistory, logLeadEvent, logButtonEvent, logItemEvent } from "@/lib/supabase/leadOperations"
 import { setLeadNoDeal, setLeadCurierTrimis, setLeadOfficeDirect } from "@/lib/vanzari/leadOperations"
@@ -212,7 +212,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
     if (tagPopoverOpen && leadIdForTags) {
       setLoadingTags(true)
       const hiddenSet = new Set(TAGURI_ASCUNSE_DIN_POPUP.map((n) => n.toLowerCase().trim()))
-      listTags()
+      listTagsForItemType(itemType)
         .then((tags) => {
           const filtered = tags.filter((t) => !hiddenSet.has((t.name || '').toLowerCase().trim()))
           setAssignableTagsList(filtered)
@@ -220,7 +220,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
         .catch(() => toast({ variant: "destructive", title: "Eroare", description: "Nu s-au putut încărca tag-urile." }))
         .finally(() => setLoadingTags(false))
     }
-  }, [tagPopoverOpen, leadIdForTags, toast])
+  }, [tagPopoverOpen, leadIdForTags, itemType, toast])
   const handleToggleAssignTag = async (tagId: string) => {
     if (!leadIdForTags || togglingTagId) return
     setTogglingTagId(tagId)
@@ -1012,6 +1012,11 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
   }
 
   const isTrayOrServiceFile = (lead as any).type === 'tray' || (lead as any).type === 'service_file' || lead.isQuote
+  /** Pe cardul fișei: "Fisa #340 19feb" */
+  const serviceFileCardLabel =
+    itemType === 'service_file' && (lead as any).serviceFileNumber != null && lead.createdAt
+      ? `Fisa #${(lead as any).serviceFileNumber} ${format(new Date(lead.createdAt), 'd MMM', { locale: ro }).replace(/\s/g, '').replace(/\./g, '')}`
+      : null
   const isReadOnly = (lead as any).isReadOnly || false
   const qcStatus = (lead as any).qcStatus as ('validated' | 'not_validated' | null | undefined)
   const isQcValidated = qcStatus === 'validated' || (lead as any).qcValidated === true
@@ -1054,8 +1059,8 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                 <div className="grid grid-cols-[1fr_auto] grid-rows-[auto_1fr] gap-x-3 gap-y-2 min-h-[72px]">
                   <h4 className="font-semibold text-sm text-foreground truncate self-start flex items-center gap-1.5">
                     {lead.name}
-                    {(lead as any).type === 'service_file' && (lead as any).serviceFileNumber && (
-                      <span className="text-xs font-normal text-muted-foreground">#{(lead as any).serviceFileNumber}</span>
+                    {serviceFileCardLabel && (
+                      <span className="text-xs font-normal text-muted-foreground">{serviceFileCardLabel}</span>
                     )}
                   </h4>
                   <div className="flex items-center gap-1 justify-end self-start" data-checkbox>
@@ -1471,8 +1476,8 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                           <span className="whitespace-nowrap overflow-hidden text-ellipsis" title={lead.phone}>{lead.phone}</span>
                         </span>
                       )}
-                      {(lead as any).serviceFileNumber && (
-                        <span className="whitespace-nowrap">#Fisa {(lead as any).serviceFileNumber}</span>
+                      {serviceFileCardLabel && (
+                        <span className="whitespace-nowrap">{serviceFileCardLabel}</span>
                       )}
                       {itemType === 'service_file' && isInCurierTrimisStage && (lead as any).curier_scheduled_at && (
                         <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium" title="Data programării curierului">

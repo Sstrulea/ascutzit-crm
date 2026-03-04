@@ -1849,7 +1849,7 @@ export function VanzariViewV4({
             {departmentActions && departmentActions.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button data-button-id="vanzariViewTrayActionsDropdown" variant="outline" size="sm" className="gap-1.5 text-xs" title="Acțiuni tăviță (Împarte, Reunește)">
+                  <Button data-button-id="vanzariViewTrayActionsDropdown" variant="outline" size="sm" className="gap-1.5 text-xs" title="Acțiuni tăviță (Împărțire, Întregire, Pasare)">
                     <GitMerge className="h-4 w-4" />
                     Acțiuni tăviță
                     <ChevronDown className="h-3.5 w-3 opacity-50" />

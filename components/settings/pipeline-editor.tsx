@@ -97,13 +97,13 @@ export default function PipelineEditor({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md p-0 gap-0 overflow-hidden rounded-lg shadow-xl">
         <DialogHeader className="p-6 pb-4 border-b">
-          <DialogTitle className="text-lg font-semibold">Edit board</DialogTitle>
+          <DialogTitle className="text-lg font-semibold">Editează stage-uri</DialogTitle>
         </DialogHeader>
 
         <div className="p-6 pt-4 space-y-5">
           <div>
             <Label htmlFor="pipeline-name" className="text-sm font-medium text-foreground">
-              Pipeline name
+              Nume pipeline
             </Label>
             <Input
               id="pipeline-name"
@@ -115,7 +115,7 @@ export default function PipelineEditor({
 
           <div>
             <Label className="text-sm font-medium text-foreground mb-2 block">
-              Stages (drag to reorder)
+              Stage-uri (trage pentru a reordona, click pe creion pentru redenumire)
             </Label>
             <ul
               className="max-h-[50vh] overflow-y-auto rounded-md border border-border divide-y divide-border bg-muted/20"
@@ -198,10 +198,10 @@ export default function PipelineEditor({
 
         <DialogFooter className="p-4 pt-0 flex flex-row justify-end gap-2 border-t bg-muted/30">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+            Închide
           </Button>
           <Button onClick={handleSave} disabled={!hasChanges}>
-            Save
+            Salvează
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -18,7 +18,7 @@ import {
 import { logItemEvent, getTrayDetails, getUserDetails, getTechnicianDetails } from '@/lib/supabase/leadOperations'
 import { listTrayImages } from '@/lib/supabase/imageOperations'
 import { addTrayToPipeline, getReturStageId, leadHasReturTag } from '@/lib/supabase/pipelineOperations'
-import { notifyTechniciansAboutNewTrays } from '@/lib/supabase/notificationOperations'
+import { notifyTechniciansAboutNewTrays, createNotification } from '@/lib/supabase/notificationOperations'
 import { 
   createQuoteForLead,
   updateQuote,
@@ -1391,6 +1391,68 @@ export function usePreturiTrayOperations({
     }
   }, [pipelinesWithIds, setQuotes, setSelectedQuoteId, setItems, selectedQuoteId, fisaId])
 
+  /** Pasare tăviță: atribuie întreaga tăviță unui alt tehnician (update technician_id + log + notificare). */
+  const handlePassTray = useCallback(async (trayId: string, targetTechnicianId: string) => {
+    const { data: prevTrayRow, error: prevError } = await supabase
+      .from('trays')
+      .select('technician_id')
+      .eq('id', trayId)
+      .maybeSingle()
+    if (prevError) {
+      console.error('[handlePassTray] Error loading previous technician:', prevError)
+      toast.error('Eroare la încărcarea tăviței')
+      return
+    }
+    const previousTechnicianId = (prevTrayRow as any)?.technician_id || null
+    const { error: updateError } = await supabase
+      .from('trays')
+      .update({ technician_id: targetTechnicianId } as any)
+      .eq('id', trayId)
+    if (updateError) {
+      toast.error('Eroare la pasarea tăviței')
+      return
+    }
+    let newTechNameForToast = 'tehnician'
+    try {
+      const currentUserOpt = authUser ? { id: authUser.id, email: (authUser as any).email ?? null } : undefined
+      const [trayDetails, previousTechnicianDetails, newTechnicianDetails, currentUser] = await Promise.all([
+        getTrayDetails(trayId),
+        previousTechnicianId ? getTechnicianDetails(previousTechnicianId) : Promise.resolve(null),
+        getTechnicianDetails(targetTechnicianId, { currentUser: currentUserOpt }),
+        getUserDetails(authUser?.id ?? null, { currentUser: currentUserOpt }),
+      ])
+      const prevName = (previousTechnicianDetails as any)?.name ?? (previousTechnicianDetails as any)?.display_name ?? 'Fără atribuire'
+      const newName = (newTechnicianDetails as any)?.name ?? (newTechnicianDetails as any)?.display_name ?? 'tehnician necunoscut'
+      newTechNameForToast = newName
+      const trayLabel = trayDetails ? `${trayDetails.number}${trayDetails.status ? ` - ${trayDetails.status}` : ''}` : 'nesemnată'
+      await logItemEvent(
+        'tray',
+        trayId,
+        `Tăvița "${trayLabel}" a fost pasată de la "${prevName}" la "${newName}"`,
+        'tray_passed',
+        { from_technician_id: previousTechnicianId, to_technician_id: targetTechnicianId, tray_id: trayId, lead_id: leadId },
+        {
+          tray: trayDetails ? { id: trayDetails.id, number: trayDetails.number, status: trayDetails.status, service_file_id: trayDetails.service_file_id } : undefined,
+          previous_technician: previousTechnicianDetails ? { id: (previousTechnicianDetails as any).id, name: prevName, email: (previousTechnicianDetails as any).email } : undefined,
+          technician: newTechnicianDetails ? { id: (newTechnicianDetails as any).id, name: newName, email: (newTechnicianDetails as any).email } : undefined,
+        },
+        { currentUserId: authUser?.id ?? undefined, currentUserName: (authUser as any)?.email?.split?.('@')[0] ?? null, currentUserEmail: (authUser as any)?.email ?? null }
+      )
+      if (targetTechnicianId !== authUser?.id) {
+        createNotification({
+          userId: targetTechnicianId,
+          type: 'tray_passed',
+          title: 'Tăviță pasată',
+          message: `Ți-a fost pasată tăvița ${trayLabel} de la ${prevName}.`,
+          data: { tray_id: trayId, from_technician_id: previousTechnicianId, lead_id: leadId },
+        }).catch((e) => console.warn('[handlePassTray] Notificare tray_passed:', e))
+      }
+    } catch (logErr) {
+      console.error('[handlePassTray] Error logging:', logErr)
+    }
+    toast.success(`Tăvița a fost atribuită cu succes către ${newTechNameForToast}`)
+  }, [leadId, authUser])
+
   // NOTE: onChangeSheet este mutat în usePreturiEffects.ts din cauza dependențelor complexe
 
   // Funcție pentru validarea tăvițelor înainte de trimitere
@@ -1996,6 +2058,7 @@ export function usePreturiTrayOperations({
     handleMoveInstrument,
     handleSplitTrayItemsToTechnician,
     handleSplitTrayToRealTrays,
+    handlePassTray,
     // NOTE: onChangeSheet este mutat în usePreturiEffects.ts
     validateTraysBeforeSend,
     checkTraysInDepartments,
@@ -2028,6 +2091,7 @@ export function usePreturiTrayOperations({
       originalTrayId: string
       assignments: Array<{ technicianId: string; displayName: string; trayItemIds: string[] }>
     }) => Promise<void>
+    handlePassTray: (trayId: string, targetTechnicianId: string) => Promise<void>
     validateTraysBeforeSend: () => Promise<{ valid: boolean; errors: string[] }>
     checkTraysInDepartments: (trayIds: string[]) => Promise<void>
     sendAllTraysToPipeline: () => Promise<void>

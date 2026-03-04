@@ -16,6 +16,7 @@ import {
   getTagColorClassWithBorder,
   type Tag,
   type TagColor,
+  type TagItemType,
 } from '@/lib/supabase/tagOperations'
 
 const COLOR_OPTIONS: TagColor[] = [
@@ -41,6 +42,14 @@ export function TagsManager() {
   const [editingTagId, setEditingTagId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [editingColor, setEditingColor] = useState<TagColor>('blue')
+  const [editingItemTypes, setEditingItemTypes] = useState<TagItemType[]>([])
+  const [newItemTypes, setNewItemTypes] = useState<TagItemType[]>([])
+
+  const ITEM_TYPE_OPTIONS: { value: TagItemType; label: string }[] = [
+    { value: 'lead', label: 'Lead' },
+    { value: 'service_file', label: 'Fișă' },
+    { value: 'tray', label: 'Tăviță' },
+  ]
 
   useEffect(() => {
     void loadTags()
@@ -65,9 +74,10 @@ export function TagsManager() {
     if (!name) return
     setSaving(true)
     try {
-      const created = await createTag(name, newColor)
+      const created = await createTag(name, newColor, newItemTypes.length ? newItemTypes : null)
       setTags((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       setNewName('')
+      setNewItemTypes([])
       toast.success('Tag creat')
     } catch (err: any) {
       console.error('[TagsManager] Eroare la creare tag:', err)
@@ -81,6 +91,12 @@ export function TagsManager() {
     setEditingTagId(tag.id)
     setEditingName(tag.name)
     setEditingColor(tag.color)
+    setEditingItemTypes(tag.item_types ?? [])
+  }
+
+  function formatItemTypes(types: TagItemType[] | null | undefined): string {
+    if (!types || types.length === 0) return 'Toate'
+    return types.map((t) => ITEM_TYPE_OPTIONS.find((o) => o.value === t)?.label ?? t).join(', ')
   }
 
   async function handleSaveEdit() {
@@ -92,7 +108,7 @@ export function TagsManager() {
     }
     setSaving(true)
     try {
-      const updated = await updateTag(editingTagId, { name, color: editingColor })
+      const updated = await updateTag(editingTagId, { name, color: editingColor, item_types: editingItemTypes.length ? editingItemTypes : null })
       setTags((prev) =>
         prev
           .map((t) => (t.id === updated.id ? updated : t))
@@ -134,8 +150,7 @@ export function TagsManager() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Creează și editează tag-uri personalizate care pot fi atribuite lead-urilor (ex.: Urgent,
-            Recurent, VIP, etc.).
+            Creează și editează tag-uri. Poți restricționa un tag doar la Lead, doar la Fișă, doar la Tăviță sau la toate (lăsând neselectate = Toate).
           </p>
 
           <form onSubmit={handleAddTag} className="flex flex-wrap items-center gap-3">
@@ -160,6 +175,27 @@ export function TagsManager() {
                 ))}
               </SelectContent>
             </Select>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground">Disponibil pentru:</span>
+              {ITEM_TYPE_OPTIONS.map((opt) => {
+                const checked = newItemTypes.includes(opt.value)
+                return (
+                  <label key={opt.value} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        if (e.target.checked) setNewItemTypes((prev) => [...prev, opt.value].sort())
+                        else setNewItemTypes((prev) => prev.filter((t) => t !== opt.value))
+                      }}
+                      className="rounded border-input"
+                    />
+                    {opt.label}
+                  </label>
+                )
+              })}
+              {newItemTypes.length === 0 && <span className="text-xs text-muted-foreground">(Toate)</span>}
+            </div>
             <Button type="submit" size="sm" disabled={saving || !newName.trim()}>
               {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
               Adaugă tag
@@ -212,6 +248,26 @@ export function TagsManager() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {ITEM_TYPE_OPTIONS.map((opt) => {
+                        const checked = editingItemTypes.includes(opt.value)
+                        return (
+                          <label key={opt.value} className="flex items-center gap-1 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) setEditingItemTypes((prev) => [...prev, opt.value].sort())
+                                else setEditingItemTypes((prev) => prev.filter((t) => t !== opt.value))
+                              }}
+                              className="rounded border-input"
+                            />
+                            {opt.label}
+                          </label>
+                        )
+                      })}
+                      {editingItemTypes.length === 0 && <span className="text-xs text-muted-foreground">Toate</span>}
+                    </div>
                     <div className="flex items-center gap-2 ml-auto">
                       <Button
                         type="button"
@@ -244,6 +300,7 @@ export function TagsManager() {
                       {tag.name}
                     </Badge>
                     <span className="text-xs text-muted-foreground">({tag.color})</span>
+                    <span className="text-xs text-muted-foreground">· {formatItemTypes(tag.item_types)}</span>
                     <div className="flex items-center gap-2 ml-auto">
                       <Button
                         type="button"

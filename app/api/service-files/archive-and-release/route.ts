@@ -21,10 +21,8 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  */
 export async function POST(req: Request) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
-    const { data: { session }, error: authErr } = await supabase.auth.getSession()
-    const user = session?.user
+    const supabase = createRouteHandlerClient({ cookies })
+    const { data: { user }, error: authErr } = await supabase.auth.getUser()
     if (authErr || !user) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }

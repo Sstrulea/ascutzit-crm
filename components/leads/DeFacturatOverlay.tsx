@@ -57,7 +57,7 @@ import {
   moveItemToStage,
   getPipelineIdForItem,
 } from '@/lib/supabase/pipelineOperations'
-import { findStageByPattern } from '@/lib/supabase/kanban/constants'
+import { findStageByPattern, findColetAjunsStage } from '@/lib/supabase/kanban/constants'
 import { updateLeadWithHistory } from '@/lib/supabase/leadOperations'
 import { fetchStagesForPipeline } from '@/lib/supabase/kanban/fetchers'
 import { listServices } from '@/lib/supabase/serviceOperations'
@@ -157,7 +157,6 @@ export function DeFacturatOverlay({
   const [mobileTab, setMobileTab] = useState<'detalii' | 'istoric'>('detalii')
 
   const isMobile = useIsMobile()
-  const DEPARTMENT_NAMES = ['Saloane', 'Frizerii', 'Horeca', 'Reparatii']
 
   // Funcții helper pentru calcularea cantităților reparabile/nereparabile
   const getRepairableQty = (it: any) => {
@@ -621,7 +620,7 @@ export function DeFacturatOverlay({
     }
   }
 
-  /** Retrimite tăvițele în departament (stage Noua) cu tag Fixed pe lead, apoi mută fișa în Colet Ajuns. */
+  /** Retrimite toate tăvițele fișei în departamentele tehnice (stage Noua), apoi mută fișa în Colet ajuns. */
   const handleRetrimiteInDepartamentSiColetAjuns = async () => {
     if (!fisaId || !leadId) return
     const receptie = (pipelinesWithStages || []).find((p: any) => norm(p.name || '').includes('receptie'))
@@ -630,22 +629,27 @@ export function DeFacturatOverlay({
       return
     }
     const receptieStages = receptie.stages || []
-    const coletAjunsStage = findStageByPattern(receptieStages, 'COLET_AJUNS')
+    const coletAjunsStage = findColetAjunsStage(receptieStages)
     if (!coletAjunsStage) {
       toast({ title: 'Eroare', description: 'Stage „Colet ajuns” negăsit în Recepție', variant: 'destructive' })
       return
     }
     setRetrimiteLoading(true)
     try {
-      await updateServiceFile(fisaId, { nu_raspunde_callback_at: null, colet_ajuns: true })
-      const nuRaspundeTag = await getOrCreateNuRaspundeTag()
-      await toggleLeadTag(leadId, nuRaspundeTag.id)
-      const trayIds = (quotes || []).map((q: any) => q.id).filter(Boolean)
+      // Toate tăvițele fișei (din cache sau re-fetch dacă lipsesc)
+      let trayIds = (quotes || []).map((q: any) => q.id).filter(Boolean)
+      if (trayIds.length === 0) {
+        const { data: trays } = await listTraysForServiceFile(fisaId)
+        trayIds = (trays || []).map((t: any) => t.id).filter(Boolean)
+      }
+      // Mută fiecare tăviță în stage Noua din pipeline-ul ei (departament tehnic)
       for (const trayId of trayIds) {
         const { data: pipelineId } = await getPipelineIdForItem('tray', trayId)
         if (!pipelineId) continue
         const pipeline = (pipelinesWithStages || []).find((p: any) => p.id === pipelineId)
-        if (!pipeline || !DEPARTMENT_NAMES.includes(pipeline.name)) continue
+        if (!pipeline) continue
+        const isReceptie = norm(pipeline.name || '').includes('receptie')
+        if (isReceptie) continue
         let stages = Array.isArray(pipeline.stages) ? pipeline.stages : []
         if (stages.length === 0) {
           const { data: fetchedStages } = await fetchStagesForPipeline(pipelineId)
@@ -656,13 +660,14 @@ export function DeFacturatOverlay({
         const { error } = await moveItemToStage('tray', trayId, pipelineId, nouaStage.id)
         if (error) console.warn('[DeFacturatOverlay] move tray to Noua:', error)
       }
+      await updateServiceFile(fisaId, { colet_ajuns: true })
       const pinnedTag = await getOrCreatePinnedTag()
       await addLeadTagIfNotPresent(leadId, pinnedTag.id)
       const { error: moveErr } = await moveItemToStage('service_file', fisaId, receptie.id, coletAjunsStage.id)
       if (moveErr) throw moveErr
       toast({
         title: 'Succes',
-        description: 'Tăvițele au fost retrimise în departament (Noua), tag Fixed aplicat, fișa mutată în Colet ajuns.',
+        description: 'Toate tăvițele au fost retrimise în departamentele tehnice (Noua), fișa mutată în Colet ajuns.',
         variant: 'default',
       })
       defacturatCache.delete(getCacheKey(kanbanLead))
@@ -822,10 +827,10 @@ export function DeFacturatOverlay({
                   onClick={handleRetrimiteInDepartamentSiColetAjuns}
                   disabled={!fisaId || !leadId || retrimiteLoading}
                   className="gap-2 text-base min-h-11 border-emerald-600/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
-                  title="Retrimite tăvițele în departament (stage Noua) cu tag Fixed, fișa în Colet ajuns"
+                  title="Retrimite toate tăvițele în departamentele tehnice (Noua), fișa în Colet ajuns"
                 >
                   {retrimiteLoading ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <RotateCcw className="h-5 w-5 shrink-0" />}
-                  Retrimite în departament
+                  Retrimite tăvițe în departamente + Colet ajuns
                 </Button>
               </div>
 

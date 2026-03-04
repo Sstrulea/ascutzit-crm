@@ -69,6 +69,7 @@ export function LeadVanzariActions({
   onNuRaspundeChange,
   isVanzator = true,
 }: LeadVanzariActionsProps) {
+  const [overlayOpen, setOverlayOpen] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [callbackHour, setCallbackHour] = useState('09')
@@ -172,6 +173,7 @@ export function LeadVanzariActions({
     const date = getPendingDate()
     if (!date || !callbackStage) return
     await handleCallback(date, getPendingLabel())
+    setOverlayOpen(false)
   }
 
   const handleRevenire = async () => {
@@ -190,183 +192,207 @@ export function LeadVanzariActions({
   }
 
   return (
-    <div className="mb-1.5 p-2 bg-muted/50 rounded-lg space-y-2">
-      <div className="flex items-center gap-2">
-        <Phone className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium text-muted-foreground">Callback · No Deal · Nu răspunde</span>
-      </div>
-
-      {/* Toate butoanele pe un singur rând: No Deal, Nu răspunde, Mâine … Calendar, Ora, Salvare */}
-      <div className="flex flex-wrap items-center gap-2">
-        {noDeal ? (
-          <div className="flex items-center gap-2 px-2 py-1 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/50">
-            <span className="text-xs font-medium text-red-700 dark:text-red-300 flex items-center gap-1.5">
-              <Ban className="h-3.5 w-3.5" />
-              No Deal activ
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onNoDealChange?.(false)}
-              disabled={!isVanzator}
-              className="h-6 px-2 text-xs text-red-700 hover:bg-red-100 dark:text-red-300 dark:hover:bg-red-900/50"
-              title="Anulează statusul No Deal"
-            >
-              Anulează
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onNoDealChange?.(true)}
-            disabled={!isVanzator}
-            className="h-8 px-3 text-xs gap-1.5 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/50"
-            title="Marchează lead-ul ca No Deal (nu s-a încheiat tranzacția)"
-          >
-            <Ban className="h-3.5 w-3.5" />
-            No Deal
-          </Button>
+    <div className="mb-1.5 p-2 bg-muted/50 rounded-lg">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOverlayOpen(true)}
+        className="h-8 px-3 text-xs gap-2 w-full sm:w-auto justify-center sm:justify-start"
+        title="Deschide opțiunile Callback, No Deal, Nu răspunde"
+      >
+        <Phone className="h-3.5 w-3.5" />
+        Callback · No Deal · Nu răspunde
+        {(noDeal || nuRaspunde || (isInCallback && callbackDate)) && (
+          <span className="ml-1 size-1.5 rounded-full bg-amber-500" aria-hidden />
         )}
-        {nuRaspunde ? (
-          <div className="flex items-center gap-2 px-2 py-1 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/50">
-            <span className="text-xs font-medium text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
-              <PhoneOff className="h-3.5 w-3.5" />
-              Nu răspunde{nuRaspundeTimeDisplay ? ` (${nuRaspundeTimeDisplay})` : ''}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onNuRaspundeChange?.(false)}
-              disabled={!isVanzator}
-              className="h-6 px-2 text-xs text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900/50"
-              title="Anulează statusul Nu răspunde"
-            >
-              Anulează
-            </Button>
+      </Button>
+
+      {/* Overlay: toate variantele Callback / No Deal / Nu răspunde */}
+      <Dialog open={overlayOpen} onOpenChange={setOverlayOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone className="h-4 w-4" />
+              Callback · No Deal · Nu răspunde
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* No Deal */}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">No Deal</Label>
+              {noDeal ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/50">
+                  <span className="text-sm font-medium text-red-700 dark:text-red-300 flex items-center gap-1.5">
+                    <Ban className="h-3.5 w-3.5" />
+                    No Deal activ
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onNoDealChange?.(false)}
+                    disabled={!isVanzator}
+                    className="h-7 px-2 text-xs text-red-700 hover:bg-red-100 dark:text-red-300 dark:hover:bg-red-900/50"
+                  >
+                    Anulează
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onNoDealChange?.(true)}
+                  disabled={!isVanzator}
+                  className="h-8 px-3 text-xs gap-1.5 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/50"
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                  Marchează No Deal
+                </Button>
+              )}
+            </div>
+
+            {/* Nu răspunde */}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">Nu răspunde</Label>
+              {nuRaspunde ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/50">
+                  <span className="text-sm font-medium text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                    <PhoneOff className="h-3.5 w-3.5" />
+                    Nu răspunde{nuRaspundeTimeDisplay ? ` (${nuRaspundeTimeDisplay})` : ''}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onNuRaspundeChange?.(false)}
+                    disabled={!isVanzator}
+                    className="h-7 px-2 text-xs text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900/50"
+                  >
+                    Anulează
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowNuRaspundeDialog(true)}
+                  disabled={!isVanzator}
+                  className="h-8 px-3 text-xs gap-1.5 border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/50"
+                >
+                  <PhoneOff className="h-3.5 w-3.5" />
+                  Marchează Nu răspunde
+                </Button>
+              )}
+            </div>
+
+            {/* Callback: preset + calendar + oră + salvare */}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">Callback</Label>
+              <div className="flex flex-wrap gap-2">
+                {CALLBACK_OPTIONS.map((option) => {
+                  const isActive = !isInCallback && pendingOption === option.value
+                  return (
+                    <Button
+                      key={option.value}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPendingOption(option.value)}
+                      disabled={loading || isInCallback}
+                      className={cn(
+                        "h-8 px-3 text-xs",
+                        isInCallback && "opacity-50",
+                        isActive && "bg-gray-100 dark:bg-gray-800 border-gray-400 dark:border-gray-500 font-semibold ring-1 ring-gray-300 dark:ring-gray-600"
+                      )}
+                    >
+                      {option.label}
+                    </Button>
+                  )
+                })}
+                <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPendingOption('custom')}
+                      disabled={loading || isInCallback}
+                      className={cn(
+                        "h-8 px-3 text-xs",
+                        isInCallback && "opacity-50",
+                        !isInCallback && pendingOption === 'custom' && "bg-gray-100 dark:bg-gray-800 font-semibold ring-1 ring-gray-300 dark:ring-gray-600"
+                      )}
+                    >
+                      <CalendarDays className="h-3 w-3 mr-1" />
+                      Calendar
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={handleSelectDateOnly}
+                      disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                      locale={ro}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Label className="text-xs text-muted-foreground">Ora:</Label>
+                <Select value={callbackHour} onValueChange={setCallbackHour}>
+                  <SelectTrigger className="h-8 w-[72px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {hours.map((h) => (
+                      <SelectItem key={h} value={h}>{h}:00</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={callbackMinute} onValueChange={setCallbackMinute}>
+                  <SelectTrigger className="h-8 w-[72px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {minutes.map((m) => (
+                      <SelectItem key={m} value={m}>:{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  disabled={!canSave}
+                  onClick={handleSalvare}
+                  className="h-8 px-3 text-xs gap-1.5 bg-gray-600 hover:bg-gray-700 text-white"
+                >
+                  <Save className="h-3 w-3" />
+                  Salvare callback
+                </Button>
+              </div>
+            </div>
+
+            {isInCallback && (
+              <div className="pt-3 border-t space-y-2">
+                {callbackDate && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Callback programat: {formatCallbackDateDisplay(callbackDate)}
+                  </p>
+                )}
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => { handleRevenire(); setOverlayOpen(false) }}
+                  disabled={loading}
+                  className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700"
+                >
+                  <PhoneOff className="h-3.5 w-3.5" />
+                  Revino la Leaduri
+                </Button>
+              </div>
+            )}
           </div>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowNuRaspundeDialog(true)}
-            disabled={!isVanzator}
-            className="h-8 px-3 text-xs gap-1.5 border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/50"
-            title="Marchează că clientul nu răspunde - selectează ora pentru callback"
-          >
-            <PhoneOff className="h-3.5 w-3.5" />
-            Nu răspunde
-          </Button>
-        )}
+        </DialogContent>
+      </Dialog>
 
-        {CALLBACK_OPTIONS.map((option) => {
-          const isActive = !isInCallback && pendingOption === option.value
-          return (
-            <Button
-              key={option.value}
-              variant="outline"
-              size="sm"
-              onClick={() => setPendingOption(option.value)}
-              disabled={loading || isInCallback}
-              className={cn(
-                "flex items-center gap-1.5 h-8 px-3 text-xs shrink-0",
-                isInCallback && "opacity-50",
-                isActive && "bg-gray-100 dark:bg-gray-800 border-gray-400 dark:border-gray-500 text-gray-800 dark:text-gray-200 font-semibold ring-1 ring-gray-300 dark:ring-gray-600"
-              )}
-              title={`Setează callback pentru ${option.label.toLowerCase()}`}
-            >
-              <Clock className="h-3 w-3" />
-              {option.label}
-            </Button>
-          )
-        })}
-
-        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPendingOption('custom')}
-              disabled={loading || isInCallback}
-              className={cn(
-                "flex items-center gap-1.5 h-8 px-3 text-xs shrink-0",
-                isInCallback && "opacity-50",
-                !isInCallback && pendingOption === 'custom' && "bg-gray-100 dark:bg-gray-800 border-gray-400 dark:border-gray-500 text-gray-800 dark:text-gray-200 font-semibold ring-1 ring-gray-300 dark:ring-gray-600"
-              )}
-              title="Selectează o dată personalizată pentru callback"
-            >
-              <CalendarDays className="h-3 w-3" />
-              Calendar
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <CalendarComponent
-              mode="single"
-              selected={selectedDate}
-              onSelect={handleSelectDateOnly}
-              disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-              locale={ro}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
-
-        <Label className="text-xs text-muted-foreground whitespace-nowrap shrink-0">Ora:</Label>
-        <Select value={callbackHour} onValueChange={setCallbackHour}>
-          <SelectTrigger className="h-8 w-[72px] text-xs shrink-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {hours.map((h) => (
-              <SelectItem key={h} value={h}>{h}:00</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={callbackMinute} onValueChange={setCallbackMinute}>
-          <SelectTrigger className="h-8 w-[72px] text-xs shrink-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {minutes.map((m) => (
-              <SelectItem key={m} value={m}>:{m}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          size="sm"
-          disabled={!canSave}
-          onClick={handleSalvare}
-          className="h-8 px-3 text-xs gap-1.5 bg-gray-600 hover:bg-gray-700 text-white shrink-0"
-          title="Salvează callback-ul setat și mută lead-ul în stage-ul Callback"
-        >
-          <Save className="h-3 w-3" />
-          Salvare
-        </Button>
-      </div>
-
-      {isInCallback && (
-        <div className="flex items-center gap-3 pt-2 border-t border-border/50 mt-2">
-          {callbackDate && (
-            <span className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
-              Callback programat: {formatCallbackDateDisplay(callbackDate)}
-            </span>
-          )}
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handleRevenire}
-            disabled={loading}
-            className="flex items-center gap-1.5 h-7 bg-blue-600 hover:bg-blue-700"
-            title="Revine lead-ul în stage-ul Leaduri după callback"
-          >
-            <PhoneOff className="h-3 w-3" />
-            Revino la Leaduri
-          </Button>
-        </div>
-      )}
-
-      {/* Dialog Nu Răspunde — selectare oră */}
+      {/* Dialog Nu Răspunde — selectare oră (deschis din overlay) */}
       <Dialog
         open={showNuRaspundeDialog}
         onOpenChange={(open) => {
@@ -431,6 +457,7 @@ export function LeadVanzariActions({
                 today.setHours(parseInt(nuRaspundeHour, 10), parseInt(nuRaspundeMinute, 10), 0, 0)
                 onNuRaspundeChange?.(true, today.toISOString())
                 setShowNuRaspundeDialog(false)
+                setOverlayOpen(false)
               }}
               title="Confirmă ora setată pentru callback Nu răspunde"
             >
