@@ -1167,17 +1167,29 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
         const isReceptie = pipelineName.includes('receptie') || pipelineName.includes('recep')
         if (isReceptie && itemType === 'service_file') {
           const stageNorm = newStageNameLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          const isDeTrimisOrRidic = (stageNorm.includes('detrimis') || stageNorm.includes('de trimis') || stageNorm.includes('office') && stageNorm.includes('direct') || stageNorm.includes('ridic') && stageNorm.includes('personal'))
-          if (isDeTrimisOrRidic) {
+          const isRidicPersonal = stageNorm.includes('ridic') && stageNorm.includes('personal')
+          const isDeTrimisOrOffice = stageNorm.includes('detrimis') || stageNorm.includes('de trimis') || (stageNorm.includes('office') && stageNorm.includes('direct'))
+          // Un singur tip de eveniment, ca strategia să nu pună fișa în alt stage (ex. doar „De trimis” în loc de „De trimis, ridic personal”).
+          if (isRidicPersonal) {
             logItemEvent(
               'service_file',
               itemId,
               `Mutare în ${newStageName} (Receptie)`,
-              'stage_change',
+              'ridic_personal',
               { to: newStageName },
               undefined,
               { currentUserId: user?.id ?? undefined, currentUserName: user?.email?.split('@')[0] ?? null, currentUserEmail: user?.email ?? null }
-            ).catch((logErr) => console.error('[handleLeadMove] logItemEvent (Receptie de trimis/ridic):', logErr))
+            ).catch((logErr) => console.error('[handleLeadMove] logItemEvent (Receptie ridic personal):', logErr))
+          } else if (isDeTrimisOrOffice) {
+            logItemEvent(
+              'service_file',
+              itemId,
+              `Mutare în ${newStageName} (Receptie)`,
+              'de_trimis',
+              { to: newStageName },
+              undefined,
+              { currentUserId: user?.id ?? undefined, currentUserName: user?.email?.split('@')[0] ?? null, currentUserEmail: user?.email ?? null }
+            ).catch((logErr) => console.error('[handleLeadMove] logItemEvent (Receptie de trimis):', logErr))
           }
         }
         // Log mutare lead în Vânzări (fire-and-forget): nu blocăm UI-ul, mutarea = 1 call
