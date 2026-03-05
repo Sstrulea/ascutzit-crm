@@ -5,7 +5,7 @@ import { useRole, useAuthContext } from "@/lib/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Loader2, Users, Database, UserPlus, RefreshCw, Tag as TagIcon } from "lucide-react"
+import { Loader2, Users, Database, UserPlus, RefreshCw, Tag as TagIcon, FileSpreadsheet, Banknote } from "lucide-react"
 import { toast } from "sonner"
 import dynamic from "next/dynamic"
 import {
@@ -84,7 +84,7 @@ export default function AdminsPage() {
       userEmail: user?.email
     })
   }, [isOwner, role, roleLoading, user])
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'backups' | 'tags'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'backups' | 'tags' | 'reports' | 'financiar'>('dashboard')
   const [members, setMembers] = useState<ExtendedMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -99,11 +99,30 @@ export default function AdminsPage() {
   const [memberPermissions, setMemberPermissions] = useState<{ [userId: string]: string[] }>({})
   const [selectedMember, setSelectedMember] = useState<ExtendedMember | null>(null)
   const [memberModalOpen, setMemberModalOpen] = useState(false)
+  const [reportYear, setReportYear] = useState(new Date().getFullYear())
+  const [reportMonth, setReportMonth] = useState(new Date().getMonth() + 1)
+  const [reportDownloading, setReportDownloading] = useState(false)
+  const [financiarMonths, setFinanciarMonths] = useState<Array<{ year: number; month: number; monthLabel: string; total: number }>>([])
+  const [financiarLoading, setFinanciarLoading] = useState(false)
 
   useEffect(() => {
     loadMembers()
     loadPipelines()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'financiar') {
+      setFinanciarLoading(true)
+      fetch('/api/admin/financiar/venit-lunar', { credentials: 'same-origin' })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.ok && Array.isArray(data.months)) setFinanciarMonths(data.months)
+          else setFinanciarMonths([])
+        })
+        .catch(() => setFinanciarMonths([]))
+        .finally(() => setFinanciarLoading(false))
+    }
+  }, [activeTab])
 
   async function loadPipelines() {
     const { data } = await supabase
@@ -505,6 +524,22 @@ export default function AdminsPage() {
             <TagIcon className="w-4 h-4" />
             Tag-uri
           </Button>
+          <Button
+            variant={activeTab === 'reports' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('reports')}
+            className="flex items-center gap-2"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Rapoarte
+          </Button>
+          <Button
+            variant={activeTab === 'financiar' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('financiar')}
+            className="flex items-center gap-2"
+          >
+            <Banknote className="w-4 h-4" />
+            Financiar
+          </Button>
         </div>
 
         <Card>
@@ -513,6 +548,8 @@ export default function AdminsPage() {
               {activeTab === 'dashboard' ? 'ADMIN DASHBOARD' :
                activeTab === 'members' ? 'ADMINISTRARE ECHIPA' : 
                activeTab === 'backups' ? 'MANAGER BACKUP-URI' : 
+               activeTab === 'reports' ? 'RAPOARTE' :
+               activeTab === 'financiar' ? 'FINANCIAR' :
                'ADMINISTRARE TAG-URI LEAD'}
             </CardTitle>
             {activeTab === 'members' && (
@@ -606,6 +643,107 @@ export default function AdminsPage() {
               </>
             ) : activeTab === 'backups' ? (
               <BackupManager />
+            ) : activeTab === 'financiar' ? (
+              <div className="space-y-6">
+                <h2 className="text-lg font-semibold">Venit lunar din servicii prestate</h2>
+                <p className="text-sm text-muted-foreground">
+                  Sumele provin din fișele facturate (arhivate) pe luna respectivă.
+                </p>
+                {financiarLoading ? (
+                  <div className="flex justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : financiarMonths.length === 0 ? (
+                  <p className="text-muted-foreground">Nu există date de venit pentru nicio lună.</p>
+                ) : (
+                  <div className="rounded-md border overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="text-left font-medium p-3">Lună</th>
+                          <th className="text-right font-medium p-3">Venit (RON)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {financiarMonths.map((row) => (
+                          <tr key={`${row.year}-${row.month}`} className="border-b last:border-0">
+                            <td className="p-3">{row.monthLabel}</td>
+                            <td className="p-3 text-right font-medium tabular-nums">
+                              {row.total.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RON
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : activeTab === 'reports' ? (
+              <div className="space-y-6">
+                <h2 className="text-lg font-semibold">Raport lunar – Servicii și comision tehnician</h2>
+                <p className="text-sm text-muted-foreground">
+                  Descarcă un fișier Excel cu toate serviciile și comisioanele pentru toți tehnicienii în luna selectată.
+                </p>
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Lună</label>
+                    <select
+                      value={reportMonth}
+                      onChange={(e) => setReportMonth(parseInt(e.target.value, 10))}
+                      className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[140px]"
+                    >
+                      {[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => (
+                        <option key={m} value={m}>
+                          {new Date(2000, m - 1).toLocaleString('ro-RO', { month: 'long' })}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">An</label>
+                    <select
+                      value={reportYear}
+                      onChange={(e) => setReportYear(parseInt(e.target.value, 10))}
+                      className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[100px]"
+                    >
+                      {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((y) => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button
+                    disabled={reportDownloading}
+                    onClick={async () => {
+                      setReportDownloading(true)
+                      try {
+                        const url = `/api/admin/reports/servicii-comision-tehnician?year=${reportYear}&month=${reportMonth}`
+                        const res = await fetch(url, { credentials: 'same-origin' })
+                        if (!res.ok) {
+                          const j = await res.json().catch(() => ({}))
+                          toast.error(j?.error || `Eroare ${res.status} la descărcare`)
+                          return
+                        }
+                        const blob = await res.blob()
+                        const a = document.createElement('a')
+                        a.href = URL.createObjectURL(blob)
+                        a.download = `servicii-comision-tehnician-${reportYear}-${String(reportMonth).padStart(2, '0')}.xlsx`
+                        a.click()
+                        URL.revokeObjectURL(a.href)
+                        toast.success('Raport descărcat')
+                      } catch (e) {
+                        console.error('Report download error:', e)
+                        toast.error('Conexiune eșuată. Verifică rețeaua sau reconectează-te și încearcă din nou.')
+                      } finally {
+                        setReportDownloading(false)
+                      }
+                    }}
+                    className="gap-2"
+                  >
+                    {reportDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                    Descarcă Excel
+                  </Button>
+                </div>
+              </div>
             ) : (
               <TagsManager />
             )}

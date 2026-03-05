@@ -247,6 +247,8 @@ export function transformTrayToKanbanItem(
     billing_cod_postal: lead?.billing_cod_postal || null,
     details: lead?.details ?? null,
     userMessageCount,
+    curier_trimis: (tray.service_file as any)?.curier_trimis ?? false,
+    office_direct: (tray.service_file as any)?.office_direct ?? false,
   }
 }
 
@@ -423,6 +425,8 @@ export function transformTrayToVirtualKanbanItems(
       isVirtualCard: false,
       realTrayId: tray.id,
       itemsCount,
+      curier_trimis: (tray.service_file as any)?.curier_trimis ?? false,
+      office_direct: (tray.service_file as any)?.office_direct ?? false,
     }]
   }
   
@@ -492,6 +496,8 @@ export function transformTrayToVirtualKanbanItems(
       isVirtualCard: true,
       realTrayId: tray.id,
       itemsCount,
+      curier_trimis: (tray.service_file as any)?.curier_trimis ?? false,
+      office_direct: (tray.service_file as any)?.office_direct ?? false,
     })
   })
   

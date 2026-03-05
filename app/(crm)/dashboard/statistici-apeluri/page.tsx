@@ -14,11 +14,14 @@ import {
   fetchLeadsCreatedForDateRange,
   listVanzariSalespeople,
   fetchLeadsByTypeForUser,
+  fetchStatisticiApeluriReport,
   type ApeluriByType,
   type VanzariSalespersonOption,
   type LeadsByTypeForUser,
   type LeadByTypeItem,
   type LeadCreatedItem,
+  type StatisticiApeluriReport,
+  type LeadSourceType,
 } from '@/lib/supabase/vanzariApeluri'
 import { Lock, Phone, RefreshCw, CalendarDays, ArrowLeft, ChevronDown, ChevronRight, Loader2, UserPlus, Maximize2, FileText, UserPlus2 } from 'lucide-react'
 import {
@@ -83,6 +86,7 @@ export default function StatisticiApeluriPage() {
   const [leadsCreated, setLeadsCreated] = useState<LeadCreatedItem[]>([])
   const [leadsCreatedExpanded, setLeadsCreatedExpanded] = useState(false)
   const [leadCreatedDetailOpen, setLeadCreatedDetailOpen] = useState<LeadCreatedItem | null>(null)
+  const [report, setReport] = useState<StatisticiApeluriReport | null>(null)
 
   const loadAccess = useCallback(async () => {
     try {

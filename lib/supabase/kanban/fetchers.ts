@@ -456,7 +456,7 @@ export async function fetchTraysByIds(
     .from('trays')
     .select(`
       id, number, status, created_at, service_file_id, technician_id, technician2_id, technician3_id,
-      service_file:service_files!inner(lead_id, urgent, lead:leads!inner(id, full_name, email, phone_number, created_at, campaign_name, ad_name, form_name, tray_details, details, city, company_name, company_address, address, address2, zip, strada, judet, contact_person, contact_phone, billing_nume_prenume, billing_nume_companie, billing_cui, billing_strada, billing_oras, billing_judet, billing_cod_postal))
+      service_file:service_files!inner(lead_id, urgent, office_direct, curier_trimis, lead:leads!inner(id, full_name, email, phone_number, created_at, campaign_name, ad_name, form_name, tray_details, details, city, company_name, company_address, address, address2, zip, strada, judet, contact_person, contact_phone, billing_nume_prenume, billing_nume_companie, billing_cui, billing_strada, billing_oras, billing_judet, billing_cod_postal))
     `)
     .in('id', trayIds)
   

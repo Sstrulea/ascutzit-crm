@@ -203,6 +203,8 @@ export interface RawTray {
   service_file?: {
     lead_id: string
     urgent?: boolean
+    office_direct?: boolean
+    curier_trimis?: boolean
     lead?: RawLead | null
   } | null
 }

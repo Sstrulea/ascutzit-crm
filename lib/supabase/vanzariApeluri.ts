@@ -345,6 +345,214 @@ function monthBoundsFor(year: number, month: number): { start: Date; end: Date }
 /** Timezone pentru ziua de raport (România). Asigură că „25 feb” = 25 feb în România, indiferent de server. */
 const STATS_TIMEZONE = 'Europe/Bucharest'
 
+/** Returnează cheia zilei (YYYY-MM-DD) în timezone București pentru o dată ISO. */
+function toBucharestDateKey(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('sv-SE', { timeZone: STATS_TIMEZONE })
+}
+
+/**
+ * Sursa lead-ului pentru raport: ORGANIC = introdus de noi manual (created_by setat),
+ * FACEBOOK / TIKTOK = din platformă, ALTELE = alte surse externe (created_by null, platform altceva).
+ */
+export type LeadSourceType = 'ORGANIC' | 'FACEBOOK' | 'TIKTOK' | 'ALTELE'
+
+function getLeadSourceType(createdBy: string | null, platform: string | null): LeadSourceType {
+  if (createdBy != null) return 'ORGANIC'
+  const p = (platform || '').toLowerCase()
+  if (p === 'facebook' || p === 'meta') return 'FACEBOOK'
+  if (p === 'tiktok') return 'TIKTOK'
+  return 'ALTELE'
+}
+
+export type StatisticiApeluriRow = {
+  dateStr: string
+  date: Date
+  source: LeadSourceType
+  leadsNoi: number
+  leadsOrganic: number
+  leadsTotal: number
+  conversieLeadsNoi: number
+  conversieCallBack: number
+  pctConversie: number
+  apeluriTotal: number
+}
+
+export type StatisticiApeluriReport = {
+  rows: StatisticiApeluriRow[]
+  totals: {
+    totalLeads: number
+    leadsNoi: number
+    leadsOrganic: number
+    conversieLeadsNoi: number
+    conversieLeadsNoiTotal: number
+    conversieCallBack: number
+    conversieCallBackTotal: number
+    pctConversieLeadsNoi: number
+    pctConversieCallBack: number
+    apeluriTotal: number
+  }
+}
+
+/**
+ * Raport Statistici Apeluri: detalii pe zi și sursă.
+ * - Leads Noi: veniți în ziua respectivă din Meta, TikTok etc. (created_by IS NULL).
+ * - Leads Organic: introduși de noi manual (created_by IS NOT NULL).
+ * - Conversie din nr. de leaduri: (leaduri convertite la comandă) / (total leaduri din categoria respectivă) × 100.
+ */
+export async function fetchStatisticiApeluriReport(
+  start: Date,
+  end: Date
+): Promise<StatisticiApeluriReport> {
+  const startIso = start.toISOString()
+  const endIso = end.toISOString()
+  const pid = await getVanzariPipelineId()
+  const stageIdToType: Map<string, keyof ApeluriByType> = pid
+    ? await getStageIdToTypeMap(pid)
+    : new Map<string, keyof ApeluriByType>()
+  const callbackStageId = pid
+    ? [...stageIdToType.entries()].find(([, t]) => t === 'callback')?.[0] ?? null
+    : null
+
+  const leadsQuery = (supabase as any)
+    .from('leads')
+    .select('id, created_at, created_by, platform, curier_trimis_at, office_direct_at')
+    .gte('created_at', startIso)
+    .lte('created_at', endIso)
+  const { data: leadsRows, error: leadsErr } = await leadsQuery
+  if (leadsErr) return { rows: [], totals: { totalLeads: 0, leadsNoi: 0, leadsOrganic: 0, conversieLeadsNoi: 0, conversieLeadsNoiTotal: 0, conversieCallBack: 0, conversieCallBackTotal: 0, pctConversieLeadsNoi: 0, pctConversieCallBack: 0, apeluriTotal: 0 } }
+  const leads = (leadsRows || []) as Array<{ id: string; created_at: string; created_by: string | null; platform: string | null; curier_trimis_at: string | null; office_direct_at: string | null }>
+
+  const leadIds = leads.map((l) => l.id)
+  const convertedLeadIds = new Set<string>()
+  for (const l of leads) {
+    if (l.curier_trimis_at || l.office_direct_at) convertedLeadIds.add(l.id)
+  }
+  if (leadIds.length > 0) {
+    const { data: sfRows } = await (supabase as any).from('service_files').select('lead_id').in('lead_id', leadIds)
+    for (const r of sfRows || []) {
+      const lid = (r as { lead_id: string }).lead_id
+      if (lid) convertedLeadIds.add(lid)
+    }
+  }
+
+  const daySourceKeys = new Set<string>()
+  const daySourceData = new Map<string, { leadsNoi: number; leadsOrganic: number; conversieLeadsNoi: number; leadIdsNoi: string[] }>()
+  for (const l of leads) {
+    const dateKey = toBucharestDateKey(l.created_at)
+    const source = getLeadSourceType(l.created_by, l.platform)
+    const key = `${dateKey}|${source}`
+    daySourceKeys.add(key)
+    if (!daySourceData.has(key)) {
+      daySourceData.set(key, { leadsNoi: 0, leadsOrganic: 0, conversieLeadsNoi: 0, leadIdsNoi: [] })
+    }
+    const rec = daySourceData.get(key)!
+    if (source === 'ORGANIC') {
+      rec.leadsOrganic++
+    } else {
+      rec.leadsNoi++
+      rec.leadIdsNoi.push(l.id)
+      if (convertedLeadIds.has(l.id)) rec.conversieLeadsNoi++
+    }
+  }
+
+  let callbackLeadIdsByDay = new Map<string, Set<string>>()
+  const apeluriByDay = new Map<string, number>()
+  if (pid) {
+    const { data: apeluriRows } = await (supabase as any)
+      .from('vanzari_apeluri')
+      .select('lead_id, to_stage_id, apel_at')
+      .eq('pipeline_id', pid)
+      .gte('apel_at', startIso)
+      .lte('apel_at', endIso)
+    const apeluriList = (apeluriRows || []) as Array<{ lead_id: string; to_stage_id: string; apel_at: string }>
+    for (const a of apeluriList) {
+      const dateKey = toBucharestDateKey(a.apel_at)
+      if (!apeluriByDay.has(dateKey)) apeluriByDay.set(dateKey, 0)
+      apeluriByDay.set(dateKey, apeluriByDay.get(dateKey)! + 1)
+      if (callbackStageId && a.to_stage_id === callbackStageId && a.lead_id) {
+        if (!callbackLeadIdsByDay.has(dateKey)) callbackLeadIdsByDay.set(dateKey, new Set())
+        callbackLeadIdsByDay.get(dateKey)!.add(a.lead_id)
+      }
+    }
+  }
+
+  const callbackConvertedByDay = new Map<string, number>()
+  for (const [dateKey, ids] of callbackLeadIdsByDay) {
+    let n = 0
+    for (const id of ids) {
+      if (convertedLeadIds.has(id)) n++
+    }
+    callbackConvertedByDay.set(dateKey, n)
+  }
+
+  const datesSet = new Set<string>()
+  for (const k of daySourceKeys) datesSet.add(k.split('|')[0])
+  const sources: LeadSourceType[] = ['FACEBOOK', 'TIKTOK', 'ALTELE', 'ORGANIC']
+  const rows: StatisticiApeluriRow[] = []
+  const sortedDates = [...datesSet].sort()
+  for (const dateStr of sortedDates) {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const date = new Date(y, m - 1, d)
+    for (const source of sources) {
+      const key = `${dateStr}|${source}`
+      const rec = daySourceData.get(key)
+      const leadsNoi = rec?.leadsNoi ?? 0
+      const leadsOrganic = rec?.leadsOrganic ?? 0
+      const leadsTotal = leadsNoi + leadsOrganic
+      if (leadsTotal === 0) continue
+      const conversieLeadsNoi = rec?.conversieLeadsNoi ?? 0
+      const callbackIds = callbackLeadIdsByDay.get(dateStr)
+      const totalCallback = callbackIds?.size ?? 0
+      const conversieCallBackCount = callbackConvertedByDay.get(dateStr) ?? 0
+      const apeluriTotal = apeluriByDay.get(dateStr) ?? 0
+      const pctConversie = leadsTotal > 0 ? ((conversieLeadsNoi + conversieCallBackCount) / leadsTotal) * 100 : 0
+      rows.push({
+        dateStr,
+        date,
+        source,
+        leadsNoi,
+        leadsOrganic,
+        leadsTotal,
+        conversieLeadsNoi,
+        conversieCallBack: totalCallback > 0 ? conversieCallBackCount : 0,
+        pctConversie: Math.round(pctConversie * 100) / 100,
+        apeluriTotal,
+      })
+    }
+  }
+
+  const totalLeads = leads.length
+  const leadsNoiTotal = leads.filter((l) => getLeadSourceType(l.created_by, l.platform) !== 'ORGANIC').length
+  const leadsOrganicTotal = leads.filter((l) => getLeadSourceType(l.created_by, l.platform) === 'ORGANIC').length
+  const conversieLeadsNoiCount = leads.filter(
+    (l) => getLeadSourceType(l.created_by, l.platform) !== 'ORGANIC' && convertedLeadIds.has(l.id)
+  ).length
+  const conversieCallBackLeadIds = new Set<string>()
+  for (const ids of callbackLeadIdsByDay.values()) {
+    for (const id of ids) conversieCallBackLeadIds.add(id)
+  }
+  const conversieCallBackCount = [...conversieCallBackLeadIds].filter((id) => convertedLeadIds.has(id)).length
+  const conversieCallBackTotal = conversieCallBackLeadIds.size
+  const apeluriTotal = pid ? await countApeluri(pid, start, end) : 0
+
+  return {
+    rows,
+    totals: {
+      totalLeads,
+      leadsNoi: leadsNoiTotal,
+      leadsOrganic: leadsOrganicTotal,
+      conversieLeadsNoi: conversieLeadsNoiCount,
+      conversieLeadsNoiTotal: leadsNoiTotal,
+      conversieCallBack: conversieCallBackCount,
+      conversieCallBackTotal,
+      pctConversieLeadsNoi: leadsNoiTotal > 0 ? Math.round((conversieLeadsNoiCount / leadsNoiTotal) * 10000) / 100 : 0,
+      pctConversieCallBack: conversieCallBackTotal > 0 ? Math.round((conversieCallBackCount / conversieCallBackTotal) * 10000) / 100 : 0,
+      apeluriTotal,
+    },
+  }
+}
+
 /**
  * Limitele zilei (00:00:00 - 23:59:59) pentru o dată dată, în timezone Europe/Bucharest.
  * Rezolvă problema unde acțiunile de „ieri” apăreau pentru „azi” (server în UTC vs. utilizatori în România).

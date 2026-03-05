@@ -1051,7 +1051,10 @@ export async function archiveServiceFileToDb(
       const { data: items, error: itemsErr } = await (db as any)
         .from('tray_items')
         .select(`
-          id, tray_id, department_id, instrument_id, service_id, part_id, qty, notes, pipeline
+          id, tray_id, department_id, instrument_id, service_id, part_id,
+          technician_id, technician2_id, technician3_id, created_by,
+          qty, notes, guaranty, pipeline, created_at, updated_at,
+          discount, non_repairable_qty, serials, qtyi, unrepaired_qty
         `)
         .in('tray_id', trayIds)
 
@@ -1066,9 +1069,21 @@ export async function archiveServiceFileToDb(
           instrument_id: ti.instrument_id ?? null,
           service_id: ti.service_id ?? null,
           part_id: ti.part_id ?? null,
+          technician_id: ti.technician_id ?? null,
+          technician2_id: ti.technician2_id ?? null,
+          technician3_id: ti.technician3_id ?? null,
+          created_by: ti.created_by ?? null,
           qty: ti.qty ?? 1,
           notes: ti.notes ?? null,
+          guaranty: ti.guaranty ?? null,
           pipeline: ti.pipeline ?? null,
+          created_at: ti.created_at ?? null,
+          updated_at: ti.updated_at ?? null,
+          discount: ti.discount ?? null,
+          non_repairable_qty: ti.non_repairable_qty ?? 0,
+          serials: ti.serials ?? null,
+          qtyi: ti.qtyi ?? null,
+          unrepaired_qty: ti.unrepaired_qty ?? 0,
           info: null,
         }))
       return { id: t.id, number: t.number, items: itemsInTray }
@@ -1125,10 +1140,21 @@ export async function archiveServiceFileToDb(
           instrument_id: ti.instrument_id ?? null,
           service_id: ti.service_id ?? null,
           part_id: ti.part_id ?? null,
-          technician_id: null,
+          technician_id: ti.technician_id ?? null,
+          technician2_id: ti.technician2_id ?? null,
+          technician3_id: ti.technician3_id ?? null,
+          created_by: ti.created_by ?? null,
           qty: ti.qty ?? 1,
           notes: ti.notes ?? null,
+          guaranty: ti.guaranty ?? null,
           pipeline: ti.pipeline ?? null,
+          created_at: ti.created_at ?? null,
+          updated_at: ti.updated_at ?? null,
+          discount: ti.discount ?? null,
+          non_repairable_qty: ti.non_repairable_qty ?? 0,
+          serials: ti.serials ?? null,
+          qtyi: ti.qtyi ?? null,
+          unrepaired_qty: ti.unrepaired_qty ?? 0,
           info: null,
         })
 
