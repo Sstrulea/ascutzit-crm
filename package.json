@@ -14,10 +14,13 @@
     "network": "next dev -H 0.0.0.0",
     "lint": "next lint",
     "start": "next start",
+    "start:lan": "next start -H 0.0.0.0",
     "perf": "node scripts/performance-monitor.js",
     "perf:prod": "PERF_BASE_URL=https://your-domain.vercel.app node scripts/performance-monitor.js",
     "analyze": "ANALYZE=true next build",
-    "ip": "node scripts/get-local-ip.js"
+    "dev:lan": "next dev -H 0.0.0.0",
+    "kill": "scripts\\kill-port-3000.bat",
+    "kill:3000": "scripts\\kill-port-3000.bat"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

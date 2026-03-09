@@ -69,6 +69,8 @@ interface KanbanBoardProps {
   showArchiveForStage?: (stageName: string) => boolean
   /** Receptie: la scoaterea tag-ului Nu răspunde de pe card (fișă) – mută fișa în De facturat și refresh */
   onNuRaspundeClearedForReceptie?: (serviceFileId: string) => void | Promise<void>
+  /** Receptie: forțează mutarea fișei în De facturat (un singur click pe icon) – ignoră prioritate/validare */
+  onForceDeFacturat?: (serviceFileId: string) => void | Promise<void>
   /** Owner only: mută toate lead-urile din stage-ul „Curier Ajuns Azi” în „Avem Comandă” */
   onBulkMoveCurierAjunsAziToAvemComanda?: (leadIds: string[]) => Promise<void>
   /** Vânzări: la adăugarea tag-ului Sună! mută lead-ul în stage-ul Suna */
@@ -99,6 +101,7 @@ export function KanbanBoard({
   onArchiveCard,
   showArchiveForStage,
   onNuRaspundeClearedForReceptie,
+  onForceDeFacturat,
   onBulkMoveCurierAjunsAziToAvemComanda,
   onSunaTagAdded,
   onSunaTagRemoved,
@@ -1342,6 +1345,7 @@ export function KanbanBoard({
                                       onTagsChange={onTagsChange}
                                       onDeliveryClear={onDeliveryClear}
                                       onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
+                                      onForceDeFacturat={onForceDeFacturat}
                                       showArchiveButton={showArchiveForStage?.(stage)}
                                       onArchive={onArchiveCard ? () => onArchiveCard(lead.id, stage) : undefined}
                                       onSunaTagAdded={onSunaTagAdded}
@@ -1388,6 +1392,7 @@ export function KanbanBoard({
                               onTagsChange={onTagsChange}
                               onDeliveryClear={onDeliveryClear}
                               onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
+                              onForceDeFacturat={onForceDeFacturat}
                               showArchiveButton={showArchiveForStage?.(stage)}
                               onArchive={onArchiveCard ? () => onArchiveCard(lead.id, stage) : undefined}
                               onSunaTagAdded={onSunaTagAdded}
@@ -1596,6 +1601,7 @@ export function KanbanBoard({
                                         onTagsChange={onTagsChange}
                                         onDeliveryClear={onDeliveryClear}
                                         onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
+                                      onForceDeFacturat={onForceDeFacturat}
                                         onSunaTagAdded={onSunaTagAdded}
                                         onSunaTagRemoved={onSunaTagRemoved}
                                         showTagButton={(stage || '').toLowerCase().includes('colet') && (stage || '').toLowerCase().includes('neridicat')}
@@ -1625,6 +1631,7 @@ export function KanbanBoard({
                                 onTagsChange={onTagsChange}
                                 onDeliveryClear={onDeliveryClear}
                                 onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
+                                      onForceDeFacturat={onForceDeFacturat}
                                 showArchiveButton={showArchiveForStage?.(stage)}
                                 onArchive={onArchiveCard ? () => onArchiveCard(entry.lead.id, stage) : undefined}
                                 onSunaTagAdded={onSunaTagAdded}
@@ -1881,6 +1888,7 @@ export function KanbanBoard({
                                       onTagsChange={onTagsChange}
                                       onDeliveryClear={onDeliveryClear}
                                       onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
+                                      onForceDeFacturat={onForceDeFacturat}
                                       showArchiveButton={showArchiveForStage?.(stage)}
                                       onArchive={onArchiveCard ? () => onArchiveCard(lead.id, stage) : undefined}
                                       onSunaTagAdded={onSunaTagAdded}
@@ -1927,6 +1935,7 @@ export function KanbanBoard({
                               onTagsChange={onTagsChange}
                               onDeliveryClear={onDeliveryClear}
                               onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
+                              onForceDeFacturat={onForceDeFacturat}
                               showArchiveButton={showArchiveForStage?.(stage)}
                               onArchive={onArchiveCard ? () => onArchiveCard(lead.id, stage) : undefined}
                               onSunaTagAdded={onSunaTagAdded}

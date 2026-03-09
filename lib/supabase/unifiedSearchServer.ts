@@ -206,6 +206,8 @@ type RawSearchRow = {
   leadId: string
   matchedBy?: MatchedByType
   serviceFileId?: string
+  /** Flag pentru lead-uri găsite prin service-related searches (tehnician, fișă, tăviță, serial) - preferăm pipeline-ul Recepție */
+  preferServicePipeline?: boolean
 }
 
 async function searchViaDirectQueries(
@@ -336,7 +338,7 @@ async function searchViaDirectQueries(
       }
     }
 
-    // 3. Tehnician: app_members (name ilike, diacritice ignorate) → user_id; trays (technician_id / 2 / 3) → lead_id
+    // 3. Tehnician: app_members (name ilike, diacritice ignorate) → user_id; trays (technician_id / 2 / 3) → LEAD
     const memberNameVariants = getDiacriticVariants(termNorm).map((v) => `name.ilike.%${v}%`)
     const { data: members } = await supabase
       .from('app_members')
@@ -348,88 +350,72 @@ async function searchViaDirectQueries(
       const orParts = technicianUserIds.flatMap((uid) => [`technician_id.eq.${uid}`, `technician2_id.eq.${uid}`, `technician3_id.eq.${uid}`])
       const { data: traysByTech } = await supabase
         .from('trays')
-        .select('id, number, service_file_id, service_file:service_files!inner(lead_id, number, lead:leads(id, full_name, company_name))')
+        .select('id, number, service_file_id, service_file:service_files!inner(id, lead_id, number, lead:leads(id, full_name, company_name, phone_number, email))')
         .or(orParts.join(','))
         .limit(LIMIT_TRAYS)
       for (const t of traysByTech || []) {
-        const tid = t.id as string
         const sf = (t as any).service_file
         const leadId = sf?.lead_id as string | undefined
-        if (!tid || !leadId || seenKeys.has(`tray:${tid}`)) continue
+        if (!leadId || seenKeys.has(`lead:${leadId}`)) continue
         const lead = sf?.lead
-        const leadName = lead?.full_name || lead?.company_name || ''
-        const title = `Tăviță ${t.number || ''}`.trim() || `Tăviță ${tid}`
-        const subtitle = [leadName, sf?.number].filter(Boolean).join(' · ')
-        const sfId = (t as any).service_file_id as string | undefined
-        push({ type: 'tray', id: tid, title, subtitle: subtitle || undefined, openId: tid, fallbackSlug: 'saloane', fallbackName: 'Saloane', leadId, matchedBy: 'technician', serviceFileId: sfId })
+        const title = (lead?.full_name || lead?.company_name || 'Fără nume').trim()
+        const subtitle = [lead?.company_name, lead?.phone_number, lead?.email].filter(Boolean).join(' · ') + (t.number ? ` · Tăviță: ${t.number}` : '')
+        push({ type: 'lead', id: leadId, title, subtitle: subtitle || undefined, openId: leadId, fallbackSlug: 'receptie', fallbackName: 'Recepție', leadId, matchedBy: 'technician', preferServicePipeline: true })
         allMatchedLeadIds.add(leadId)
       }
     }
 
-    // 4. FIȘE (număr) + prin lead (fără diacritice: "fisa" găsește "Fișă 123")
+    // 4. FIȘE (număr) → returnăm LEAD
     const sfNumberVariants = getDiacriticVariants(termNorm).map((v) => `number.ilike.%${v}%`)
     const { data: serviceFiles } = await supabase
       .from('service_files')
-      .select('id, number, lead_id, lead:leads(id, full_name, company_name)')
+      .select('id, number, lead_id, lead:leads(id, full_name, company_name, phone_number, email)')
       .limit(LIMIT_PER_TYPE)
       .or(sfNumberVariants.length > 0 ? sfNumberVariants.join(',') : `number.ilike.${termLike}`)
     for (const sf of serviceFiles || []) {
-      const id = sf.id as string
       const leadId = (sf as any).lead_id as string
-      if (!id || seenKeys.has(`sf:${id}`)) continue
+      if (!leadId || seenKeys.has(`lead:${leadId}`)) continue
       const lead = (sf as any).lead
-      const leadName = lead?.full_name || lead?.company_name || ''
-      push({ type: 'service_file', id, title: `Fișă ${sf.number || id}`, subtitle: leadName ? `Client: ${leadName}` : undefined, openId: id, fallbackSlug: 'receptie', fallbackName: 'Recepție', leadId: leadId || id, matchedBy: 'number' })
+      const title = (lead?.full_name || lead?.company_name || 'Fără nume').trim()
+      const subtitle = [lead?.company_name, lead?.phone_number, lead?.email].filter(Boolean).join(' · ') + ` · Fișă: ${sf.number}`
+      push({ type: 'lead', id: leadId, title, subtitle: subtitle || undefined, openId: leadId, fallbackSlug: 'receptie', fallbackName: 'Recepție', leadId, matchedBy: 'number', preferServicePipeline: true })
     }
     if (leadIdsForSf.length > 0) {
-      const { data: sfsByLead } = await supabase
-        .from('service_files')
-        .select('id, number, lead_id, lead:leads(id, full_name, company_name)')
-        .in('lead_id', leadIdsForSf)
-        .limit(LIMIT_PER_TYPE)
-      for (const sf of sfsByLead || []) {
-        const id = sf.id as string
-        const leadId = (sf as any).lead_id as string
-        if (!id || seenKeys.has(`sf:${id}`)) continue
-        const lead = (sf as any).lead
-        push({ type: 'service_file', id, title: `Fișă ${sf.number || id}`, subtitle: lead ? `Client: ${lead.full_name || lead.company_name || ''}` : undefined, openId: id, fallbackSlug: 'receptie', fallbackName: 'Recepție', leadId: leadId || id })
-      }
-      const { data: sfIdsRows } = await supabase.from('service_files').select('id').in('lead_id', leadIdsForSf)
-      const sfIdsForTrays = (sfIdsRows || []).map((r: { id: string }) => r.id).filter(Boolean)
-      if (sfIdsForTrays.length > 0) {
-        const { data: traysByLead } = await supabase
-          .from('trays')
-          .select('id, number, service_file_id, service_file:service_files!inner(number, lead:leads!inner(id, full_name, company_name))')
-          .in('service_file_id', sfIdsForTrays)
-          .limit(LIMIT_TRAYS)
-        for (const t of traysByLead || []) {
-          const id = t.id as string
-          const sf = (t as any).service_file
-          const leadId = sf?.lead?.id as string
-          if (!id || seenKeys.has(`tray:${id}`)) continue
-          const lead = sf?.lead
-          const leadName = lead?.full_name || lead?.company_name || ''
-          const sfNum = sf?.number || ''
-          const title = `Tăviță ${t.number || ''}`.trim() || `Tăviță ${id}`
-          const subtitle = [leadName, sfNum].filter(Boolean).join(' · ')
-          const sfId = (t as any).service_file_id as string | undefined
-          push({ type: 'tray', id, title, subtitle: subtitle || undefined, openId: id, fallbackSlug: 'saloane', fallbackName: 'Saloane', leadId: leadId || id, serviceFileId: sfId })
-        }
-      }
+      // Fișele prin lead sunt deja returnate ca LEAD-uri (deja adăugate)
     }
 
-    // 5. Tăvițe după număr + serial (traySearchServer)
+    // 5. Tăvițe după număr + serial (traySearchServer) → returnăm LEAD
     const { data: trayResults } = await searchTraysGloballyWithClient(supabase, term)
     for (const t of trayResults || []) {
-      const id = t.trayId
-      if (!id || seenKeys.has(`tray:${id}`)) continue
+      const leadId = t.leadId
+      if (!leadId || seenKeys.has(`lead:${leadId}`)) continue
       const matchBy: MatchedByType = t.matchType === 'serial_number' ? 'serial' : 'number'
-      const subtitle = t.matchDetails ? [t.leadName, t.serviceFileNumber, t.matchDetails].filter(Boolean).join(' · ') : [t.leadName, t.serviceFileNumber].filter(Boolean).join(' · ')
-      push({ type: 'tray', id, title: `Tăviță ${t.trayNumber}`, subtitle: subtitle || undefined, openId: id, fallbackSlug: 'saloane', fallbackName: 'Saloane', leadId: t.leadId, matchedBy, serviceFileId: t.serviceFileId })
+      // Returnăm LEAD, nu Fișa de Service
+      const title = t.leadName || 'Fără nume'
+      const subtitle = [t.leadPhone, t.leadEmail].filter(Boolean).join(' · ') + (t.matchDetails ? ` · ${t.matchDetails}` : '') + (t.trayNumber ? ` · Tăviță: ${t.trayNumber}` : '') + ` · Fișă: ${t.serviceFileNumber}`
+      push({ type: 'lead', id: leadId, title, subtitle: subtitle || undefined, openId: leadId, fallbackSlug: 'receptie', fallbackName: 'Recepție', leadId, matchedBy: matchBy, preferServicePipeline: true })
     }
 
     // 6. REZOLVARE PIPELINE (tray, lead, service_file)
     const pipelineInfo = await resolvePipelineInfo(supabase, rawResults.map((r) => ({ type: r.type, id: r.id })))
+
+    // 6b. Lead-uri fără pipeline (nu sunt în pipeline_items type=lead): dacă au fișă de serviciu → deschidem în Receptie
+    const leadIdsWithoutPipeline = rawResults
+      .filter((r) => r.type === 'lead' && !pipelineInfo.has(r.id))
+      .map((r) => r.id)
+      .filter(Boolean)
+    const leadPipelineFallback = new Map<string, { slug: string; name: string }>()
+    if (leadIdsWithoutPipeline.length > 0) {
+      const { data: sfRows } = await supabase
+        .from('service_files')
+        .select('lead_id')
+        .in('lead_id', leadIdsWithoutPipeline)
+        .limit(leadIdsWithoutPipeline.length * 2)
+      const leadIdsWithSf = [...new Set((sfRows || []).map((r: { lead_id: string }) => r.lead_id).filter(Boolean))]
+      for (const lid of leadIdsWithSf) {
+        if (!leadPipelineFallback.has(lid)) leadPipelineFallback.set(lid, { slug: 'receptie', name: 'Recepție' })
+      }
+    }
 
     // 7. Pentru tăvițe: rezolvăm pipeline-ul FIȘEI de serviciu (unde se deschide – inclusiv Arhivare)
     const trayWithSf = rawResults.filter((r): r is RawSearchRow & { serviceFileId: string } => r.type === 'tray' && Boolean(r.serviceFileId))
@@ -450,16 +436,25 @@ async function searchViaDirectQueries(
 
     const results: UnifiedSearchResult[] = rawResults.slice(0, LIMIT).map((r) => {
       const pi = pipelineInfo.get(r.id)
+      const leadFallback = r.type === 'lead' ? leadPipelineFallback.get(r.id) : undefined
       const sfPipelineSlug = r.type === 'tray' && r.serviceFileId ? pipelineInfoForServiceFile.get(r.serviceFileId)?.slug : undefined
+      // Dacă preferServicePipeline=true, prioritizăm fallback (receptie) peste pipeline-ul din pipeline_items
+      // Aceasta se întâmplă când lead-ul a fost găsit prin fișă/tăviță/serial/tehnician
+      const pipelineSlug = r.preferServicePipeline
+        ? (leadFallback?.slug || r.fallbackSlug)
+        : (pi?.slug || leadFallback?.slug || r.fallbackSlug)
+      const pipelineName = r.preferServicePipeline
+        ? (leadFallback?.name || r.fallbackName)
+        : (pi?.name || leadFallback?.name || r.fallbackName)
       return {
         type: r.type,
         id: r.id,
         title: r.title,
         subtitle: r.subtitle,
-        pipelineSlug: pi?.slug || r.fallbackSlug,
+        pipelineSlug,
         openId: r.openId,
-        pipelineName: pi?.name || r.fallbackName,
-        stageName: pi?.stageName,
+        pipelineName,
+        stageName: r.preferServicePipeline ? undefined : pi?.stageName,
         leadId: r.leadId,
         matchedBy: r.matchedBy,
         serviceFileId: r.serviceFileId,

@@ -119,6 +119,22 @@ function getCacheKey(lead: any): string {
   return `defacturat-${type}-${id}`
 }
 
+/** Normalizează technician_details din fișă (poate fi array, string JSON sau null). */
+function getTechnicianDetailsList(serviceFile: any): Array<{ stageLabel?: string; text?: string; at?: string }> {
+  if (!serviceFile) return []
+  const raw = serviceFile.technician_details
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
 export function DeFacturatOverlay({
   open,
   onOpenChange,
@@ -293,6 +309,47 @@ export function DeFacturatOverlay({
 
       const leadData = leadRes?.data ?? kl
       const messagesList = Array.isArray(msgsList) ? msgsList : []
+
+      // Încarcă explicit technician_details: service_files + qc_message pe fișă + evenimente QC pe tăvițe (ca în panoul de detalii)
+      let technicianDetailsMerged: Array<{ stageLabel?: string; text?: string; at?: string }> = []
+      if (finalFisaId) {
+        const { data: traysForTech } = await listTraysForServiceFile(finalFisaId)
+        const trayIds = (traysForTech || []).map((t: any) => t.id)
+        const [techFromSf, eventsRes, qcTrayRes] = await Promise.all([
+          supabase.from('service_files').select('technician_details').eq('id', finalFisaId).single(),
+          supabase.from('items_events').select('payload, message, created_at').eq('type', 'service_file').eq('item_id', finalFisaId).eq('event_type', 'qc_message').order('created_at', { ascending: true }),
+          trayIds.length > 0
+            ? supabase.from('items_events').select('event_type, message, created_at, actor_name').eq('type', 'tray').in('item_id', trayIds).in('event_type', ['quality_validated', 'quality_not_validated']).order('created_at', { ascending: false }).limit(100)
+            : Promise.resolve({ data: [] }),
+        ])
+        const fromSf = (techFromSf as any)?.data?.technician_details
+        const arrFromSf = Array.isArray(fromSf) ? fromSf : (typeof fromSf === 'string' ? (() => { try { const p = JSON.parse(fromSf); return Array.isArray(p) ? p : [] } catch { return [] } })() : [])
+        technicianDetailsMerged = [...arrFromSf]
+        const qcMsgEvents = ((eventsRes as any)?.data ?? []) as Array<{ payload?: { stageLabel?: string; text?: string }; message?: string; created_at?: string }>
+        qcMsgEvents.forEach((ev) => {
+          const p = ev.payload ?? {}
+          technicianDetailsMerged.push({
+            stageLabel: p.stageLabel ?? 'Comentariu',
+            text: p.text ?? ev.message ?? '',
+            at: ev.created_at ?? new Date().toISOString(),
+          })
+        })
+        const qcTrayEvents = ((qcTrayRes as any)?.data ?? []) as Array<{ event_type?: string; message?: string; created_at?: string; actor_name?: string }>
+        qcTrayEvents.forEach((ev) => {
+          const stageLabel = ev.event_type === 'quality_validated' ? 'QC (Validat)' : 'QC (Nevalidat)'
+          const text = ev.actor_name ? `${ev.actor_name}: ${ev.message || ''}` : (ev.message || '')
+          technicianDetailsMerged.push({
+            stageLabel,
+            text,
+            at: ev.created_at ?? new Date().toISOString(),
+          })
+        })
+        technicianDetailsMerged.sort((a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime())
+        if (technicianDetailsMerged.length > 0 && sf) {
+          sf = { ...sf, technician_details: technicianDetailsMerged }
+        }
+      }
+
       setLeadFull(leadData)
       setServiceFile(sf || null)
       setServices(servicesRes || [])
@@ -1010,17 +1067,20 @@ export function DeFacturatOverlay({
                   Detalii Tehnician
                 </h3>
                 <div className="space-y-2 p-3 rounded-lg bg-muted/30 border text-sm">
-                  {serviceFile?.technician_details && Array.isArray(serviceFile.technician_details) && serviceFile.technician_details.length > 0 ? (
-                    serviceFile.technician_details.map((entry: any, i: number) => (
-                      <div key={i} className="flex flex-col gap-0.5">
-                        {entry.stageLabel && <span className="font-medium text-muted-foreground">{entry.stageLabel}</span>}
-                        <p className="break-words text-red-600 dark:text-red-400 font-bold italic">{entry.text ?? ''}</p>
-                        {entry.at && <span className="text-xs text-muted-foreground">{new Date(entry.at).toLocaleString('ro-RO')}</span>}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-red-600 dark:text-red-400 font-bold italic">Nu există detalii comunicate de tehnician.</p>
-                  )}
+                  {(() => {
+                    const technicianDetailsList = getTechnicianDetailsList(serviceFile)
+                    return technicianDetailsList.length > 0 ? (
+                      technicianDetailsList.map((entry: any, i: number) => (
+                        <div key={i} className="flex flex-col gap-0.5">
+                          {entry.stageLabel && <span className="font-medium text-muted-foreground">{entry.stageLabel}</span>}
+                          <p className="break-words text-red-600 dark:text-red-400 font-bold italic">{entry.text ?? ''}</p>
+                          {entry.at && <span className="text-xs text-muted-foreground">{new Date(entry.at).toLocaleString('ro-RO')}</span>}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-red-600 dark:text-red-400 font-bold italic">Nu există detalii comunicate de tehnician.</p>
+                    )
+                  })()}
                 </div>
               </section>
 

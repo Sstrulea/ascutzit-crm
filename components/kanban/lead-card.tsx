@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, useMemo, useRef } from "react"
-import { MoreHorizontal, Mail, Calendar, Clock, User, Phone, Pin, Trash2, CheckCircle2, Circle, Building2, Sparkles, Scissors, Wrench, Building, PhoneOff, PhoneCall, PhoneMissed, XCircle, Info, Package, Pencil, Tag, MessageCircle, UserCheck, UserX, Archive, Loader2, Copy } from "lucide-react"
+import { MoreHorizontal, Mail, Calendar, Clock, User, Phone, Pin, Trash2, CheckCircle2, Circle, Building2, Sparkles, Scissors, Wrench, Building, PhoneOff, PhoneCall, PhoneMissed, XCircle, Info, Package, Pencil, Tag, MessageCircle, UserCheck, UserX, Archive, Loader2, Copy, Receipt } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -105,6 +105,8 @@ interface LeadCardProps {
   onArchive?: () => Promise<void>
   /** Receptie: la scoaterea tag-ului Nu răspunde de pe fișă – mută fișa în De facturat și refresh */
   onNuRaspundeClearedForReceptie?: (serviceFileId: string) => void | Promise<void>
+  /** Receptie: forțează mutarea fișei în De facturat (icon pe card) – ignoră prioritate/validare */
+  onForceDeFacturat?: (serviceFileId: string) => void | Promise<void>
   /** Vânzări: la adăugarea tag-ului Sună! mută lead-ul în stage-ul Suna */
   onSunaTagAdded?: (leadId: string) => void
   /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
@@ -116,9 +118,10 @@ interface LeadCardProps {
 /** Taguri care nu apar în popup-ul „Taguri” de pe card (nu pot fi alocate de aici). */
 const TAGURI_ASCUNSE_DIN_POPUP = ['Follow Up', 'Frizerii', 'Horeca', 'Nevalidata', 'PINNED', 'Reparatii', 'Retur', 'RETUR', 'Saloane']
 
-export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDragging, stages, onPinToggle, isSelected = false, onSelectChange, leadTotal = 0, pipelineName, onRefresh, onClaimChange, onTagsChange, onDeliveryClear, showArchiveButton, onArchive, onNuRaspundeClearedForReceptie, onSunaTagAdded, onSunaTagRemoved, showTagButton = false }: LeadCardProps) {
+export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDragging, stages, onPinToggle, isSelected = false, onSelectChange, leadTotal = 0, pipelineName, onRefresh, onClaimChange, onTagsChange, onDeliveryClear, showArchiveButton, onArchive, onNuRaspundeClearedForReceptie, onForceDeFacturat, onSunaTagAdded, onSunaTagRemoved, showTagButton = false }: LeadCardProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
+  const [isForcingDeFacturat, setIsForcingDeFacturat] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
   const [isPinning, setIsPinning] = useState(false)
   const [isTogglingNuRaspunde, setIsTogglingNuRaspunde] = useState(false)
@@ -703,10 +706,12 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
 
   const tagClass = (c: TagColor) => getTagColorClass(c)
 
-  // verifica daca un tag este un tag de departament
-  const isDepartmentTag = (tagName: string) => {
+  // verifica daca un tag sau nume pipeline este un departament (Saloane, Frizerii, Horeca, Reparatii)
+  const isDepartmentTag = (tagOrPipelineName: string) => {
     const departmentTags = ['Horeca', 'Saloane', 'Frizerii', 'Reparatii']
-    return departmentTags.includes(tagName)
+    if (!tagOrPipelineName) return false
+    const n = String(tagOrPipelineName).toLowerCase()
+    return departmentTags.some(d => d.toLowerCase() === n || n.includes(d.toLowerCase()))
   }
 
   // returneaza stilul pentru insigne de departament
@@ -1198,6 +1203,28 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                         {isArchiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
                       </Button>
                     )}
+                    {(lead as any).type === 'service_file' && onForceDeFacturat && pipelineName?.toLowerCase().includes('receptie') && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                        title="Mută în De facturat (forțat)"
+                        data-button-id="receptieCardForceDeFacturatButton"
+                        disabled={isForcingDeFacturat}
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          if (isForcingDeFacturat) return
+                          setIsForcingDeFacturat(true)
+                          try {
+                            await onForceDeFacturat(lead.id)
+                          } finally {
+                            setIsForcingDeFacturat(false)
+                          }
+                        }}
+                      >
+                        {isForcingDeFacturat ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
+                      </Button>
+                    )}
                     <DropdownMenu open={isMenuOpen} onOpenChange={(open) => { setIsMenuOpen(open); if (open) logButtonEvent({ leadId: leadIdForDb, buttonId: 'vanzariCardMenuButton', buttonLabel: 'Meniu', actorOption }).catch(() => {}) }}>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" data-menu onClick={(e) => e.stopPropagation()}>
@@ -1396,7 +1423,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                   </div>
                 </div>
               ) : (lead.isQuote || (lead as any).type === 'tray') ? (
-                // Afișare minimalistă pentru tăviță (tray) – nume și telefon vizibile
+                // Afișare pentru tăviță (tray): nume, telefon, tăviță #nr, icon departament, tehnician
                 <>
                   <div className="flex-1 min-w-0 space-y-0.5">
                     <h4 className="font-medium text-sm text-foreground break-words leading-tight">{lead.name}</h4>
@@ -1406,63 +1433,62 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                         <span className="whitespace-nowrap overflow-hidden text-ellipsis" title={lead.phone}>{lead.phone}</span>
                       </div>
                     )}
-                    {((lead as any).trayNumber || (lead as any).isSplitChild) && (
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        {(lead as any).trayNumber && (
-                          <span className="text-xs text-muted-foreground">#{((lead as any).trayNumber)}</span>
+                    {/* Tăviță: mereu afișăm #nr sau — */}
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <span className="text-xs font-medium text-foreground">
+                        Tăviță: #{(lead as any).trayNumber != null && String((lead as any).trayNumber).trim() !== '' ? String((lead as any).trayNumber).trim() : '—'}
+                      </span>
+                      {(lead as any).isSplitChild && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold border border-orange-300">
+                          🔀 SPLIT
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Icon departament + Tehnician: mereu vizibile pe card tăviță */}
+                  <div className="space-y-1 mt-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {pipelineName && isDepartmentTag(pipelineName) && (
+                        <span className="flex items-center gap-1 text-xs font-medium text-foreground" title={pipelineName}>
+                          {getDepartmentIcon(pipelineName)}
+                          <span className="text-muted-foreground">{pipelineName}</span>
+                        </span>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-red-600">👤 Tehnician:</span>
+                        <span className="text-xs font-medium text-foreground">
+                          {[lead.technician, (lead as any).technician2, (lead as any).technician3].filter(Boolean).join(', ') || 'Neatribuit'}
+                        </span>
+                      </div>
+                    </div>
+                    {(lead as any).estimatedTime && (lead as any).estimatedTime > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-blue-600 font-medium">⏱ Estimat:</span>
+                        <span className="text-xs text-blue-600">
+                          {(lead as any).estimatedTime >= 60 
+                            ? `${Math.floor((lead as any).estimatedTime / 60)}h ${(lead as any).estimatedTime % 60 > 0 ? `${(lead as any).estimatedTime % 60}min` : ''}`
+                            : `${(lead as any).estimatedTime}min`}
+                        </span>
+                      </div>
+                    )}
+                    {((lead as any).inLucruSince || (lead as any).inAsteptareSince) && (
+                      <div className="space-y-0.5">
+                        {(lead as any).inLucruSince && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-green-600">⏲ În lucru:</span>
+                            <span className="text-xs text-green-600">{formatExactDuration(new Date((lead as any).inLucruSince))}</span>
+                          </div>
                         )}
-                        {(lead as any).isSplitChild && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold border border-orange-300">
-                            🔀 SPLIT
-                          </span>
+                        {(lead as any).inAsteptareSince && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-yellow-600">⏸ În așteptare:</span>
+                            <span className="text-xs text-yellow-600">{formatExactDuration(new Date((lead as any).inAsteptareSince))}</span>
+                          </div>
                         )}
                       </div>
                     )}
                   </div>
-                  
-                  {/* Info row: Tehnicieni + Timp estimat + Timp lucrat */}
-                  {(lead.technician || (lead as any).technician2 || (lead as any).technician3 || (lead as any).estimatedTime) && (
-                    <div className="space-y-1 mt-1.5">
-                      {/* Afișează toți tehnicienii */}
-                      {(lead.technician || (lead as any).technician2 || (lead as any).technician3) && (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-semibold text-red-600">
-                            👤 Tehnicieni:
-                          </span>
-                          <span className="text-xs font-medium text-foreground">
-                            {[lead.technician, (lead as any).technician2, (lead as any).technician3].filter(Boolean).join(', ')}
-                          </span>
-                        </div>
-                      )}
-                      {(lead as any).estimatedTime && (lead as any).estimatedTime > 0 && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-blue-600 font-medium">⏱ Estimat:</span>
-                          <span className="text-xs text-blue-600">
-                            {(lead as any).estimatedTime >= 60 
-                              ? `${Math.floor((lead as any).estimatedTime / 60)}h ${(lead as any).estimatedTime % 60 > 0 ? `${(lead as any).estimatedTime % 60}min` : ''}`
-                              : `${(lead as any).estimatedTime}min`}
-                          </span>
-                        </div>
-                      )}
-                      {/* Timp în stage-ul "IN LUCRU" sau "IN ASTEPTARE" */}
-                      {((lead as any).inLucruSince || (lead as any).inAsteptareSince) && (
-                        <div className="space-y-0.5">
-                          {(lead as any).inLucruSince && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium text-green-600">⏲ În lucru:</span>
-                              <span className="text-xs text-green-600">{formatExactDuration(new Date((lead as any).inLucruSince))}</span>
-                            </div>
-                          )}
-                          {(lead as any).inAsteptareSince && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium text-yellow-600">⏸ În așteptare:</span>
-                              <span className="text-xs text-yellow-600">{formatExactDuration(new Date((lead as any).inAsteptareSince))}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </>
               ) : (lead as any).type === 'service_file' ? (
                 // Afișare minimalistă pentru fișă de serviciu – nume și telefon vizibile, fără tăiere
@@ -1542,21 +1568,6 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                             ))}
                         </div>
                       )}
-                    </div>
-                  )}
-                  {/* Tăvițe: afișăm doar când NU avem traysInLucru (evită repetarea cu secțiunea Status) */}
-                  {(Array.isArray((lead as any).trayNumbers) && (lead as any).trayNumbers.length > 0) && !((lead as any).traysInLucru && (lead as any).traysInLucru.length > 0) && (
-                    <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground flex-wrap">
-                      <span className="font-medium text-foreground/80">Tăvițe:</span>
-                      <span className="flex items-center gap-1 flex-wrap">
-                        {((lead as any).trayNumbers as string[]).map((num: string, i: number) => {
-                          return (
-                            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded font-medium bg-muted/50 text-foreground">
-                              #{num}
-                            </span>
-                          )
-                        })}
-                      </span>
                     </div>
                   )}
                 </>
@@ -1871,6 +1882,28 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
               }}
             >
               {isArchiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
+            </Button>
+          )}
+          {(lead as any).type === 'service_file' && onForceDeFacturat && pipelineName?.toLowerCase().includes('receptie') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              title="Mută în De facturat (forțat)"
+              data-button-id="receptieCardForceDeFacturatButton"
+              disabled={isForcingDeFacturat}
+              onClick={async (e) => {
+                e.stopPropagation()
+                if (isForcingDeFacturat) return
+                setIsForcingDeFacturat(true)
+                try {
+                  await onForceDeFacturat(lead.id)
+                } finally {
+                  setIsForcingDeFacturat(false)
+                }
+              }}
+            >
+              {isForcingDeFacturat ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
             </Button>
           )}
           {!isInColetNeridicatStage && (

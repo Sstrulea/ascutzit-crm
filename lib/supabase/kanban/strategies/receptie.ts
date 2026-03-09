@@ -334,7 +334,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
           if (!sfId) continue
           const num = t.number != null && String(t.number).trim() !== '' ? String(t.number).trim() : null
           if (!trayNumbersBySf.has(sfId)) trayNumbersBySf.set(sfId, [])
-          if (num) trayNumbersBySf.get(sfId)!.push(num)
+          trayNumbersBySf.get(sfId)!.push(num || '—')
         }
       }
     }
@@ -569,12 +569,13 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
         return
       }
       
-      // Verifică dacă toate tăvițele sunt finalizate și validate în QC
-      if (serviceFileTraysInfo && serviceFileTraysInfo.trays.length > 0) {
-        if (serviceFileTraysInfo.allFinalizare && serviceFileTraysInfo.allQcValidated && deFacturatStage) {
-          if (pipelineItem.stage_id !== deFacturatStage.id) {
-            moves.push({ serviceFileId: serviceFile.id, targetStage: deFacturatStage, pipelineItem })
-          }
+      // Verifică dacă toate tăvițele sunt finalizate și validate în QC, SAU doar toate validate QC (indiferent de stage în dept)
+      if (serviceFileTraysInfo && serviceFileTraysInfo.trays.length > 0 && deFacturatStage) {
+        const allTraysQcValidated = serviceFileTraysInfo.trays.every((t: { qcValidated?: boolean | null }) => t.qcValidated === true)
+        const canMoveToDeFacturat =
+          (serviceFileTraysInfo.allFinalizare && serviceFileTraysInfo.allQcValidated) || allTraysQcValidated
+        if (canMoveToDeFacturat && pipelineItem.stage_id !== deFacturatStage.id) {
+          moves.push({ serviceFileId: serviceFile.id, targetStage: deFacturatStage, pipelineItem })
           return
         }
       }
@@ -653,8 +654,20 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       }
 
       // ========== I. CURIER TRIMIS, OFFICE DIRECT (cea mai mică prioritate) ==========
-      // Doar dacă nu există evenimente în stage-uri cu prioritate mai mare,
-      // verifică checkbox-urile "Curier Trimis" (exclus dacă e colet_neridicat) și "Office Direct"
+      // Nu mutăm ÎNAPOI în Curier Trimis/Office Direct dacă fișa e deja într-un stage ulterior (DB are prioritate).
+      // Ex.: în DB e De Facturat, dar curier_trimis e bifat din trecut – nu suprascriem cu Curier Trimis.
+      const currentStageName = (pipelineItem as any)?.stage?.name?.toUpperCase() || ''
+      const isAlreadyInLaterStage =
+        (deFacturatStage && pipelineItem.stage_id === deFacturatStage.id) ||
+        (deTrimisStage && pipelineItem.stage_id === deTrimisStage.id) ||
+        (ridicPersonalStage && pipelineItem.stage_id === ridicPersonalStage.id) ||
+        (arhivatStage && pipelineItem.stage_id === arhivatStage.id) ||
+        matchesStagePattern(currentStageName, 'DE_FACTURAT') ||
+        matchesStagePattern(currentStageName, 'DE_TRIMIS') ||
+        matchesStagePattern(currentStageName, 'RIDIC_PERSONAL') ||
+        matchesStagePattern(currentStageName, 'ARHIVAT')
+      if (isAlreadyInLaterStage) return
+
       if (curierTrimisStage && serviceFile.curier_trimis === true && (serviceFile as any).colet_neridicat !== true) {
         if (pipelineItem.stage_id !== curierTrimisStage.id) {
           moves.push({ serviceFileId: serviceFile.id, targetStage: curierTrimisStage, pipelineItem })
@@ -1694,11 +1707,8 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       return false
     })
     
-    if (deptPipelines.length === 0) {
-      return { result, trayQcValidatedAtMap: new Map<string, string | null>() }
-    }
-    
-    const deptPipelineIds = deptPipelines.map(p => p.id)
+    // NU returnăm early când nu există pipeline-uri de departament: tot afișăm tăvițele pe card (tehnician din trays)
+    const deptPipelineIds = deptPipelines.length > 0 ? deptPipelines.map(p => p.id) : []
     
     const formatDurationShort = (ms: number) => {
       if (!Number.isFinite(ms) || ms <= 0) return null
@@ -1725,9 +1735,7 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       if (!traysData?.length) return { result, trayQcValidatedAtMap: new Map<string, string | null>() }
       allTrays = traysData as TrayRow[]
     }
-    // Tăvițele fără număr (unassigned) nu intră în logica QC / De Facturat – nu blochează mutarea
-    const hasNumber = (t: TrayRow) => t.number != null && String(t.number).trim() !== ''
-    allTrays = allTrays.filter(hasNumber)
+    // Include toate tăvițele (cu sau fără număr) pentru afișare pe card; QC/De Facturat folosesc doar cele cu număr unde e cazul
     const allTrayIds = allTrays.map(t => t.id)
 
     // === QC status per TĂVIȚĂ (items_events) – din preload (6.3) sau fetch local ===
@@ -1901,6 +1909,8 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
     let allTrayPipelineItems: Array<{ item_id: string; stage_id: string; pipeline_id: string }>
     if (preloaded?.trayPipelineItemsInDept?.length) {
       allTrayPipelineItems = preloaded.trayPipelineItemsInDept
+    } else if (deptPipelineIds.length === 0) {
+      allTrayPipelineItems = []
     } else {
       logReceptieDb("getAllTraysInfoForServiceFiles: supabase.from('pipeline_items').select(...) tray în dept", false)
       const { data: piData } = await supabase
@@ -1909,8 +1919,6 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
         .eq('type', 'tray')
         .in('item_id', allTrayIds)
         .in('pipeline_id', deptPipelineIds)
-      // Nu returnăm early când piData e gol: tăvițele din De trimis/Ridic personal/Arhivat
-      // nu mai sunt în pipeline-uri de departament, dar trebuie incluse cu tehnician pentru afișare pe card
       allTrayPipelineItems = (piData || []) as Array<{ item_id: string; stage_id: string; pipeline_id: string }>
     }
     

@@ -28,6 +28,8 @@ interface LazyLeadCardProps {
   onArchive?: () => Promise<void>
   /** Receptie: la scoaterea tag-ului Nu răspunde de pe fișă – mută fișa în De facturat */
   onNuRaspundeClearedForReceptie?: (serviceFileId: string) => void | Promise<void>
+  /** Receptie: forțează mutarea fișei în De facturat (icon pe card) */
+  onForceDeFacturat?: (serviceFileId: string) => void | Promise<void>
   /** Vânzări: la adăugarea tag-ului Sună! mută lead-ul în stage-ul Suna */
   onSunaTagAdded?: (leadId: string) => void
   /** Vânzări: la scoaterea tag-ului Sună! mută lead-ul în Leaduri sau Leaduri Straine (după telefon) */
@@ -61,6 +63,7 @@ export function LazyLeadCard({
   showArchiveButton,
   onArchive,
   onNuRaspundeClearedForReceptie,
+  onForceDeFacturat,
   onSunaTagAdded,
   onSunaTagRemoved,
   showTagButton,
@@ -120,6 +123,7 @@ export function LazyLeadCard({
           onTagsChange={onTagsChange}
           onDeliveryClear={onDeliveryClear}
           onNuRaspundeClearedForReceptie={onNuRaspundeClearedForReceptie}
+          onForceDeFacturat={onForceDeFacturat}
           showArchiveButton={showArchiveButton}
           onArchive={onArchive}
           onSunaTagAdded={onSunaTagAdded}

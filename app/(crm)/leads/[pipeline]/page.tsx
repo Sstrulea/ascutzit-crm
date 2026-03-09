@@ -504,6 +504,31 @@ export default function CRMPage() {
       refresh?.()
     }
   }, [getCachedPipelinesWithStages, refresh])
+
+  /** Receptie: forțează mutarea fișei în De facturat (ignoră prioritate, validare etc.) – doar din butonul de pe card. */
+  const forceMoveToDeFacturat = useCallback(async (serviceFileId: string) => {
+    const cached = getCachedPipelinesWithStages()
+    const receptiePipe = cached?.find((p: any) => toSlug(p?.name || '') === 'receptie')
+    const stages = receptiePipe?.stages as Array<{ id: string; name: string }> | undefined
+    const deFacturatStage = stages?.find((s: any) => matchesStagePattern(String(s?.name || ''), 'DE_FACTURAT'))
+    if (!receptiePipe?.id || !deFacturatStage?.id) {
+      toast({ variant: 'destructive', title: 'Eroare', description: 'Stage De facturat negăsit.' })
+      refresh?.()
+      return
+    }
+    try {
+      const { error } = await moveItemToStage('service_file', serviceFileId, receptiePipe.id, deFacturatStage.id)
+      if (error) {
+        toast({ variant: 'destructive', title: 'Eroare', description: (error as Error)?.message ?? 'Nu s-a putut muta.' })
+      } else {
+        toast({ title: 'Mutată în De facturat', duration: 2000 })
+      }
+      refresh?.()
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Eroare', description: (e as Error)?.message ?? 'Nu s-a putut muta.' })
+      refresh?.()
+    }
+  }, [getCachedPipelinesWithStages, refresh, toast])
   
   // State pentru pipeline-uri cu ID-uri (pentru verificarea permisiunilor)
   const [pipelinesWithIds, setPipelinesWithIds] = useState<Array<{ id: string; name: string }>>([])
@@ -783,9 +808,9 @@ export default function CRMPage() {
         item = res.data
       }
 
-      // Pas 3: Dacă nu l-am găsit, căutăm pipeline-ul real din pipeline_items
+      // Pas 3: Dacă nu l-am găsit, căutăm pipeline-ul real din pipeline_items; dacă e în alt pipeline, redirecționăm acolo
       if (!item) {
-        const { data: piRow, error: piError } = await supabase
+        const { data: piRow } = await supabase
           .from('pipeline_items')
           .select('pipeline_id')
           .eq('type', type)
@@ -796,6 +821,15 @@ export default function CRMPage() {
         if (piRow?.pipeline_id && piRow.pipeline_id !== pipelineId) {
           const res = await getSingleKanbanItem(type, itemId, piRow.pipeline_id)
           item = res.data
+          if (item) {
+            const pipes = pipelinesWithIds.length ? pipelinesWithIds : await getPipelines()
+            const targetPipe = pipes?.find((p: any) => p.id === piRow.pipeline_id)
+            const targetSlug = targetPipe?.name ? toSlug(targetPipe.name) : null
+            if (targetSlug && targetSlug !== toSlug(pipelineSlug || '')) {
+              router.replace(`/leads/${targetSlug}?${urlParam}=${encodeURIComponent(itemId)}`, { scroll: false })
+              return
+            }
+          }
         }
       }
 
@@ -2345,6 +2379,7 @@ export default function CRMPage() {
                     return s.includes('de trimis') || s.includes('ridic') || (s.includes('colet') && s.includes('neridicat'))
                   } : undefined}
                   onNuRaspundeClearedForReceptie={pipelineSlug?.toLowerCase() === 'receptie' ? moveServiceFileToDeFacturat : undefined}
+                  onForceDeFacturat={pipelineSlug?.toLowerCase() === 'receptie' ? forceMoveToDeFacturat : undefined}
                   onBulkMoveCurierAjunsAziToAvemComanda={toSlugNormalized(activePipelineName || '').includes('vanzari') ? handleBulkMoveCurierAjunsAziToAvemComanda : undefined}
                   onSunaTagAdded={isVanzariPipeline && sunaStageName ? (leadId: string) => handleMove(leadId, sunaStageName) : undefined}
                   onSunaTagRemoved={isVanzariPipeline && (leaduriStageName || leaduriStraineStageName) ? (leadId: string, phone: string | undefined) => {

@@ -2,25 +2,15 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Search, Loader2, Package, FileText, User, ChevronRight, ArrowLeft } from 'lucide-react'
+import { Search, Loader2, Package, User, ChevronRight, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { removeDiacritics } from '@/lib/utils'
-import type { UnifiedSearchResult } from '@/lib/supabase/unifiedSearchServer'
+import type { UnifiedSearchResult, MatchedByType } from '@/lib/supabase/unifiedSearchServer'
 
-const DEPT_SLUGS = ['saloane', 'horeca', 'frizerii', 'reparatii']
 const TRAY_SEARCH_OPEN_KEY = 'traySearchOpen'
 const PENDING_SEARCH_OPEN_KEY = 'crm:pending-search-open'
-const toSlug = (s: string) => String(s).toLowerCase().replace(/\s+/g, '-')
-
-function buildOpenPayload(u: UnifiedSearchResult, currentPipelineSlug: string | undefined) {
-  const pipelineSlug =
-    u.type === 'tray' && currentPipelineSlug && DEPT_SLUGS.includes(toSlug(currentPipelineSlug))
-      ? currentPipelineSlug
-      : u.pipelineSlug
-  return { pipelineSlug, openType: u.type, openId: u.openId }
-}
 
 function buildNormToOrigMap(text: string): number[] {
   const map: number[] = []
@@ -93,6 +83,17 @@ function highlightText(text: string, terms: string[]): React.ReactNode {
   )
 }
 
+const MATCHED_BY_LABELS: Record<MatchedByType, string> = {
+  phone: 'Telefon',
+  name: 'Nume',
+  email: 'Email',
+  company: 'Companie',
+  serial: 'Serial',
+  number: 'Număr',
+  tag: 'Tag',
+  technician: 'Tehnician',
+}
+
 function ResultRow({
   r,
   highlightTerms,
@@ -104,28 +105,18 @@ function ResultRow({
   onSelect: () => void
   isSelected: boolean
 }) {
-  const icon =
-    r.type === 'lead' ? (
-      <User className="h-4 w-4 text-green-600 dark:text-green-400" />
-    ) : r.type === 'service_file' ? (
-      <FileText className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-    ) : (
-      <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-    )
-  const badge =
-    r.type === 'lead' ? 'Lead' : r.type === 'service_file' ? 'Fișă' : 'Tăviță'
-  const bg =
-    r.type === 'lead'
-      ? 'bg-green-100 dark:bg-green-900/30'
-      : r.type === 'service_file'
-        ? 'bg-amber-100 dark:bg-amber-900/30'
-        : 'bg-blue-100 dark:bg-blue-900/30'
-  const badgeCls =
-    r.type === 'lead'
-      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-      : r.type === 'service_file'
-        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+  // Badge-ul arată cum a fost găsit lead-ul
+  const matchedBy = r.matchedBy || 'name'
+  const badge = MATCHED_BY_LABELS[matchedBy] || 'Lead'
+  
+  // Culori bazate pe matchedBy
+  const isServiceMatch = ['serial', 'number', 'technician'].includes(matchedBy)
+  const bg = isServiceMatch
+    ? 'bg-amber-100 dark:bg-amber-900/30'
+    : 'bg-green-100 dark:bg-green-900/30'
+  const badgeCls = isServiceMatch
+    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+    : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
 
   return (
     <button
@@ -134,7 +125,7 @@ function ResultRow({
       className={`w-full text-left p-3 flex items-center gap-3 transition-colors rounded-lg ${isSelected ? 'bg-accent' : 'hover:bg-accent/50'}`}
     >
       <div className={`flex-shrink-0 h-9 w-9 rounded-lg ${bg} flex items-center justify-center`}>
-        {icon}
+        <User className="h-4 w-4 text-green-600 dark:text-green-400" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm truncate">{highlightText(r.title, highlightTerms)}</p>
@@ -204,15 +195,13 @@ export default function SearchPage() {
 
   const handleSelect = useCallback(
     (result: UnifiedSearchResult) => {
-      const openAsServiceFile = result.type === 'tray' && result.serviceFileId
-      const serviceFilePipeline = result.serviceFilePipelineSlug || 'receptie'
-      const payload = openAsServiceFile
-        ? {
-            pipelineSlug: serviceFilePipeline,
-            openType: 'service_file' as const,
-            openId: result.serviceFileId,
-          }
-        : buildOpenPayload(result, undefined)
+      // Toate rezultatele sunt acum de tip lead
+      // pipelineSlug este deja setat corect (receptie pentru lead-uri găsite prin fișă/tăviță/serial, vanzări pentru celelalte)
+      const payload = {
+        pipelineSlug: result.pipelineSlug,
+        openType: 'lead' as const,
+        openId: result.openId,
+      }
       try {
         sessionStorage.setItem(TRAY_SEARCH_OPEN_KEY, JSON.stringify(payload))
         sessionStorage.setItem(
@@ -222,10 +211,8 @@ export default function SearchPage() {
       } catch {}
       const base = `/leads/${payload.pipelineSlug}`
       const params = new URLSearchParams()
-      if (payload.openType === 'lead') params.set('openLeadId', payload.openId)
-      else if (payload.openType === 'service_file') params.set('openServiceFileId', payload.openId)
-      else if (payload.openType === 'tray') params.set('openTrayId', payload.openId)
-      router.push(params.toString() ? `${base}?${params.toString()}` : base)
+      params.set('openLeadId', payload.openId)
+      router.push(`${base}?${params.toString()}`)
     },
     [router]
   )
@@ -238,9 +225,6 @@ export default function SearchPage() {
     }
   }
 
-  const leads = results.filter((r) => r.type === 'lead')
-  const serviceFiles = results.filter((r) => r.type === 'service_file')
-  const trays = results.filter((r) => r.type === 'tray')
   const highlightTerms = query.trim() ? [query.trim()] : []
 
   return (
@@ -255,7 +239,7 @@ export default function SearchPage() {
         <CardHeader className="pb-2">
           <h1 className="text-lg font-semibold">Căutare globală</h1>
           <p className="text-sm text-muted-foreground">
-            Lead-uri, fișe de serviciu, tăvițe. Poți scrie fără diacritice.
+            Lead-uri și fișe de serviciu. Căutare după nume, telefon, email, tăviță sau serial. Poți scrie fără diacritice.
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -304,60 +288,22 @@ export default function SearchPage() {
 
       {!loading && results.length > 0 && (
         <div className="mt-4 space-y-6 overflow-y-auto min-h-0">
-          {leads.length > 0 && (
-            <div>
-              <p className="px-1 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Lead-uri ({leads.length})
-              </p>
-              <div className="space-y-1">
-                {leads.map((r) => (
-                  <ResultRow
-                    key={`lead:${r.id}`}
-                    r={r}
-                    highlightTerms={highlightTerms}
-                    onSelect={() => handleSelect(r)}
-                    isSelected={false}
-                  />
-                ))}
-              </div>
+          <div>
+            <p className="px-1 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Rezultate ({results.length})
+            </p>
+            <div className="space-y-1">
+              {results.map((r) => (
+                <ResultRow
+                  key={`${r.type}:${r.id}`}
+                  r={r}
+                  highlightTerms={highlightTerms}
+                  onSelect={() => handleSelect(r)}
+                  isSelected={false}
+                />
+              ))}
             </div>
-          )}
-          {serviceFiles.length > 0 && (
-            <div>
-              <p className="px-1 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Fișe de serviciu ({serviceFiles.length})
-              </p>
-              <div className="space-y-1">
-                {serviceFiles.map((r) => (
-                  <ResultRow
-                    key={`sf:${r.id}`}
-                    r={r}
-                    highlightTerms={highlightTerms}
-                    onSelect={() => handleSelect(r)}
-                    isSelected={false}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          {trays.length > 0 && (
-            <div>
-              <p className="px-1 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Tăvițe ({trays.length})
-              </p>
-              <div className="space-y-1">
-                {trays.map((r) => (
-                  <ResultRow
-                    key={`tray:${r.id}`}
-                    r={r}
-                    highlightTerms={highlightTerms}
-                    onSelect={() => handleSelect(r)}
-                    isSelected={false}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       )}
     </div>

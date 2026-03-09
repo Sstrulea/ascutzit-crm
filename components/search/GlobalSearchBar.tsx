@@ -641,12 +641,20 @@ export const GlobalSearchBar = forwardRef<GlobalSearchBarRef, GlobalSearchBarPro
                       setIsOpen(false)
                       setResults([])
                       const q = query.trim()
+                      // Un singur rezultat: deschide direct fișa/lead-ul în pipeline (nu merge la pagina de search)
+                      if (results.length === 1 && flatList.length >= 1) {
+                        handleSelect(flatList[0])
+                        onAfterSelect?.()
+                        return
+                      }
                       if (q) router.push(`${SEARCH_PAGE_PATH}?q=${encodeURIComponent(q)}`)
                       onAfterSelect?.()
                     }}
                     className="w-full text-center text-xs font-medium text-primary hover:underline"
                   >
-                    Vezi toate rezultatele ({results.length})
+                    {results.length === 1
+                      ? 'Deschide fișa / lead'
+                      : `Vezi toate rezultatele (${results.length})`}
                   </button>
                 </div>
               </>
