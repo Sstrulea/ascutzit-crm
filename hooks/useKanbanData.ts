@@ -1,7 +1,7 @@
 'use client'
 
 import { supabaseBrowser } from '@/lib/supabase/supabaseClient'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { getKanbanItems, getSingleKanbanItem, moveItemToStage, addTrayToPipeline, getPipelineItemForItem, getPipelineIdForItem, tryMoveLeadsToArhivatIfAllFacturateBatch } from '@/lib/supabase/pipelineOperations'
 import type { PipelineItemType } from '@/lib/supabase/pipelineOperations'
 import { usePipelinesCache } from './usePipelinesCache'
@@ -22,6 +22,38 @@ const toSlug = (s: string) => String(s).toLowerCase().replace(/\s+/g, '-')
 function isCallBackStage(stageName: string): boolean {
   const n = String(stageName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ')
   return n.includes('call') && n.includes('back')
+}
+
+/** Receptie: refetch fișe fără trays/tehnician pentru toate stage-urile (IN LUCRU, DE FACTURAT, NU RASPUNDE, IN ASTEPTARE, DE TRIMIS, RIDIC PERSONAL, ARHIVAT). */
+function runReceptieTrayBackfill(
+  leads: any[],
+  pipelineId: string,
+  setLeadsFn: React.Dispatch<React.SetStateAction<KanbanLead[]>>
+): void {
+  const stageNorm = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s/g, '')
+  const stagesWithTrayInfo = ['inlucru', 'defacturat', 'nuraspunde', 'inasteptare', 'detrimis', 'ridicpersonal', 'ridicat', 'arhivat']
+  const needsBackfillIds: string[] = []
+  for (const item of leads) {
+    if (item?.type !== 'service_file') continue
+    const sn = stageNorm(item?.stage || '')
+    const isStageWithTrayInfo = stagesWithTrayInfo.some(st => sn.includes(st))
+    if (!isStageWithTrayInfo) continue
+    const hasTrays = Array.isArray(item.traysInLucru) && item.traysInLucru.length > 0
+    const hasNums = Array.isArray(item.trayNumbers) && item.trayNumbers.length > 0
+    const hasTech = !!(item.technician && String(item.technician).trim())
+    if (!hasTrays && !hasNums && !hasTech) needsBackfillIds.push(item.id)
+  }
+  if (needsBackfillIds.length > 0) {
+    ;(async () => {
+      for (const sfId of needsBackfillIds) {
+        try {
+          const { data: updated } = await getSingleKanbanItem('service_file', sfId, pipelineId)
+          if (!updated) continue
+          setLeadsFn(prev => prev.map(l => l.id !== sfId ? l : (updated as KanbanLead)))
+        } catch (_) { /* ignore */ }
+      }
+    })()
+  }
 }
 
 /** Returnează dacă stage-ul este Nu răspunde (pentru a șterge nu_raspunde_callback_at la ieșire). */
@@ -300,6 +332,9 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
               if (cached.source === 'session') {
                 setTimeout(() => loadDataRef.current?.(true), 100)
               }
+              if (isReceptie && currentPipeline.id) {
+                runReceptieTrayBackfill(allLeads as any[], currentPipeline.id, setLeads)
+              }
               return
             }
           }
@@ -366,6 +401,10 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
 
           // First paint: afișăm lista imediat
           setLeads(allLeads)
+
+          if (isReceptie && currentPipeline.id) {
+            runReceptieTrayBackfill(allLeads as any[], currentPipeline.id, setLeads)
+          }
 
           // În Vânzări: arhivare după first paint (plan-optimizare-vanzari-calluri.md) – în background, fără blocare
           if (isVanzari) {
@@ -603,7 +642,15 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
           const itemType = (updatedItem?.type || 'lead') as PipelineItemType
           const { data: updatedKanbanItem, error } = await getSingleKanbanItem(itemType, updatedItem.item_id, currentPipelineId)
           if (!error && updatedKanbanItem) {
-            setLeads(prev => prev.map(l => l.id === (updatedKanbanItem as any).id ? (updatedKanbanItem as any) : l))
+            setLeads(prev => prev.map(l => {
+              if (l.id !== (updatedKanbanItem as any).id) return l
+              const next = updatedKanbanItem as any
+              const prevLead = l as any
+              // Păstrăm traysInLucru/trayNumbers de pe lead-ul existent dacă getSingleKanbanItem nu le returnează (evită dispariția pe card la realtime)
+              const traysInLucru = Array.isArray(next.traysInLucru) && next.traysInLucru.length > 0 ? next.traysInLucru : (Array.isArray(prevLead.traysInLucru) ? prevLead.traysInLucru : undefined)
+              const trayNumbers = Array.isArray(next.trayNumbers) && next.trayNumbers.length > 0 ? next.trayNumbers : (Array.isArray(prevLead.trayNumbers) ? prevLead.trayNumbers : undefined)
+              return { ...next, ...(traysInLucru != null && { traysInLucru }), ...(trayNumbers != null && { trayNumbers }) }
+            }))
           } else {
             setLeads(prev => prev.filter(l => l.id !== updatedItem.item_id))
             invalidateKanbanCacheForPipeline(currentPipelineId)
@@ -756,9 +803,12 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
               return
             }
             setLeads(prev => {
-              const exists = prev.find(l => l.id === (updated as any).id)
-              if (!exists) return prev
-              return prev.map(l => l.id === (updated as any).id ? (updated as any) : l)
+              const prevLead = prev.find(l => l.id === (updated as any).id) as any
+              if (!prevLead) return prev
+              const next = updated as any
+              const traysInLucru = Array.isArray(next.traysInLucru) && next.traysInLucru.length > 0 ? next.traysInLucru : (Array.isArray(prevLead?.traysInLucru) ? prevLead.traysInLucru : undefined)
+              const trayNumbers = Array.isArray(next.trayNumbers) && next.trayNumbers.length > 0 ? next.trayNumbers : (Array.isArray(prevLead?.trayNumbers) ? prevLead.trayNumbers : undefined)
+              return prev.map(l => l.id !== (updated as any).id ? l : { ...next, ...(traysInLucru != null && { traysInLucru }), ...(trayNumbers != null && { trayNumbers }) })
             })
           } catch {
             debouncedRefresh()
@@ -785,9 +835,12 @@ export function useKanbanData(pipelineSlug?: string, options?: UseKanbanDataOpti
           const { data: updatedLead, error } = await getSingleKanbanItem(itemType, itemId, currentPipelineId)
           if (!error && updatedLead) {
             setLeads(prev => {
-              const exists = prev.find(l => l.id === updatedLead.id)
-              if (!exists) return prev
-              return prev.map(l => l.id === updatedLead.id ? (updatedLead as any) : l)
+              const prevLead = prev.find(l => l.id === updatedLead.id) as any
+              if (!prevLead) return prev
+              const next = updatedLead as any
+              const traysInLucru = Array.isArray(next.traysInLucru) && next.traysInLucru.length > 0 ? next.traysInLucru : (Array.isArray(prevLead?.traysInLucru) ? prevLead.traysInLucru : undefined)
+              const trayNumbers = Array.isArray(next.trayNumbers) && next.trayNumbers.length > 0 ? next.trayNumbers : (Array.isArray(prevLead?.trayNumbers) ? prevLead.trayNumbers : undefined)
+              return prev.map(l => l.id !== updatedLead.id ? l : { ...next, ...(traysInLucru != null && { traysInLucru }), ...(trayNumbers != null && { trayNumbers }) })
             })
           }
         } catch (err) {

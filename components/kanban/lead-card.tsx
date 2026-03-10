@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -33,6 +34,7 @@ import { ro } from "date-fns/locale"
 import { useToast } from "@/hooks/use-toast"
 import { formatExactDuration } from "@/lib/utils/service-time"
 import { isLivrariOrCurierAjunsAziStage, isLivrariOrCurierAjunsStage, matchesStagePattern } from "@/lib/supabase/kanban/constants"
+import { ServiceFileTrayInfo } from "./ServiceFileTrayInfo"
 
 /** Render details text: Instrument/Problemă în bold roșu; Număr De Telefon în albastru marin bold. */
 function renderDetailsWithRedHighlight(text: string): React.ReactNode {
@@ -1706,426 +1708,271 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
 
           {/* Controale (dreapta) - ascunse pentru card Vânzări lead/fișă (sunt în grid) */}
           {!(pipelineName && pipelineName.toLowerCase().includes('vanzari') && !((lead as any).type === 'tray') && !lead.isQuote) && (
-          <div className={cn("flex gap-1", isInColetNeridicatStage ? "flex-col" : "flex-row items-center")}>
-          {/* Rând 1 (Colet Neridicat) sau toate într-un rând: mesaje, copiază, Curier Trimis, Tag */}
-          <div className="flex items-center gap-1">
-          {(itemType === 'lead' || itemType === 'service_file' || itemType === 'tray') && (lead as any).userMessageCount != null && (lead as any).userMessageCount > 0 && (
-            <span className="relative inline-flex h-6 w-6 flex-shrink-0 items-center justify-center text-muted-foreground" title="Mesaje de la utilizatori">
-              <MessageCircle className="h-3.5 w-3.5" />
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
-                {(lead as any).userMessageCount > 99 ? '99+' : (lead as any).userMessageCount}
+          <div className="flex flex-row items-center justify-end gap-1 shrink-0">
+          <div className="flex items-center">
+            {/* Message Indicator (Foreground) */}
+            {(itemType === 'lead' || itemType === 'service_file' || itemType === 'tray') && (lead as any).userMessageCount != null && (lead as any).userMessageCount > 0 && (
+              <span className="relative inline-flex h-6 w-6 flex-shrink-0 items-center justify-center text-muted-foreground mr-1" title="Mesaje de la utilizatori">
+                <MessageCircle className="h-4 w-4" />
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                  {(lead as any).userMessageCount > 99 ? '99+' : (lead as any).userMessageCount}
+                </span>
               </span>
-            </span>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted/80"
-            onClick={handleCopyName}
-            title="Copiază numele clientului"
-            data-menu
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </Button>
-          {showMoveToCurierTrimisButton && curierTrimisStageName && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 w-6 p-0 flex-shrink-0 border-sky-300 text-sky-700 hover:bg-sky-50 dark:border-sky-600 dark:text-sky-300 dark:hover:bg-sky-950/50"
-              onClick={(e) => {
-                e.stopPropagation()
-                const existing = (lead as any).curier_scheduled_at
-                if (existing) {
-                  try {
-                    const d = new Date(existing)
-                    setCurierTrimisDate(d.toISOString().slice(0, 10))
-                    setCurierTrimisTime(d.toTimeString().slice(0, 5))
-                  } catch {
-                    setCurierTrimisDate(new Date().toISOString().slice(0, 10))
-                    setCurierTrimisTime('10:00')
-                  }
-                } else {
-                  setCurierTrimisDate(new Date().toISOString().slice(0, 10))
-                  setCurierTrimisTime('10:00')
-                }
-                setShowCurierTrimisOverlay(true)
-              }}
-              title="Mută cardul în Curier Trimis"
-              data-menu
-            >
-              <Package className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {itemType === 'service_file' && isInCurierTrimisStage && pipelineName?.toLowerCase().includes('receptie') && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 w-6 p-0 flex-shrink-0 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-950/50"
-              onClick={(e) => {
-                e.stopPropagation()
-                ignoreNextCardClickRef.current = true
-                const existing = (lead as any).curier_scheduled_at
-                if (existing) {
-                  try {
-                    const d = new Date(existing)
-                    setReprogramareCurierDate(d.toISOString().slice(0, 10))
-                    setReprogramareCurierTime(d.toTimeString().slice(0, 5))
-                  } catch {
-                    setReprogramareCurierDate(new Date().toISOString().slice(0, 10))
-                    setReprogramareCurierTime('10:00')
-                  }
-                } else {
-                  setReprogramareCurierDate(new Date().toISOString().slice(0, 10))
-                  setReprogramareCurierTime('10:00')
-                }
-                setShowReprogramareCurierOverlay(true)
-              }}
-              title="Reprogramează curier"
-              data-menu
-            >
-              <Calendar className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {showTagButton && leadIdForTags && (
-            <Popover open={tagPopoverOpen} onOpenChange={(open) => { setTagPopoverOpen(open); if (open && leadIdForDb) logButtonEvent({ leadId: leadIdForDb, buttonId: 'receptieCardTagButton', buttonLabel: 'Taguri', actorOption }).catch(() => {}) }}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className={cn("flex-shrink-0", isInColetNeridicatStage ? "h-6 w-6 p-0" : "h-7 px-2 gap-1 text-xs font-medium")}
-                  onClick={(e) => e.stopPropagation()}
-                  data-menu
-                  data-button-id="coletNeridicatCardTagButton"
-                  title="Atribuie taguri"
-                >
-                  <Tag className="h-3.5 w-3.5" />
-                  {!isInColetNeridicatStage && <span>Tag</span>}
+            )}
+            
+            {/* Checkbox (Foreground) */}
+            {onSelectChange && (
+              <div className="flex-shrink-0 mr-1" data-checkbox onClick={(e) => e.stopPropagation()}>
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={handleCheckboxChange}
+                  data-checkbox
+                />
+              </div>
+            )}
+            
+            {/* Dropdown Menu (Foreground) containing all other actions */}
+            <DropdownMenu open={isMenuOpen} onOpenChange={(open) => { setIsMenuOpen(open); if (open && leadIdForDb) logButtonEvent({ leadId: leadIdForDb, buttonId: 'vanzariCardMenuButton', buttonLabel: 'Meniu', actorOption }).catch(() => {}) }}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" data-menu onClick={(e) => e.stopPropagation()}>
+                  <MoreHorizontal className="h-4 w-4" />
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent side="top" align="end" className="w-64 p-3" onClick={(e) => e.stopPropagation()}>
-                <div className="font-medium text-sm mb-2">Taguri</div>
-                {loadingTags ? (
-                  <div className="text-xs text-muted-foreground">Se încarcă...</div>
-                ) : assignableTagsList.length === 0 ? (
-                  <div className="text-xs text-muted-foreground">Nu există taguri configurate.</div>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {assignableTagsList.map((tag) => {
-                      const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string }[]) : []
-                      const isSelected = currentTags.some((t) => t.id === tag.id)
-                      const isToggling = togglingTagId === tag.id
-                      return (
-                        <Badge
-                          key={tag.id}
-                          variant={isSelected ? "default" : "outline"}
-                          className={cn(
-                            "cursor-pointer transition-all text-xs font-medium",
-                            isSelected ? tagClass(tag.color) : "bg-muted/50 hover:bg-muted"
-                          )}
-                          onClick={() => handleToggleAssignTag(tag.id)}
-                        >
-                          {tag.name}
-                          {isToggling ? "..." : ""}
-                        </Badge>
-                      )
-                    })}
-                  </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" data-menu className="w-56 overflow-visible z-50">
+                {/* STAGES */}
+                {stages.length > 0 && (
+                  <>
+                    <div className="max-h-[220px] overflow-y-auto">
+                      {stages.map((stage) => {
+                        const stageLower = stage.toLowerCase()
+                        let isRestricted = false
+                        const isDisabled = stage === lead.stage
+                        
+                        return (
+                          <DropdownMenuItem 
+                            key={stage} 
+                            onClick={() => handleStageSelect(stage)} 
+                            disabled={isDisabled}
+                            className={cn(isRestricted ? "opacity-50 cursor-not-allowed" : "", "text-[13px] py-1.5")}
+                          >
+                            Move to {stage}
+                            {isRestricted && <span className="ml-2 text-[10px] text-muted-foreground">(blocat)</span>}
+                          </DropdownMenuItem>
+                        )
+                      })}
+                    </div>
+                    <DropdownMenuSeparator />
+                  </>
                 )}
-              </PopoverContent>
-            </Popover>
-          )}
-          </div>
-          {/* Rând 2 (Colet Neridicat) sau același rând: Checkbox, Pin, Arhivă; „Mai mult” doar în afara Colet Neridicat */}
-          <div className="flex items-center gap-1">
-          {onSelectChange && (
-            <div className="flex-shrink-0" data-checkbox onClick={(e) => e.stopPropagation()}>
-              <Checkbox
-                checked={isSelected}
-                onCheckedChange={handleCheckboxChange}
-                data-checkbox
-              />
-            </div>
-          )}
-          {(!pipelineName || !pipelineName.toLowerCase().includes('vanzari')) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-6 w-6 p-0",
-                isPinned && "text-blue-600 dark:text-blue-400"
-              )}
-              onClick={handlePinToggle}
-              disabled={isPinning}
-              title={isPinned ? "Unpin lead" : "Pin lead"}
-              data-menu
-            >
-              <Pin className={cn("h-3 w-3", isPinned && "fill-current")} />
-            </Button>
-          )}
-          {showArchiveButton && onArchive && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-              title="Arhivează (mută la Arhivat)"
-              data-button-id="receptieCardArchiveButton"
-              disabled={isArchiving}
-              onClick={async (e) => {
-                e.stopPropagation()
-                if (isArchiving) return
-                setIsArchiving(true)
-                try {
-                  await onArchive()
-                } finally {
-                  setIsArchiving(false)
-                }
-              }}
-            >
-              {isArchiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
-            </Button>
-          )}
-          {(lead as any).type === 'service_file' && onForceDeFacturat && pipelineName?.toLowerCase().includes('receptie') && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-              title="Mută în De facturat (forțat)"
-              data-button-id="receptieCardForceDeFacturatButton"
-              disabled={isForcingDeFacturat}
-              onClick={async (e) => {
-                e.stopPropagation()
-                if (isForcingDeFacturat) return
-                setIsForcingDeFacturat(true)
-                try {
-                  await onForceDeFacturat(lead.id)
-                } finally {
-                  setIsForcingDeFacturat(false)
-                }
-              }}
-            >
-              {isForcingDeFacturat ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
-            </Button>
-          )}
-          {!isInColetNeridicatStage && (
-          <DropdownMenu open={isMenuOpen} onOpenChange={(open) => { setIsMenuOpen(open); if (open && leadIdForDb) logButtonEvent({ leadId: leadIdForDb, buttonId: 'vanzariCardMenuButton', buttonLabel: 'Meniu', actorOption }).catch(() => {}) }}>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" data-menu onClick={(e) => e.stopPropagation()}>
-                <MoreHorizontal className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" data-menu>
-              {stages.map((stage) => {
-                // Verifică dacă stage-ul este restricționat în Receptie
-                const isReceptiePipeline = pipelineName?.toLowerCase().includes('receptie') || false
-                const stageLower = stage.toLowerCase()
-                // DEZACTIVAT RESTRICȚII - todas staguri sunt disponibile
-                // const restrictedStages = ['facturat', 'facturată', 'in asteptare', 'în așteptare', 'in lucru', 'în lucru']
-                let isRestricted = false
-                // if (isReceptiePipeline) {
-                //   for (let i = 0; i < restrictedStages.length; i++) {
-                //     const restricted = restrictedStages[i]
-                //     if (stageLower.includes(restricted)) {
-                //       isRestricted = true
-                //       break
-                //     }
-                //   }
-                // }
-                const isDisabled = stage === lead.stage
-                
-                return (
-                  <DropdownMenuItem 
-                    key={stage} 
-                    onClick={() => handleStageSelect(stage)} 
-                    disabled={isDisabled}
-                    className={isRestricted ? "opacity-50 cursor-not-allowed" : ""}
-                  >
-                    Move to {stage}
-                    {isRestricted && <span className="ml-2 text-xs text-muted-foreground">(blocat)</span>}
+
+                {/* COPIAZA NUME */}
+                <DropdownMenuItem onClick={handleCopyName} className="cursor-pointer text-[13px] py-2">
+                  <Copy className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                  Copiază numele
+                </DropdownMenuItem>
+
+                {/* TAGURI - Nested Popover inside DropdownMenu */}
+                {showTagButton && leadIdForTags && (
+                  <Popover open={tagPopoverOpen} onOpenChange={(open) => { setTagPopoverOpen(open); if (open && leadIdForDb) logButtonEvent({ leadId: leadIdForDb, buttonId: 'receptieCardTagButton', buttonLabel: 'Taguri', actorOption }).catch(() => {}) }}>
+                    <PopoverTrigger asChild>
+                      <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer justify-between text-[13px] py-2">
+                        <div className="flex items-center">
+                          <Tag className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                          Taguri / Etichete
+                        </div>
+                        <span className="text-xs text-muted-foreground opacity-70">➔</span>
+                      </DropdownMenuItem>
+                    </PopoverTrigger>
+                    {/* `Portal` or `z-index` so it pops out of dropdown boundary */}
+                    <PopoverContent side="left" align="start" sideOffset={10} className="w-64 p-3 z-[150]" onClick={(e) => e.stopPropagation()}>
+                      <div className="font-medium text-sm mb-2 text-foreground">Taguri</div>
+                      {loadingTags ? (
+                        <div className="text-xs text-muted-foreground">Se încarcă...</div>
+                      ) : assignableTagsList.length === 0 ? (
+                        <div className="text-xs text-muted-foreground">Nu există taguri.</div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {assignableTagsList.map((tag) => {
+                            const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string }[]) : []
+                            const isSelected = currentTags.some((t) => t.id === tag.id)
+                            const isToggling = togglingTagId === tag.id
+                            return (
+                              <Badge
+                                key={tag.id}
+                                variant={isSelected ? "default" : "outline"}
+                                className={cn(
+                                  "cursor-pointer transition-all text-[11px] font-medium px-2 shadow-none",
+                                  isSelected ? tagClass(tag.color) : "bg-muted/30 hover:bg-muted"
+                                )}
+                                onClick={() => handleToggleAssignTag(tag.id)}
+                              >
+                                {tag.name}
+                                {isToggling ? "..." : ""}
+                              </Badge>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                )}
+
+                {/* PIN / UNPIN */}
+                {(!pipelineName || !pipelineName.toLowerCase().includes('vanzari')) && (
+                  <DropdownMenuItem onClick={handlePinToggle} disabled={isPinning} className="cursor-pointer text-[13px] py-2">
+                    <Pin className={cn("h-3.5 w-3.5 mr-2", isPinned ? "fill-blue-600 text-blue-600 dark:text-blue-400" : "text-muted-foreground")} />
+                    {isPinned ? "Scoate pin" : "Fixează sus (Pin)"}
                   </DropdownMenuItem>
-                )
-              })}
-              {itemType === 'service_file' && (
-                <>
-                  <DropdownMenuSeparator />
+                )}
+
+                {/* CURIER TRIMIS / REPROGRAMARE */}
+                {showMoveToCurierTrimisButton && curierTrimisStageName && (
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsMenuOpen(false)
+                      const existing = (lead as any).curier_scheduled_at
+                      if (existing) {
+                        try {
+                          const d = new Date(existing)
+                          setCurierTrimisDate(d.toISOString().slice(0, 10))
+                          setCurierTrimisTime(d.toTimeString().slice(0, 5))
+                        } catch {
+                          setCurierTrimisDate(new Date().toISOString().slice(0, 10))
+                          setCurierTrimisTime('10:00')
+                        }
+                      } else {
+                        setCurierTrimisDate(new Date().toISOString().slice(0, 10))
+                        setCurierTrimisTime('10:00')
+                      }
+                      setShowCurierTrimisOverlay(true)
+                    }}
+                    className="cursor-pointer text-[13px] py-2 text-sky-700 dark:text-sky-400 focus:text-sky-800 focus:bg-sky-50 dark:focus:bg-sky-950/40"
+                  >
+                    <Package className="h-3.5 w-3.5 mr-2" />
+                    Mută în Curier Trimis
+                  </DropdownMenuItem>
+                )}
+
+                {itemType === 'service_file' && isInCurierTrimisStage && pipelineName?.toLowerCase().includes('receptie') && (
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsMenuOpen(false)
+                      ignoreNextCardClickRef.current = true
+                      const existing = (lead as any).curier_scheduled_at
+                      if (existing) {
+                        try {
+                          const d = new Date(existing)
+                          setReprogramareCurierDate(d.toISOString().slice(0, 10))
+                          setReprogramareCurierTime(d.toTimeString().slice(0, 5))
+                        } catch {
+                          setReprogramareCurierDate(new Date().toISOString().slice(0, 10))
+                          setReprogramareCurierTime('10:00')
+                        }
+                      } else {
+                        setReprogramareCurierDate(new Date().toISOString().slice(0, 10))
+                        setReprogramareCurierTime('10:00')
+                      }
+                      setShowReprogramareCurierOverlay(true)
+                    }}
+                    className="cursor-pointer text-[13px] py-2 text-blue-700 dark:text-blue-400 focus:text-blue-800 focus:bg-blue-50 dark:focus:bg-blue-950/40"
+                  >
+                    <Calendar className="h-3.5 w-3.5 mr-2" />
+                    Reprogramează curier
+                  </DropdownMenuItem>
+                )}
+
+                {/* NU RĂSPUNDE */}
+                {itemType === 'service_file' && (
                   <DropdownMenuItem
-                    onClick={handleNuRaspundeToggle}
+                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); handleNuRaspundeToggle(e); }}
                     disabled={isTogglingNuRaspunde}
-                    className="text-red-700 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950"
+                    className="cursor-pointer text-red-700 focus:text-red-800 focus:bg-red-50 dark:text-red-400 dark:focus:text-red-300 dark:focus:bg-red-950/40 text-[13px] py-2"
                   >
-                    <PhoneOff className="h-4 w-4 mr-2" />
-                    {nuRaspundeActive ? 'Scoate „Nu raspunde”' : 'Atribuie „Nu raspunde”'}
+                    <PhoneOff className="h-3.5 w-3.5 mr-2" />
+                    {nuRaspundeActive ? 'Scoate „Nu raspunde”' : 'Apelează + „Nu raspunde”'}
                   </DropdownMenuItem>
-                </>
-              )}
-              {canDelete && (
-                <>
-                  <DropdownMenuSeparator />
+                )}
+
+                {/* FORȚEAZĂ FACTURAT */}
+                {(lead as any).type === 'service_file' && onForceDeFacturat && pipelineName?.toLowerCase().includes('receptie') && (
                   <DropdownMenuItem 
-                    onClick={(e) => { e.stopPropagation(); ignoreNextCardClickRef.current = true; setShowDeleteDialog(true) }}
-                    className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950"
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      if (isForcingDeFacturat) return
+                      setIsForcingDeFacturat(true)
+                      try {
+                        await onForceDeFacturat(lead.id)
+                        setIsMenuOpen(false)
+                      } finally {
+                        setIsForcingDeFacturat(false)
+                      }
+                    }}
+                    disabled={isForcingDeFacturat}
+                    className="cursor-pointer text-emerald-700 focus:text-emerald-800 focus:bg-emerald-50 dark:text-emerald-400 dark:focus:bg-emerald-950/40 text-[13px] py-2 mt-1"
                   >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {deleteLabel}
+                    {isForcingDeFacturat ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Receipt className="h-3.5 w-3.5 mr-2" />}
+                    Facturează (forțat)
                   </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          )}
+                )}
+
+                {/* ARHIVEAZA */}
+                {showArchiveButton && onArchive && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        if (isArchiving) return
+                        setIsArchiving(true)
+                        try {
+                          await onArchive()
+                          setIsMenuOpen(false)
+                        } finally {
+                          setIsArchiving(false)
+                        }
+                      }}
+                      disabled={isArchiving}
+                      className="cursor-pointer text-muted-foreground focus:text-foreground text-[13px] py-2"
+                    >
+                      {isArchiving ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Archive className="h-3.5 w-3.5 mr-2" />}
+                      Arhivează tăvițele / cardul
+                    </DropdownMenuItem>
+                  </>
+                )}
+
+                {/* DELETE */}
+                {canDelete && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); ignoreNextCardClickRef.current = true; setShowDeleteDialog(true) }}
+                      className="cursor-pointer text-rose-600 focus:text-rose-700 focus:bg-rose-50 dark:text-rose-400 dark:focus:bg-rose-950/40 text-[13px] py-2"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-2" />
+                      {deleteLabel}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           </div>
           )}
         </div>
 
-        {/* RÂND 2 (MIJLOC): status + informațiile lui (w-full) */}
-        <div className="w-full">
-          {/* Status - Tăvițe cu tehnicieni (Receptie: In lucru, In asteptare, De facturat, Nu raspunde, De trimis, Ridic personal, Arhivat) */}
-          {(lead as any).type === 'service_file' && (() => {
-            if (!pipelineName) return true
-            const normalized = pipelineName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            return normalized.includes('receptie')
-          })() && (lead as any).traysInLucru && (lead as any).traysInLucru.length > 0 && (
-            <div className="space-y-1 w-full">
-              {(Array.isArray((lead as any)?.traysInLucru) ? (lead as any).traysInLucru : []).map((trayInfo: any, idx: number) => {
-                const qc = trayInfo?.qcValidated as (boolean | null | undefined)
-                const qcColorClass =
-                  qc === true ? "text-green-600" : qc === false ? "text-red-600" : "text-purple-600"
-                const wrongPipeline = isInColetAjunsStage && trayStatus === 'purple' && trayDetails?.find((t: any) => t.status === 'wrong_pipeline' && t.currentPipelineDisplay && (String(t.trayNumber) === String(trayInfo.trayNumber)))?.currentPipelineDisplay
-                const trayLabel = trayInfo.trayNumber
-                  ? `#${trayInfo.trayNumber}${wrongPipeline ? ` → ${wrongPipeline}` : ''}`
-                  : '—'
-                return (
-                  <div key={idx} className="text-xs flex items-center gap-2 flex-wrap">
-                    <span className="text-muted-foreground font-medium">
-                      {trayLabel}
-                    </span>
-                    
-                    {/* Iconuri pentru status */}
-                        {trayInfo.status === 'finalizare' && (
-                      <>
-                        <CheckCircle2 className={`h-3.5 w-3.5 ${qcColorClass} flex-shrink-0`} />
-                        {trayInfo.technician && (
-                          <span className={`font-semibold ${qcColorClass}`}>{trayInfo.technician}</span>
-                        )}
-                        {trayInfo.department && (
-                          <span className={`${qcColorClass} flex-shrink-0`}>
-                            {getDepartmentIcon(trayInfo.department)}
-                          </span>
-                        )}
-                      </>
-                    )}
-                    
-                    {trayInfo.status === 'in_lucru' && (
-                      <>
-                        {trayInfo.technician ? (
-                          <>
-                            <Circle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
-                            <span className="font-semibold text-red-600">{trayInfo.technician}</span>
-                          </>
-                        ) : (
-                          <Circle className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                        )}
-                        {trayInfo.department && (
-                          <>
-                            <span className="text-red-600 flex-shrink-0">
-                              {getDepartmentIcon(trayInfo.department)}
-                            </span>
-                            
-                          </>
-                        )}
-                      </>
-                    )}
-                    
-                    {trayInfo.status === 'in_asteptare' && (
-                      <>
-                        {trayInfo.technician ? (
-                          <>
-                            <Circle className="h-3.5 w-3.5 text-yellow-600 flex-shrink-0" />
-                            <span className="font-semibold text-yellow-600">{trayInfo.technician}</span>
-                          </>
-                        ) : (
-                          <Circle className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                        )}
-                        {trayInfo.department && (
-                          <>
-                            <span className="text-yellow-600 flex-shrink-0">
-                              {getDepartmentIcon(trayInfo.department)}
-                            </span>
-                            
-                          </>
-                        )}
-                      </>
-                    )}
-                    
-                    {trayInfo.status === 'noua' && (
-                      <>
-                        {trayInfo.technician ? (
-                          <>
-                            <Circle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-                            <span className="font-semibold text-blue-600">{trayInfo.technician}</span>
-                          </>
-                        ) : (
-                          <>
-                          <Circle className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                          <span className="font-semibold text-slate-400">No Teh.</span>
-                          </>
-                        )}
-                        {trayInfo.department && (
-                          <>
-                            <span className="text-slate-400 flex-shrink-0">
-                              {getDepartmentIcon(trayInfo.department)}
-                            </span>
-                            
-                          </>
-                        )}
-                      </>
-                    )}
-                    
-                    {/* Pentru tăvițe fără status definit dar cu tehnician */}
-                    {!trayInfo.status && trayInfo.technician && (
-                      <>
-                        <Circle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
-                        <span className="font-semibold text-red-600">{trayInfo.technician}</span>
-                      </>
-                    )}
-                    
-                    {/* Pentru tăvițe neatribuite (fără status și fără tehnician) */}
-                    {!trayInfo.status && !trayInfo.technician && (
-                      <Circle className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                    )}
-
-                    {/* Timp de execuție: IN_LUCRU -> FINALIZARE (ex: 2h 34min) */}
-                    {trayInfo.executionTime && (
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        <span>Execuție: {trayInfo.executionTime}</span>
-                      </span>
-                    )}
-
-                    {/* Buton X: dezatribuie tehnicianul de la tăviță și de pe item */}
-                    {trayInfo.trayId && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 min-w-5 flex-shrink-0 rounded-full p-0 opacity-70 hover:opacity-100 hover:bg-destructive/10"
-                        onClick={(e) => handleDeassignTrayTechnician(e, trayInfo.trayId)}
-                        title="Dezatribuie tehnicianul de la tăviță"
-                        disabled={unassigningTrayId === trayInfo.trayId}
-                        aria-label="Dezatribuie tehnician"
-                      >
-                        {unassigningTrayId === trayInfo.trayId ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <XCircle className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        {/* RÂND 2 (MIJLOC): tăvițe + tehnician + icoană departament – pe carduri fișe în Recepție */}
+        {(lead as any).type === 'service_file' && pipelineName && (pipelineName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('receptie') && (
+          <ServiceFileTrayInfo
+            serviceFileId={lead.id}
+            trays={Array.isArray((lead as any).traysInLucru) ? (lead as any).traysInLucru : []}
+            trayNumbers={Array.isArray((lead as any).trayNumbers) ? (lead as any).trayNumbers : []}
+            technician={(lead as any).technician}
+            onDeassignTray={handleDeassignTrayTechnician}
+            unassigningTrayId={unassigningTrayId}
+          />
+        )}
 
         {/* RÂND 4 (JOS): dată + tag-uri + total (dacă e cazul) - HIDDEN pentru Vânzări */}
         {(!pipelineName || !pipelineName.toLowerCase().includes('vanzari')) && (
@@ -2173,9 +2020,18 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                   displayedTags = displayedTags.filter(tag => tag.name !== 'RETUR')
                   displayedTags.push(returTag)
                 }
+
+                const visibleTagsCount = 2;
+                const hasMoreTags = displayedTags.length > visibleTagsCount;
+                const visibleTags = displayedTags.slice(0, visibleTagsCount);
+                const hiddenTagsCount = displayedTags.length - visibleTagsCount;
+
                 return displayedTags.length > 0 ? (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {displayedTags.map(tag => {
+                <TooltipProvider delayDuration={0}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {visibleTags.map(tag => {
                   const isUrgent = tag.name.toLowerCase() === 'urgent'
                   const isRetur = tag.name === 'RETUR'
                   const isNuRaspunde = canonicalTag(tag.name) === 'nuraspunde'
@@ -2248,7 +2104,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                           setTogglingTagId(tag.id)
                           try {
                             await toggleLeadTag(leadIdForTags, tag.id)
-                            const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string }[]) : []
+                            const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string; name: string }[]) : []
                             onTagsChange?.(lead.id, currentTags.filter((t) => t.id !== tag.id))
                             toast({ title: "Tag scos", description: `„${tag.name}" a fost scos de pe card.` })
                             onRefresh?.()
@@ -2279,7 +2135,7 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                         setTogglingTagId(tag.id)
                         try {
                           await toggleLeadTag(leadIdForTags, tag.id)
-                          const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string }[]) : []
+                          const currentTags = Array.isArray(lead?.tags) ? (lead.tags as { id: string; name: string }[]) : []
                           onTagsChange?.(lead.id, currentTags.filter((t) => t.id !== tag.id))
                           toast({ title: "Tag scos", description: `„${tag.name}" a fost scos de pe card.` })
                           onRefresh?.()
@@ -2296,23 +2152,43 @@ export function LeadCard({ lead, onMove, onClick, onDragStart, onDragEnd, isDrag
                     </Badge>
                   )
                 })}
-              </div>
+                        {hasMoreTags && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 whitespace-nowrap bg-muted opacity-80 cursor-default">
+                            +{hiddenTagsCount}
+                          </Badge>
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" sideOffset={8} align="start" className="max-w-[300px] z-[120] p-2 bg-background/95 backdrop-blur shadow-xl border border-border/50">
+                      <div className="flex flex-wrap gap-1.5">
+                        {displayedTags.map(t => (
+                          <Badge key={t.id} variant="outline" className={`${tagClass(t.color)} text-[10px] px-1.5 py-0.5 whitespace-nowrap`}>
+                            {isDepartmentTag(t.name) && getDepartmentIcon(t.name)}
+                            {t.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 ) : null
               })()}
           </div>
 
-          {/* Afișează totalul pentru toate tipurile (lead, fișă, tăviță) în toate pipeline-urile, inclusiv Vânzări */}
+          {/* Suma serviciilor: vizibilă pentru toate tipurile (lead, fișă, tăviță); folosim lead.total dacă leadTotal lipsește */}
           {(() => {
-            const total = typeof leadTotal === 'number' ? leadTotal : 0
+            const fromProp = typeof leadTotal === 'number' ? leadTotal : undefined
+            const fromLead = typeof (lead as any).total === 'number' ? (lead as any).total : undefined
+            const total = fromProp ?? fromLead ?? 0
             return (
-              <div className="text-xs font-medium text-muted-foreground flex-shrink-0">
+              <div className="text-xs font-medium flex-shrink-0">
                 {total > 0 ? (
-                  <span className="bg-green-50 dark:bg-green-950/50 text-green-700 dark:text-green-300 px-2 py-1 rounded text-xs font-semibold" title="Total tăvițe / servicii">
-                    Total: {total.toFixed(2)} RON
+                  <span className="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 px-2 py-1 rounded font-semibold" title="Suma serviciilor din tăvițe">
+                    Suma servicii: {total.toFixed(2)} RON
                   </span>
                 ) : (
-                  <span className="text-muted-foreground" title="Fără tăvițe sau total 0">
-                    Total: 0.00 RON
+                  <span className="text-muted-foreground" title="Fără servicii sau total 0">
+                    Suma servicii: 0.00 RON
                   </span>
                 )}
               </div>

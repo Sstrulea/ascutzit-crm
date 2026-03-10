@@ -23,7 +23,7 @@ import {
   type StatisticiApeluriReport,
   type LeadSourceType,
 } from '@/lib/supabase/vanzariApeluri'
-import { Lock, Phone, RefreshCw, CalendarDays, ArrowLeft, ChevronDown, ChevronRight, Loader2, UserPlus, Maximize2, FileText, UserPlus2 } from 'lucide-react'
+import { Lock, Phone, RefreshCw, CalendarDays, ArrowLeft, ChevronDown, ChevronRight, Loader2, UserPlus, Maximize2, FileText, UserPlus2, TrendingUp } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -39,6 +39,16 @@ import { toast } from 'sonner'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
 import { ro } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  Cell,
+} from 'recharts'
 
 const toSlug = (s: string) => String(s).toLowerCase().replace(/\s+/g, '-')
 
@@ -544,432 +554,405 @@ export default function StatisticiApeluriPage() {
         </div>
       </header>
 
-      {/* Conținut scrollabil */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-        {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Apeluri</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-2xl font-bold">{loading ? '...' : grandTotal.total}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-emerald-600 uppercase tracking-wider">Comenzi</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-2xl font-bold text-emerald-600">{loading ? '...' : grandTotal.comanda}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-teal-600 uppercase tracking-wider">Fise</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-2xl font-bold text-teal-600">{loading ? '...' : grandTotal.fise_count}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-blue-600 uppercase tracking-wider">Curier trimis</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-2xl font-bold text-blue-600">{loading ? '...' : grandTotal.curier_trimis}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-violet-600 uppercase tracking-wider">Office direct</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-2xl font-bold text-violet-600">{loading ? '...' : grandTotal.office_direct}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-red-600 uppercase tracking-wider">No Deal</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-2xl font-bold text-red-600">{loading ? '...' : grandTotal.noDeal}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-amber-600 uppercase tracking-wider">Callback</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-2xl font-bold text-amber-600">{loading ? '...' : grandTotal.callback}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-orange-600 uppercase tracking-wider">Nu Răspunde</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-2xl font-bold text-orange-600">{loading ? '...' : grandTotal.nuRaspunde}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Secțiune Leaduri create */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <UserPlus2 className="h-5 w-5 text-primary" />
-              Leaduri create din alte surse {period === 'day' ? (format(selectedDate, 'd MMM yyyy', { locale: ro }) === format(new Date(), 'd MMM yyyy', { locale: ro }) ? 'astăzi' : `pe ${format(selectedDate, 'd MMM yyyy', { locale: ro })}`) : `în perioada selectată`}
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setLeadsCreatedExpanded(!leadsCreatedExpanded)}
-              className="gap-1"
-            >
-              {leadsCreatedExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              {leadsCreatedExpanded ? 'Ascunde' : 'Afișează'}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <Skeleton className="h-16 w-full" />
-          ) : (
-            <>
-              <div className="flex items-center gap-4 mb-4">
-                <p className="text-2xl font-bold">{leadsCreated.length}</p>
-                <p className="text-sm text-muted-foreground">
-                  din alte surse (nu de utilizatori CRM)
-                </p>
-              </div>
-              {leadsCreatedExpanded && leadsCreated.length > 0 && (
-                <div className="space-y-4">
-                  {/* Grupare pe claimed_by */}
-                  {(() => {
-                    const byClaimed = new Map<string | null, LeadCreatedItem[]>()
-                    for (const l of leadsCreated) {
-                      const key = l.claimed_by ?? '__neatribuit__'
-                      if (!byClaimed.has(key)) byClaimed.set(key, [])
-                      byClaimed.get(key)!.push(l)
-                    }
-                    const claimedOrder = [...byClaimed.entries()].sort((a, b) => b[1].length - a[1].length)
-                    return (
-                      <div className="space-y-3">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Per vânzător (preluate)</p>
-                        <div className="overflow-x-auto rounded-md border">
-                          <table className="w-full text-sm">
-                            <thead className="bg-muted/50">
-                              <tr>
-                                <th className="text-left p-2 font-medium">Vânzător</th>
-                                <th className="text-right p-2 font-medium">Nr. leaduri</th>
-                                <th className="text-right p-2 font-medium">Fise</th>
-                                <th className="text-right p-2 font-medium">Curier / Office</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {claimedOrder.map(([key, items]) => {
-                                const name = key === '__neatribuit__' ? 'Neatribuit' : (items[0]?.claimed_by_name ?? key)
-                                const fiseTotal = items.reduce((s, i) => s + (i.fise_count ?? 0), 0)
-                                const ct = items.filter((i) => i.curier_trimis_at).length
-                                const od = items.filter((i) => i.office_direct_at).length
-                                return (
-                                  <tr key={key ?? 'null'} className="border-t">
-                                    <td className="p-2 font-medium">{name}</td>
-                                    <td className="p-2 text-right">{items.length}</td>
-                                    <td className="p-2 text-right text-teal-600">{fiseTotal}</td>
-                                    <td className="p-2 text-right">
-                                      <span className="text-blue-600">{ct}</span>
-                                      <span className="text-muted-foreground mx-1">/</span>
-                                      <span className="text-violet-600">{od}</span>
-                                    </td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-2">Lista leaduri</p>
-                        <div className="max-h-64 overflow-y-auto rounded-md border">
-                          <table className="w-full text-sm">
-                            <thead className="bg-muted/50 sticky top-0">
-                              <tr>
-                                <th className="text-left p-2 font-medium">Lead</th>
-                                <th className="text-left p-2 font-medium">Creat de</th>
-                                <th className="text-left p-2 font-medium">Preluat de</th>
-                                <th className="text-center p-2 font-medium">Fise</th>
-                                <th className="text-left p-2 font-medium">Livrare</th>
-                                <th className="w-8 p-2" />
-                                <th className="w-8 p-2" />
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {leadsCreated.map((item) => (
-                                <tr key={item.id} className="border-t border-border/40 hover:bg-muted/30">
-                                  <td className="p-2 font-medium truncate max-w-[180px]" title={item.lead_name || item.id}>
-                                    {item.lead_name || 'Fără nume'}
-                                  </td>
-                                  <td className="p-2 text-muted-foreground">{item.created_by_name ?? '—'}</td>
-                                  <td className="p-2 text-muted-foreground">{item.claimed_by_name ?? '—'}</td>
-                                  <td className="p-2 text-center">
-                                    {item.fise_count > 0 ? (
-                                      <span className="inline-flex items-center gap-1 text-teal-600">
-                                        <FileText className="h-3.5 w-3.5" />
-                                        {item.fise_count}
-                                      </span>
-                                    ) : (
-                                      <span className="text-muted-foreground">—</span>
-                                    )}
-                                  </td>
-                                  <td className="p-2">
-                                    {item.curier_trimis_at ? (
-                                      <span className="px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Curier</span>
-                                    ) : item.office_direct_at ? (
-                                      <span className="px-1.5 py-0.5 rounded text-xs bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">Office</span>
-                                    ) : (
-                                      <span className="text-muted-foreground">—</span>
-                                    )}
-                                  </td>
-                                  <td className="p-2">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 w-7 p-0"
-                                      title="Maximizează – vezi datele leadului"
-                                      onClick={() => setLeadCreatedDetailOpen(item)}
-                                    >
-                                      <Maximize2 className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </td>
-                                  <td className="p-2">
-                                    <Link href={`/leads/vanzari?openLeadId=${item.id}`} className="text-primary hover:underline" title="Deschide lead">
-                                      →
-                                    </Link>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )
-                  })()}
+      {/* Conținut scrollabil - NOU DESIGN */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50/50">
+        
+        {/* Top Section: Metrics + Volume Chart + Promo */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          
+          {/* Left Side: 4 Metric Cards */}
+          <div className="xl:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            
+            {/* Total Apeluri */}
+            <Card className="rounded-2xl border-0 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] bg-white overflow-hidden">
+              <CardContent className="p-5 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                      <Phone className="h-4 w-4" />
+                    </div>
+                    <span className="font-semibold text-slate-800">Total Apeluri</span>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground"><span className="text-xl leading-none -mt-2">...</span></Button>
                 </div>
-              )}
-              {leadsCreatedExpanded && leadsCreated.length === 0 && (
-                <p className="text-sm text-muted-foreground py-4">Nu au fost create leaduri din alte surse în perioada selectată.</p>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+                <div>
+                  <h3 className="text-4xl font-bold text-slate-900 mb-2">{loading ? '...' : grandTotal.total}</h3>
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <span className="text-emerald-500 font-medium">100%</span>
+                    <span className="text-slate-400">Total volume</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-      {/* Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Detalii per vânzător</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 space-y-3">
-              {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-10 w-full" />)}
+            {/* Comenzi / Total Revenue */}
+            <Card className="rounded-2xl border-0 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] bg-white overflow-hidden">
+              <CardContent className="p-5 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <span className="font-semibold text-slate-800">Comenzi</span>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground"><span className="text-xl leading-none -mt-2">...</span></Button>
+                </div>
+                <div>
+                  <h3 className="text-4xl font-bold text-slate-900 mb-2">{loading ? '...' : grandTotal.comanda}</h3>
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <span className="text-blue-500 font-medium">{grandTotal.curier_trimis} Curier</span>
+                    <span className="text-slate-400">/ {grandTotal.office_direct} Office</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Conversie / Total Customers */}
+            <Card className="rounded-2xl border-0 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] bg-white overflow-hidden">
+              <CardContent className="p-5 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-teal-50 text-teal-600 rounded-lg">
+                      <UserPlus className="h-4 w-4" />
+                    </div>
+                    <span className="font-semibold text-slate-800">Rată Conversie</span>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground"><span className="text-xl leading-none -mt-2">...</span></Button>
+                </div>
+                <div>
+                  <h3 className="text-4xl font-bold text-slate-900 mb-2">
+                    {loading || grandTotal.total === 0 ? '0.0' : ((grandTotal.comanda / grandTotal.total) * 100).toFixed(1)}%
+                  </h3>
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <span className="text-emerald-500 font-medium">↗</span>
+                    <span className="text-slate-400">Succes apeluri</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+             {/* Oportunități pierdute / Total Return */}
+             <Card className="rounded-2xl border-0 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] bg-white overflow-hidden">
+              <CardContent className="p-5 flex flex-col justify-between h-full">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-red-50 text-red-600 rounded-lg">
+                      <Phone className="h-4 w-4" />
+                    </div>
+                    <span className="font-semibold text-slate-800">Ratate & Refuzuri</span>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground"><span className="text-xl leading-none -mt-2">...</span></Button>
+                </div>
+                <div>
+                  <h3 className="text-4xl font-bold text-slate-900 mb-2">{loading ? '...' : (grandTotal.noDeal + grandTotal.nuRaspunde)}</h3>
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <span className="text-red-500 font-medium">{grandTotal.noDeal} No Deal</span>
+                    <span className="text-slate-400">/ {grandTotal.nuRaspunde} Lipsă răspuns</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+          </div>
+
+          {/* Middle: Volume / Distribution Chart */}
+          <div className="xl:col-span-4">
+            <Card className="h-full rounded-2xl border-0 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] bg-white">
+              <CardHeader className="pb-0 pt-5 px-5 flex flex-row items-center justify-between">
+                <CardTitle className="text-lg font-bold text-slate-800">Distribuție Apeluri</CardTitle>
+                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground"><span className="text-xl leading-none -mt-2">...</span></Button>
+              </CardHeader>
+              <CardContent className="p-5 h-[240px]">
+                {loading ? (
+                  <Skeleton className="w-full h-full rounded-xl" />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={[
+                      { name: 'Comenzi', val: grandTotal.comanda, fill: '#3b82f6' },
+                      { name: 'No Deal', val: grandTotal.noDeal, fill: '#ef4444' },
+                      { name: 'Fără răsp', val: grandTotal.nuRaspunde, fill: '#f97316' },
+                      { name: 'Callback', val: grandTotal.callback, fill: '#f59e0b' }
+                    ]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                      <RechartsTooltip 
+                        cursor={{ fill: 'rgba(241, 245, 249, 0.5)' }}
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                      />
+                      <Bar dataKey="val" radius={[6, 6, 6, 6]} barSize={40}>
+                        {
+                          [
+                            { name: 'Comenzi', val: grandTotal.comanda, fill: '#3b82f6' },
+                            { name: 'No Deal', val: grandTotal.noDeal, fill: '#bac5d6' },
+                            { name: 'Fără răsp', val: grandTotal.nuRaspunde, fill: '#dbeafe' },
+                            { name: 'Callback', val: grandTotal.callback, fill: '#93c5fd' }
+                          ].map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))
+                        }
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Side: Promo Action Card */}
+          <div className="xl:col-span-3">
+             <div className="h-full rounded-2xl bg-gradient-to-br from-blue-600 to-blue-500 p-6 text-white shadow-lg flex flex-col justify-between relative overflow-hidden">
+                {/* Decorative shapes */}
+                <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 rounded-full bg-white opacity-10"></div>
+                <div className="absolute bottom-0 right-10 -mb-4 w-16 h-16 rounded-full bg-white opacity-10"></div>
+                
+                <div className="z-10">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-2 bg-white/20 rounded-lg">
+                      <TrendingUp className="h-5 w-5 text-white" />
+                    </div>
+                  </div>
+                  <h3 className="text-2xl font-bold mb-2">Crește Rata de Conversie!</h3>
+                  <p className="text-blue-100 text-sm leading-relaxed mb-6">
+                    Afișează performanțele, gestionează call-back-urile prompt și transformă lead-urile înenzi!
+                  </p>
+                </div>
+                
+                <Button className="w-full bg-white text-blue-600 hover:bg-blue-50 hover:text-blue-700 font-semibold rounded-xl h-12 z-10 shadow-sm transition-all hover:scale-[1.02]">
+                  Acționează acum!
+                </Button>
+             </div>
+          </div>
+        </div>
+
+        {/* Chart Evolution Recharts Replaces "Secțiune Leaduri create" */}
+        <div className="grid grid-cols-1 gap-6">
+           <Card className="col-span-1 rounded-2xl border-0 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] bg-white">
+              <CardHeader className="pb-0 pt-6 px-6 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg font-bold text-slate-800">Evoluție Apeluri & Comenzi</CardTitle>
+                </div>
+                <div className="flex gap-2 bg-slate-100 p-1 rounded-lg">
+                   <Button variant="ghost" size="sm" className="h-8 rounded-md bg-white shadow-sm text-xs font-medium text-slate-800">Curent</Button>
+                   <Button variant="ghost" size="sm" className="h-8 rounded-md text-xs font-medium text-slate-500 hover:text-slate-800">Anterior</Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 h-[320px]">
+                 {loading ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                       <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                    </div>
+                 ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={rows} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                        <RechartsTooltip 
+                          cursor={{ fill: 'rgba(241, 245, 249, 0.4)' }}
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', padding: '12px' }}
+                        />
+                        <Bar name="Apeluri Total" dataKey="total" fill="#e2e8f0" radius={[6, 6, 6, 6]} barSize={32} />
+                        <Bar name="Comenzi" dataKey="comanda" fill="#3b82f6" radius={[6, 6, 6, 6]} barSize={32} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                 )}
+              </CardContent>
+           </Card>
+        </div>
+
+        {/* Tabel Angajați Replaces "Detalii per vânzător" */}
+        <Card className="rounded-2xl border-0 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] bg-white overflow-hidden">
+          <CardHeader className="pb-4 pt-6 px-6 flex flex-row items-center justify-between border-b border-slate-100">
+            <CardTitle className="text-lg font-bold text-slate-800">Detalii Vânzători</CardTitle>
+            <div className="flex items-center gap-3 relative">
+               <div className="relative">
+                 <input 
+                   type="text" 
+                   placeholder="Caută vânzător..." 
+                   className="pl-9 pr-4 py-2 bg-slate-50 border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-xl text-sm transition-all outline-none w-[200px]"
+                 />
+                 <svg className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                 </svg>
+               </div>
+               <Button variant="outline" className="h-9 rounded-xl border-slate-200 text-slate-600 gap-2">
+                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                 </svg>
+                 Filtru
+               </Button>
             </div>
-          ) : rows.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <Phone className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Nu există apeluri înregistrate pentru această perioadă.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/40">
-                    <th className="text-left p-3 font-medium">Vânzător</th>
-                    <th className="text-right p-3 font-medium">Total</th>
-                    <th className="text-right p-3 font-medium text-emerald-600">Comenzi</th>
-                    <th className="text-right p-3 font-medium text-teal-600">Fise</th>
-                    <th className="text-right p-3 font-medium text-blue-600">Curier trimis</th>
-                    <th className="text-right p-3 font-medium text-violet-600">Office direct</th>
-                    <th className="text-right p-3 font-medium text-red-600">No Deal</th>
-                    <th className="text-right p-3 font-medium text-amber-600">Callback</th>
-                    <th className="text-right p-3 font-medium text-orange-600">Nu Răspunde</th>
-                    <th className="text-right p-3 font-medium">Rată conversie</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => {
-                    const conversionRate = row.total > 0 ? ((row.comanda / row.total) * 100).toFixed(1) : '0.0'
-                    const isExpanded = expandedId === row.id
-                    const leads = leadsByUser[row.id]
-                    const isLoadingLeads = loadingLeads === row.id
-                    const hasAnyLeads = row.total > 0
-                    return (
-                      <React.Fragment key={row.id}>
-                        <tr className={cn("border-b transition-colors", !isExpanded && "hover:bg-muted/20", isExpanded && "bg-muted/30")}>
-                          <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              {hasAnyLeads ? (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleExpand(row.id)}
-                                  disabled={isLoadingLeads}
-                                  className="p-0.5 rounded hover:bg-muted transition-colors disabled:opacity-50"
-                                  title={isExpanded ? "Ascunde lead-urile" : "Afișează lead-urile prelucrate"}
-                                >
-                                  {isLoadingLeads ? (
-                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                                  ) : isExpanded ? (
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                  ) : (
-                                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                  )}
-                                </button>
-                              ) : (
-                                <span className="w-5" />
-                              )}
-                              <span className="font-medium">{row.name}</span>
-                            </div>
-                          </td>
-                          <td className="p-3 text-right font-bold">{row.total}</td>
-                          <td className="p-3 text-right text-emerald-600 font-semibold">{row.comanda}</td>
-                          <td className="p-3 text-right text-teal-600" title="Fișe de serviciu create">
-                            {row.fise_count ?? 0}
-                          </td>
-                          <td className="p-3 text-right text-blue-600">{row.curier_trimis}</td>
-                          <td className="p-3 text-right text-violet-600">{row.office_direct}</td>
-                          <td className="p-3 text-right text-red-600">{row.noDeal}</td>
-                          <td className="p-3 text-right text-amber-600">{row.callback}</td>
-                          <td className="p-3 text-right text-orange-600">{row.nuRaspunde}</td>
-                          <td className="p-3 text-right">
-                            <span className={cn(
-                              "px-2 py-0.5 rounded-full text-xs font-medium",
-                              Number(conversionRate) >= 30 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                              Number(conversionRate) >= 15 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
-                              "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                            )}>
-                              {conversionRate}%
-                            </span>
-                          </td>
-                        </tr>
-                        {isExpanded && leads && (
-                          <tr className="border-b bg-muted/20">
-                            <td colSpan={10} className="p-0">
-                              <div className="px-4 py-3 pl-12">
-                                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                                  Lead-uri atribuite contului vânzătorului
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="p-6 space-y-4">
+                {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="p-12 text-center text-slate-400">
+                <Phone className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                <p className="font-medium text-slate-500">Nu există apeluri înregistrate pentru această perioadă.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto p-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-slate-500 border-b border-slate-100">
+                      <th className="text-left py-3 px-4 font-semibold">Vânzător</th>
+                      <th className="text-center py-3 px-4 font-semibold">Total Apeluri</th>
+                      <th className="text-center py-3 px-4 font-semibold">Rată Conversie</th>
+                      <th className="text-center py-3 px-4 font-semibold">Comenzi</th>
+                      <th className="text-center py-3 px-4 font-semibold">Curier/Office</th>
+                      <th className="text-center py-3 px-4 font-semibold">Pierdute</th>
+                      <th className="text-center py-3 px-4 font-semibold w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => {
+                      const conversionRate = row.total > 0 ? ((row.comanda / row.total) * 100).toFixed(1) : '0.0'
+                      const isExpanded = expandedId === row.id
+                      const leads = leadsByUser[row.id]
+                      const isLoadingLeads = loadingLeads === row.id
+                      const hasAnyLeads = row.total > 0
+                      
+                      return (
+                        <React.Fragment key={row.id}>
+                          <tr className={cn("transition-colors group", !isExpanded && "hover:bg-slate-50/80", isExpanded && "bg-blue-50/30")}>
+                            <td className="py-3 px-4 rounded-l-xl">
+                              <div className="flex items-center gap-3">
+                                <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                                  {row.name.substring(0, 2).toUpperCase()}
                                 </div>
-                                <div className="max-h-48 overflow-y-auto rounded-md border border-border/60">
-                                  {leads.comanda.length + leads.noDeal.length + leads.callback.length + leads.nuRaspunde.length === 0 ? (
-                                    <div className="p-4 text-center text-muted-foreground text-sm">Nu există lead-uri atribuite contului în această perioadă</div>
-                                  ) : (
-                                    <table className="w-full text-sm">
-                                      <thead className="bg-muted/50 sticky top-0">
-                                        <tr>
-                                          <th className="text-left p-2 font-medium">Lead</th>
-                                          <th className="text-left p-2 font-medium">Rezultat</th>
-                                          <th className="text-center p-2 font-medium">Fise</th>
-                                          <th className="w-8 p-2" />
-                                          <th className="w-8 p-2" />
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {[
-                                          ...leads.comanda.map((i) => ({
-                                            ...i,
-                                            outcome: 'Comandă' as const,
-                                            outcomeColor: 'text-emerald-600',
-                                            livrare: (i as { livrare?: 'curier_trimis' | 'office_direct' }).livrare,
-                                          })),
-                                          ...leads.noDeal.map((i) => ({ ...i, outcome: 'No Deal' as const, outcomeColor: 'text-red-600', livrare: undefined })),
-                                          ...leads.callback.map((i) => ({ ...i, outcome: 'Callback' as const, outcomeColor: 'text-amber-600', livrare: undefined })),
-                                          ...leads.nuRaspunde.map((i) => ({ ...i, outcome: 'Nu Răspunde' as const, outcomeColor: 'text-orange-600', livrare: undefined })),
-                                        ]
-                                          .sort((a, b) => (a.lead_name || '').localeCompare(b.lead_name || ''))
-                                          .map((item, idx) => (
-                                            <tr key={`${item.lead_id}-${item.outcome}-${idx}`} className="border-t border-border/40 hover:bg-muted/30">
-                                              <td className="p-2 font-medium truncate max-w-[200px]" title={item.lead_name || item.lead_id}>
-                                                {item.lead_name || 'Fără nume'}
-                                              </td>
-                                              <td className={cn("p-2 font-medium", item.outcomeColor)}>
-                                                <span>{item.outcome}</span>
-                                                {item.outcome === 'Comandă' && item.livrare && (
-                                                  <span className={cn(
-                                                    "ml-1.5 px-1.5 py-0.5 rounded text-xs font-medium",
-                                                    item.livrare === 'curier_trimis' && "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-                                                    item.livrare === 'office_direct' && "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
-                                                  )}>
-                                                    {item.livrare === 'curier_trimis' ? 'Curier trimis' : 'Office direct'}
-                                                  </span>
-                                                )}
-                                              </td>
-                                              <td className="p-2 text-center">
-                                                {(item as LeadByTypeItem).fise_count != null && (item as LeadByTypeItem).fise_count > 0 ? (
-                                                  <span className="inline-flex items-center gap-1 text-teal-600" title="Fișe create">
-                                                    <FileText className="h-3.5 w-3.5" />
-                                                    {(item as LeadByTypeItem).fise_count}
-                                                  </span>
-                                                ) : (
-                                                  <span className="text-muted-foreground">—</span>
-                                                )}
-                                              </td>
-                                              <td className="p-2">
-                                                <Button
-                                                  variant="ghost"
-                                                  size="sm"
-                                                  className="h-7 w-7 p-0"
-                                                  title="Maximizează – vezi datele leadului"
-                                                  onClick={() => setLeadDetailOpen(item as LeadByTypeItem)}
-                                                >
-                                                  <Maximize2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                              </td>
-                                              <td className="p-2">
-                                                <Link
-                                                  href={`/leads/vanzari?openLeadId=${item.lead_id}`}
-                                                  className="text-primary hover:underline"
-                                                  title="Deschide lead în pipeline"
-                                                >
-                                                  →
-                                                </Link>
-                                              </td>
-                                            </tr>
-                                          ))}
-                                      </tbody>
-                                    </table>
-                                  )}
-                                </div>
+                                <span className="font-semibold text-slate-800">{row.name}</span>
                               </div>
                             </td>
+                            <td className="py-3 px-4 text-center font-medium text-slate-700">{row.total}</td>
+                            <td className="py-3 px-4 text-center">
+                               <span className={cn(
+                                "px-2.5 py-1 rounded-lg text-xs font-bold",
+                                Number(conversionRate) >= 30 ? "bg-emerald-50 text-emerald-600" :
+                                Number(conversionRate) >= 15 ? "bg-amber-50 text-amber-600" :
+                                "bg-red-50 text-red-600"
+                              )}>
+                                {conversionRate}%
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center font-bold text-blue-600">{row.comanda}</td>
+                            <td className="py-3 px-4 text-center text-slate-500">
+                              <span className="text-blue-500">{row.curier_trimis}</span> / <span className="text-violet-500">{row.office_direct}</span>
+                            </td>
+                            <td className="py-3 px-4 text-center text-slate-500">
+                               <span className="text-red-500">{row.noDeal}</span> + <span className="text-orange-500">{row.nuRaspunde}</span>
+                            </td>
+                            <td className="py-3 px-4 text-center rounded-r-xl">
+                               {hasAnyLeads && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => toggleExpand(row.id)}
+                                    disabled={isLoadingLeads}
+                                    className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 opacity-0 group-hover:opacity-100 transition-all rounded-lg"
+                                  >
+                                    {isLoadingLeads ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : isExpanded ? (
+                                      <ChevronDown className="h-4 w-4" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                )}
+                            </td>
                           </tr>
-                        )}
-                      </React.Fragment>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-muted/60 font-bold">
-                    <td className="p-3">TOTAL</td>
-                    <td className="p-3 text-right">{grandTotal.total}</td>
-                    <td className="p-3 text-right text-emerald-600">{grandTotal.comanda}</td>
-                    <td className="p-3 text-right text-teal-600">{grandTotal.fise_count}</td>
-                    <td className="p-3 text-right text-blue-600">{grandTotal.curier_trimis}</td>
-                    <td className="p-3 text-right text-violet-600">{grandTotal.office_direct}</td>
-                    <td className="p-3 text-right text-red-600">{grandTotal.noDeal}</td>
-                    <td className="p-3 text-right text-amber-600">{grandTotal.callback}</td>
-                    <td className="p-3 text-right text-orange-600">{grandTotal.nuRaspunde}</td>
-                    <td className="p-3 text-right">
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-muted">
-                        {grandTotal.total > 0 ? ((grandTotal.comanda / grandTotal.total) * 100).toFixed(1) : '0.0'}%
-                      </span>
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                          
+                          {/* Expanded Leads View */}
+                          {isExpanded && leads && (
+                            <tr>
+                              <td colSpan={7} className="p-0 border-b border-slate-100">
+                                <div className="px-16 py-4 bg-slate-50/50 inner-shadow-sm">
+                                  <div className="flex items-center justify-between mb-3">
+                                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Lead-uri procesate de {row.name}</h4>
+                                     {leads.comanda.length > 0 && <span className="text-xs font-medium bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600">{leads.comanda.length} Comenzi aduse</span>}
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                     {/* Comenzi List */}
+                                     {leads.comanda.length > 0 && (
+                                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm max-h-48 overflow-y-auto">
+                                           <h5 className="text-xs font-semibold text-emerald-600 flex items-center gap-1.5 mb-2 border-b border-slate-50 pb-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>Comenzi</h5>
+                                           <ul className="space-y-2">
+                                              {leads.comanda.map(l => (
+                                                <li key={l.lead_id} className="text-xs flex items-center justify-between group">
+                                                   <span className="text-slate-700 font-medium truncate shrink">{l.lead_name || 'Fără nume'}</span>
+                                                   <Link href={`/leads/vanzari?openLeadId=${l.lead_id}`} className="text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">→ </Link>
+                                                </li>
+                                              ))}
+                                           </ul>
+                                        </div>
+                                     )}
+                                     
+                                     {/* Callback List */}
+                                     {leads.callback.length > 0 && (
+                                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm max-h-48 overflow-y-auto">
+                                           <h5 className="text-xs font-semibold text-amber-500 flex items-center gap-1.5 mb-2 border-b border-slate-50 pb-2"><div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>Așteaptă revenire</h5>
+                                           <ul className="space-y-2">
+                                              {leads.callback.map(l => (
+                                                <li key={l.lead_id} className="text-xs flex items-center justify-between group">
+                                                   <span className="text-slate-700 font-medium truncate shrink">{l.lead_name || 'Fără nume'}</span>
+                                                   <Link href={`/leads/vanzari?openLeadId=${l.lead_id}`} className="text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">→ </Link>
+                                                </li>
+                                              ))}
+                                           </ul>
+                                        </div>
+                                     )}
+
+                                     {/* Nu răspunde List */}
+                                      {leads.nuRaspunde.length > 0 && (
+                                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm max-h-48 overflow-y-auto">
+                                           <h5 className="text-xs font-semibold text-orange-500 flex items-center gap-1.5 mb-2 border-b border-slate-50 pb-2"><div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>Nu răspund</h5>
+                                           <ul className="space-y-2">
+                                              {leads.nuRaspunde.map(l => (
+                                                <li key={l.lead_id} className="text-xs flex items-center justify-between group">
+                                                   <span className="text-slate-700 font-medium truncate shrink">{l.lead_name || 'Fără nume'}</span>
+                                                   <Link href={`/leads/vanzari?openLeadId=${l.lead_id}`} className="text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">→ </Link>
+                                                </li>
+                                              ))}
+                                           </ul>
+                                        </div>
+                                     )}
+
+                                     {/* No Deal List */}
+                                     {leads.noDeal.length > 0 && (
+                                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm max-h-48 overflow-y-auto">
+                                           <h5 className="text-xs font-semibold text-red-500 flex items-center gap-1.5 mb-2 border-b border-slate-50 pb-2"><div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>Pierdute (No Deal)</h5>
+                                           <ul className="space-y-2">
+                                              {leads.noDeal.map(l => (
+                                                <li key={l.lead_id} className="text-xs flex items-center justify-between group">
+                                                   <span className="text-slate-700 font-medium truncate shrink">{l.lead_name || 'Fără nume'}</span>
+                                                   <Link href={`/leads/vanzari?openLeadId=${l.lead_id}`} className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">→ </Link>
+                                                </li>
+                                              ))}
+                                           </ul>
+                                        </div>
+                                     )}
+
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+
 
       {/* Dialog detalii lead (din apeluri) */}
       <Dialog open={!!leadDetailOpen} onOpenChange={(o) => !o && setLeadDetailOpen(null)}>

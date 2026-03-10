@@ -47,10 +47,10 @@ export async function searchTraysGloballyWithClient(
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 1. Căutare după NUMĂR TĂVIȚĂ (trays.number)
+    // 1. Căutare după NUMĂR TĂVIȚĂ (trays.number) - exact match
     // ═══════════════════════════════════════════════════════════════════
-    const numberVariants = getDiacriticVariants(termNorm).map((v) => `number.ilike.%${v}%`)
-    const numberOr = numberVariants.length > 0 ? numberVariants.join(',') : `number.ilike.%${searchTerm}%`
+    const numberVariants = getDiacriticVariants(termNorm).map((v) => `number.eq.${v}`)
+    const numberOr = numberVariants.length > 0 ? numberVariants.join(',') : `number.eq.${searchTerm}`
 
     const { data: traysByNumber } = await supabase
       .from('trays')
@@ -86,10 +86,10 @@ export async function searchTraysGloballyWithClient(
     })
 
     // ═══════════════════════════════════════════════════════════════════
-    // 2. Căutare după SERIAL NUMBER (tray_items.serials)
+    // 2. Căutare după SERIAL NUMBER (tray_items.serials) - exact match
     // ═══════════════════════════════════════════════════════════════════
-    const serialVariants = getDiacriticVariants(termNorm).map((v) => `serials.ilike.%${v}%`)
-    const serialOr = serialVariants.length > 0 ? serialVariants.join(',') : `serials.ilike.%${searchTerm}%`
+    const serialVariants = getDiacriticVariants(termNorm).map((v) => `serials.eq.${v}`)
+    const serialOr = serialVariants.length > 0 ? serialVariants.join(',') : `serials.eq.${searchTerm}`
 
     const { data: trayItemsBySerial } = await supabase
       .from('tray_items')

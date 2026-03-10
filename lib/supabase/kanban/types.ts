@@ -58,6 +58,16 @@ export interface KanbanItem {
   serviceFileStatus?: string
   /** Numerele tăvițelor fișei (ex. ['131', '15']) – afișate pe card în Receptie */
   trayNumbers?: string[]
+  /** Tăvițe cu tehnician și departament – afișate pe card în Recepție */
+  traysInLucru?: Array<{
+    trayId: string
+    trayNumber: string | null
+    technician: string | null
+    status: 'in_lucru' | 'in_asteptare' | 'finalizare' | 'noua' | null
+    department: string | null
+    executionTime?: string | null
+    qcValidated?: boolean | null
+  }>
   // Tray specific
   trayNumber?: string
   trayStatus?: string

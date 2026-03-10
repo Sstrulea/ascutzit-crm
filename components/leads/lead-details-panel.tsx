@@ -1469,9 +1469,10 @@ export function LeadDetailsPanel({
             </div>
           )}
           
-          {/* Componenta Preturi */}
+          {/* Componenta Preturi – key după fișă pentru a reîncărca conținutul la schimbarea fișei */}
           {(business.state.selectedFisaId || (isDepartmentPipeline && business.state.selectedTrayId)) ? (
             <PreturiMain
+              key={business.state.selectedFisaId || (isDepartmentPipeline ? business.state.selectedTrayId : null) || 'preturi'}
               ref={preturiRef}
               leadId={business.getLeadId()}
               lead={lead}

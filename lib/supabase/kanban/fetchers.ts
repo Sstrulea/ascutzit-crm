@@ -476,14 +476,15 @@ export async function fetchTraysByIds(
 export async function fetchTraysForServiceFiles(
   serviceFileIds: string[]
 ): Promise<{ data: Array<{ id: string; service_file_id: string }>; error: any }> {
-  if (serviceFileIds.length === 0) return { data: [], error: null }
+  const filtered = (serviceFileIds || []).filter((id): id is string => !!id && typeof id === 'string')
+  if (filtered.length === 0) return { data: [], error: null }
   
   const supabase = supabaseBrowser()
   
   const { data, error } = await supabase
     .from('trays')
     .select('id, service_file_id')
-    .in('service_file_id', serviceFileIds)
+    .in('service_file_id', filtered)
   
   if (error) return { data: [], error }
   return { data: data || [], error: null }

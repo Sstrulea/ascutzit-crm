@@ -98,12 +98,44 @@ erDiagram
 
 ### 3.2 Căutare prin Fișe de Service și Tăvițe
 
-| Criteriu | Implementat | Returnează |
-|----------|-------------|------------|
-| Număr fișă | ✅ | Lead cu pipeline Recepție |
-| Număr tăviță | ✅ | Lead cu pipeline Recepție |
-| Serial number | ✅ | Lead cu pipeline Recepție |
-| Tehnician | ✅ | Lead cu pipeline Recepție |
+| Criteriu | Implementat | Returnează | Exact Match |
+|----------|-------------|------------|-------------|
+| Număr fișă | ✅ | Lead cu pipeline Recepție | Parțial |
+| Număr tăviță | ✅ | Lead cu pipeline Recepție | **Exact** |
+| Serial number | ✅ | Lead cu pipeline Recepție | **Exact** |
+| Tehnician | ✅ | Lead cu pipeline Recepție | Parțial |
+
+### 3.3 Căutare Exactă pentru Tăvițe și Serial
+
+#### Căutare după Număr Tăviță
+
+Căutarea după numărul tăviței este **exactă** (case-sensitive). Aceasta înseamnă că:
+
+- Căutarea "2S" returnează doar lead-uri cu tăvița "2S"
+- Căutarea "2S" **NU** returnează lead-uri cu "12S", "02S", "3S", etc.
+
+**Implementare:**
+
+```typescript
+// În lib/supabase/traySearchServer.ts
+const numberVariants = getDiacriticVariants(termNorm).map((v) => `number.eq.${v}`)
+const numberOr = numberVariants.length > 0 ? numberVariants.join(',') : `number.eq.${searchTerm}`
+```
+
+#### Căutare după Serial Number
+
+Căutarea după serial number este **exactă** (case-sensitive):
+
+- Căutarea "ABC123" returnează doar lead-uri cu serial "ABC123"
+- Căutarea "ABC123" **NU** returnează lead-uri cu "abc123", "abc123", "ABC1234", etc.
+
+**Implementare:**
+
+```typescript
+// În lib/supabase/traySearchServer.ts
+const serialVariants = getDiacriticVariants(termNorm).map((v) => `serials.eq.${v}`)
+const serialOr = serialVariants.length > 0 ? serialVariants.join(',') : `serials.eq.${searchTerm}`
+```
 
 ---
 
@@ -263,14 +295,17 @@ const handleSelect = useCallback(
 
 ### Scenarii de Test
 
-| Scenariu | Termen Căutare | Rezultat Așteptat |
-|----------|----------------|-------------------|
-| Nume client | "Popescu" | Lead cu badge "Nume", pipeline Vânzări |
-| Telefon | "0722 123 456" | Lead cu badge "Telefon", pipeline Vânzări |
-| Email | "ion@email.com" | Lead cu badge "Email", pipeline Vânzări |
-| Număr tăviță | "38M" | Lead cu badge "Număr", pipeline Recepție |
-| Serial | "ABC123" | Lead cu badge "Serial", pipeline Recepție |
-| Număr fișă | "15" | Lead cu badge "Număr", pipeline Recepție |
+| Scenariu | Termen Căutare | Rezultat Așteptat | Exact Match |
+|----------|----------------|-------------------|-------------|
+| Nume client | "Popescu" | Lead cu badge "Nume", pipeline Vânzări | Parțial |
+| Telefon | "0722 123 456" | Lead cu badge "Telefon", pipeline Vânzări | Parțial |
+| Email | "ion@email.com" | Lead cu badge "Email", pipeline Vânzări | Parțial |
+| Număr tăviță | "2S" | Lead cu badge "Număr", pipeline Recepție | **Exact** |
+| Număr tăviță | "12S" | Lead cu badge "Număr", pipeline Recepție | **Exact** |
+| Serial | "ABC123" | Lead cu badge "Serial", pipeline Recepție | **Exact** |
+| Serial | "abc123" | Lead cu badge "Serial", pipeline Recepție | **Exact** |
+| Număr fișă | "15" | Lead cu badge "Număr", pipeline Recepție | Parțial |
+| Tehnician | "Ion" | Lead cu badge "Tehnician", pipeline Recepție | Parțial |
 
 ---
 

@@ -15,11 +15,10 @@ import type { KanbanItem, KanbanContext, PipelineItemWithStage } from '../types'
 import {
   fetchTagsForLeads,
   fetchTraysByIds,
-  fetchTrayItems,
 } from '../fetchers'
 import { loadTechnicianCache } from '../cache'
 import {
-  extractTechnicianMap,
+  extractAllTechniciansMapFromTrays,
   transformTrayToKanbanItem,
 } from '../transformers'
 import { matchesStagePattern } from '../constants'
@@ -265,9 +264,8 @@ export class QualityPipelineStrategy implements PipelineStrategy {
     const leadIds = traysForQc.map(t => (t as any)?.service_file?.lead?.id).filter(Boolean) as string[]
     const { data: tagMap } = await fetchTagsForLeads(leadIds)
 
-    // Tehnician per tăviță (din tray_items)
-    const { data: trayItems } = await fetchTrayItems(pendingTrayIds)
-    const technicianMap = extractTechnicianMap(trayItems || [])
+    // Tehnician per tăviță din trays (technician_id, technician2_id, technician3_id) – nu din tray_items
+    const allTechniciansByTray = extractAllTechniciansMapFromTrays(traysForQc as any[])
 
     // Construim mapping: departament -> stage din Quality
     // Pentru fiecare departament, găsim stage-ul corespunzător din Quality
@@ -349,7 +347,8 @@ export class QualityPipelineStrategy implements PipelineStrategy {
         )
       }
 
-      const technician = technicianMap.get(tray.id) || null
+      const technicianNames = allTechniciansByTray.get(tray.id) || []
+      const technician = technicianNames.length > 0 ? technicianNames.join(', ') : null
       const ki = transformTrayToKanbanItem(tray as any, virtualPipelineItem, trayTags, technician, 0, true)
 
       const sourcePipelineName =

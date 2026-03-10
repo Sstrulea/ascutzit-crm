@@ -23,7 +23,8 @@ import type { KanbanItem, KanbanResult, PipelineItemType } from './types'
 import { getCachedPipelinesAndStages, loadTechnicianCache } from './cache'
 import { buildContext, getStrategyForContext } from './strategies'
 import { fetchSinglePipelineItem, fetchLeadsByIds, fetchServiceFilesByIds, fetchTraysByIds, fetchTagsForLeads, fetchTrayItems } from './fetchers'
-import { transformLeadToKanbanItem, transformServiceFileToKanbanItem, transformTrayToKanbanItem, extractTechnicianMap } from './transformers'
+import { transformLeadToKanbanItem, transformServiceFileToKanbanItem, transformTrayToKanbanItem, extractTechnicianMap, extractAllTechniciansMapFromTrays } from './transformers'
+import { supabaseBrowser } from '../supabaseClient'
 
 // Re-export types
 export type { 
@@ -159,6 +160,53 @@ export async function getSingleKanbanItem(
       }
       
       kanbanItem = transformServiceFileToKanbanItem(serviceFile, pipelineItem, serviceFileTags, 0)
+
+      // Receptie: încarcă tăvițe + tehnicieni ca pe card să apară traysInLucru / trayNumbers (și la realtime)
+      try {
+        const supabase = supabaseBrowser()
+        let traysRows: any[] | null = null
+        const { data: dataFull, error: errFull } = await supabase
+          .from('trays')
+          .select('id, number, service_file_id, technician_id, technician2_id, technician3_id')
+          .eq('service_file_id', itemId)
+        if (!errFull && dataFull?.length) {
+          traysRows = dataFull
+        } else if (errFull) {
+          const { data: dataMin } = await supabase
+            .from('trays')
+            .select('id, number, service_file_id, technician_id')
+            .eq('service_file_id', itemId)
+          if (dataMin?.length) traysRows = dataMin
+        }
+        const trays = (traysRows || []) as Array<{ id: string; number: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }>
+        if (trays.length > 0) {
+          const trayIds = trays.map(t => t.id)
+          const { data: trayItemsRows } = await fetchTrayItems(trayIds)
+          const trayIdsWithItems = new Set((trayItemsRows ?? []).map((r: { tray_id: string }) => r.tray_id))
+          const trayNumbers: string[] = []
+          trays.forEach(t => {
+            if (!trayIdsWithItems.has(t.id)) return
+            const num = t.number != null && String(t.number).trim() !== '' ? String(t.number).trim() : '—'
+            trayNumbers.push(num)
+          })
+          const allTechniciansMap = extractAllTechniciansMapFromTrays(trays as any)
+          const traysInLucru = trays.map(t => ({
+            trayId: t.id,
+            trayNumber: t.number,
+            technician: (allTechniciansMap.get(t.id) || []).join(' • ') || null,
+            status: null as 'in_lucru' | 'in_asteptare' | 'finalizare' | 'noua' | null,
+            department: null as string | null,
+            executionTime: null as string | null,
+            qcValidated: null as boolean | null,
+          }))
+          if (traysInLucru.length > 0) (kanbanItem as any).traysInLucru = traysInLucru
+          if (trayNumbers.length > 0) (kanbanItem as any).trayNumbers = trayNumbers
+          const firstTech = traysInLucru[0]?.technician
+          if (firstTech && !(kanbanItem as any).technician) (kanbanItem as any).technician = firstTech
+        }
+      } catch (_) {
+        // ignoră erori la încărcarea tăvițelor; cardul se afișează fără ele
+      }
       
     } else if (type === 'tray') {
       const { data: trays } = await fetchTraysByIds([itemId])

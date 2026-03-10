@@ -95,18 +95,18 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
     const supabase = supabaseBrowser()
     logReceptieDb("supabase.from('service_files').select(...) office_direct/curier_trimis", false)
     const selectWithColet = `
-      id, lead_id, number, status, created_at, office_direct, curier_trimis, curier_scheduled_at, colet_neridicat, urgent, nu_raspunde_callback_at,
+      id, lead_id, number, status, created_at, office_direct, curier_trimis, curier_scheduled_at, colet_neridicat, colet_ajuns, urgent, nu_raspunde_callback_at,
       lead:leads(id, full_name, email, phone_number, created_at, campaign_name, ad_name, form_name, tray_details, details, city, company_name, company_address, address, address2, zip)
     `
     const selectWithoutColet = `
-      id, lead_id, number, status, created_at, office_direct, curier_trimis, curier_scheduled_at, urgent, nu_raspunde_callback_at,
+      id, lead_id, number, status, created_at, office_direct, curier_trimis, curier_scheduled_at, colet_ajuns, urgent, nu_raspunde_callback_at,
       lead:leads(id, full_name, email, phone_number, created_at, campaign_name, ad_name, form_name, tray_details, details, city, company_name, company_address, address, address2, zip)
     `
     let directServiceFilesRaw: any[] | null = null
     let { data: dataWithColet, error: errWithColet } = await supabase
       .from('service_files')
       .select(selectWithColet)
-      .or('office_direct.eq.true,curier_trimis.eq.true,colet_neridicat.eq.true')
+      .or('office_direct.eq.true,curier_trimis.eq.true,colet_neridicat.eq.true,colet_ajuns.eq.true')
     if (dataWithColet) {
       directServiceFilesRaw = dataWithColet
     } else if (errWithColet) {
@@ -147,8 +147,12 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
         const existingItem = itemMap.get(`service_file:${sf.id}`)
         if (!existingItem) {
           // Find appropriate stage based on checkbox / flag
+          // Priority: colet_ajuns > colet_neridicat > office_direct > curier_trimis
           let targetStage = receptieStages.find(s => {
             const nameLower = s.name.toLowerCase()
+            if ((sf as any).colet_ajuns && (nameLower.includes('colet') && nameLower.includes('ajuns') || nameLower.includes('tavite') && nameLower.includes('raft'))) {
+              return true
+            }
             if ((sf as any).colet_neridicat && nameLower.includes('colet') && nameLower.includes('neridicat')) {
               return true
             }
@@ -295,34 +299,56 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
     const serviceFileIdsForTotals = filteredServiceFiles.map(sf => sf.id)
     let preloadedTraysForTotals: Array<{ id: string; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }> = []
     let preloadedTrayItems: RawTrayItem[] = []
-    if (serviceFileIdsForTotals.length > 0) {
-      logReceptieDb("preload: trays (id, service_file_id, technician_*) pentru totals + tehnician", false)
-      const { data: traysPreload } = await supabase
-        .from('trays')
-        .select('id, service_file_id, technician_id, technician2_id, technician3_id')
-        .in('service_file_id', serviceFileIdsForTotals)
-      if (traysPreload?.length) {
-        preloadedTraysForTotals = traysPreload as Array<{ id: string; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }>
-        const allTrayIdsPreload = preloadedTraysForTotals.map(t => t.id)
-        logReceptieDb('preload: fetchTrayItems(allTrayIds)', false)
-        const { data: itemsPreload } = await fetchTrayItems(allTrayIdsPreload)
-        preloadedTrayItems = itemsPreload ?? []
+    const sfIdsForTotals = (serviceFileIdsForTotals || []).filter((id): id is string => !!id)
+    if (sfIdsForTotals.length > 0) {
+      try {
+        logReceptieDb("preload: trays (id, service_file_id, technician_*) pentru totals + tehnician", false)
+        let traysPreload: Array<{ id: string; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }> | null = null
+        const { data: dataFull, error: traysPreloadErr } = await supabase
+          .from('trays')
+          .select('id, service_file_id, technician_id, technician2_id, technician3_id')
+          .in('service_file_id', sfIdsForTotals)
+        if (!traysPreloadErr && dataFull?.length) {
+          traysPreload = dataFull as typeof preloadedTraysForTotals
+        } else if (traysPreloadErr) {
+          console.warn('[ReceptiePipelineStrategy] Preload trays pentru totals (încercare doar technician_id):', traysPreloadErr?.message || traysPreloadErr)
+          const { data: dataMin } = await supabase
+            .from('trays')
+            .select('id, service_file_id, technician_id')
+            .in('service_file_id', sfIdsForTotals)
+          if (dataMin?.length) traysPreload = dataMin as typeof preloadedTraysForTotals
+        }
+        if (traysPreload?.length) {
+          preloadedTraysForTotals = traysPreload
+          const allTrayIdsPreload = preloadedTraysForTotals.map(t => t.id).filter(Boolean)
+          if (allTrayIdsPreload.length > 0) {
+            logReceptieDb('preload: fetchTrayItems(allTrayIds)', false)
+            const { data: itemsPreload } = await fetchTrayItems(allTrayIdsPreload)
+            preloadedTrayItems = itemsPreload ?? []
+          }
+        }
+      } catch (e: any) {
+        console.warn('[ReceptiePipelineStrategy] Eroare preload trays pentru totals:', e?.message || e)
       }
     }
     const [totalsData, technicianMap] = await Promise.all([
-      this.calculateServiceFileTotals(serviceFileIdsForTotals, preloadedTraysForTotals.length ? { trays: preloadedTraysForTotals, trayItems: preloadedTrayItems } : undefined),
-      this.getTechnicianMapForServiceFiles(serviceFileIdsForTotals, preloadedTraysForTotals.length ? { trays: preloadedTraysForTotals } : undefined)
+      this.calculateServiceFileTotals(sfIdsForTotals, preloadedTraysForTotals.length ? { trays: preloadedTraysForTotals, trayItems: preloadedTrayItems } : undefined),
+      this.getTechnicianMapForServiceFiles(sfIdsForTotals, preloadedTraysForTotals.length ? { trays: preloadedTraysForTotals } : undefined)
     ])
 
     // Numere de tăvițe per fișă (pentru afișare pe card) – doar tăvițe care au cel puțin un item (evită afișarea a 3 când utilizatorul are 2 tăvițe cu conținut + una goală)
     const trayNumbersBySf = new Map<string, string[]>()
-    if (serviceFileIdsForTotals.length > 0) {
-      const { data: traysWithNumber } = await supabase
-        .from('trays')
-        .select('id, number, service_file_id')
-        .in('service_file_id', serviceFileIdsForTotals)
-      if (traysWithNumber?.length) {
-        const trayIds = (traysWithNumber as Array<{ id: string }>).map((t) => t.id)
+    if (sfIdsForTotals.length > 0) {
+      try {
+        const { data: traysWithNumber, error: traysNumErr } = await supabase
+          .from('trays')
+          .select('id, number, service_file_id')
+          .in('service_file_id', sfIdsForTotals)
+        if (traysNumErr) {
+          console.warn('[ReceptiePipelineStrategy] Numere tăvițe:', traysNumErr?.message || traysNumErr)
+        } else if (traysWithNumber?.length) {
+        const trayIds = (traysWithNumber as Array<{ id: string }>).map((t) => t.id).filter(Boolean)
+        if (trayIds.length > 0) {
         const { data: trayItemsRows } = await supabase
           .from('tray_items')
           .select('tray_id')
@@ -336,6 +362,10 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
           if (!trayNumbersBySf.has(sfId)) trayNumbersBySf.set(sfId, [])
           trayNumbersBySf.get(sfId)!.push(num || '—')
         }
+        }
+        }
+      } catch (e: any) {
+        console.warn('[ReceptiePipelineStrategy] Eroare numere tăvițe:', e?.message || e)
       }
     }
     
@@ -373,16 +403,17 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
     try {
       const serviceFileIds = filteredServiceFiles.map(sf => sf.id)
       
-      if (serviceFileIds.length > 0) {
-        // Caută evenimente de mutare în toate stage-urile relevante
-        logReceptieDb("supabase.from('items_events').select(...) pentru toate stage-urile relevante", false)
-        const { data: eventsData, error: eventsError } = await supabase
-          .from('items_events')
-          .select('item_id, created_at, payload')
-          .eq('type', 'service_file')
-          .in('item_id', serviceFileIds)
-          .in('event_type', ['stage_change', 'colet_ajuns', 'colet_neridicat', 'de_facturat', 'de_trimis', 'ridic_personal'])
-          .order('created_at', { ascending: true })
+      const sfIdsForEvents = serviceFileIds.filter((id): id is string => !!id)
+      if (sfIdsForEvents.length > 0) {
+        try {
+          logReceptieDb("supabase.from('items_events').select(...) pentru toate stage-urile relevante", false)
+          const { data: eventsData, error: eventsError } = await supabase
+            .from('items_events')
+            .select('item_id, created_at, payload')
+            .eq('type', 'service_file')
+            .in('item_id', sfIdsForEvents)
+            .in('event_type', ['stage_change', 'colet_ajuns', 'colet_neridicat', 'de_facturat', 'de_trimis', 'ridic_personal'])
+            .order('created_at', { ascending: true })
 
         if (!eventsError && Array.isArray(eventsData)) {
           for (const ev of eventsData as any[]) {
@@ -438,8 +469,11 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
               }
             }
           }
-        } else {
+        } else if (eventsError) {
           console.warn('[ReceptiePipelineStrategy] Nu pot încărca items_events pentru stage-uri relevante:', eventsError?.message || eventsError)
+        }
+        } catch (e: any) {
+          console.warn('[ReceptiePipelineStrategy] Eroare items_events:', e?.message || e)
         }
       }
     } catch (e: any) {
@@ -456,24 +490,47 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
     let preloadedTrays: Array<{ id: string; number: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }> = []
     let preloadedTrayPipelineItems: Array<{ item_id: string; stage_id: string; pipeline_id: string }> = []
     if (serviceFileIdsForDept.length > 0 && deptPipelineIdsForTray.length > 0) {
-      logReceptieDb("supabase.from('trays').select(...) preload pentru departamente", false)
-      const { data: traysForDept } = await supabase
-        .from('trays')
-        .select('id, number, service_file_id, technician_id, technician2_id, technician3_id')
-        .in('service_file_id', serviceFileIdsForDept)
-      if (traysForDept?.length) {
-        preloadedTrays = traysForDept as Array<{ id: string; number: string | null; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }>
-        const allTrayIdsForDept = preloadedTrays.map(t => t.id)
-        logReceptieDb("supabase.from('pipeline_items').select(...) preload tray în dept", false)
-        const { data: piDept } = await supabase
-          .from('pipeline_items')
-          .select('item_id, stage_id, pipeline_id')
-          .eq('type', 'tray')
-          .in('item_id', allTrayIdsForDept)
-          .in('pipeline_id', deptPipelineIdsForTray)
-        if (piDept?.length) {
-          preloadedTrayPipelineItems = piDept as Array<{ item_id: string; stage_id: string; pipeline_id: string }>
+      try {
+        logReceptieDb("supabase.from('trays').select(...) preload pentru departamente", false)
+        const sfIdsFiltered = serviceFileIdsForDept.filter((id): id is string => !!id)
+        if (sfIdsFiltered.length === 0) {
+          // skip
+        } else {
+          let traysForDept: typeof preloadedTrays | null = null
+          const { data: dataFull, error: traysErr } = await supabase
+            .from('trays')
+            .select('id, number, service_file_id, technician_id, technician2_id, technician3_id')
+            .in('service_file_id', sfIdsFiltered)
+          if (!traysErr && dataFull?.length) {
+            traysForDept = dataFull as typeof preloadedTrays
+          } else if (traysErr) {
+            console.warn('[ReceptiePipelineStrategy] Preload trays (încercare coloane de bază):', traysErr?.message || traysErr)
+            const { data: dataMin } = await supabase
+              .from('trays')
+              .select('id, number, service_file_id, technician_id')
+              .in('service_file_id', sfIdsFiltered)
+            if (dataMin?.length) traysForDept = dataMin as typeof preloadedTrays
+          }
+          if (traysForDept?.length) {
+            preloadedTrays = traysForDept
+            const allTrayIdsForDept = preloadedTrays.map(t => t.id).filter(Boolean)
+            if (allTrayIdsForDept.length > 0) {
+              logReceptieDb("supabase.from('pipeline_items').select(...) preload tray în dept", false)
+              const { data: piDept } = await supabase
+                .from('pipeline_items')
+                .select('item_id, stage_id, pipeline_id')
+                .eq('type', 'tray')
+                .in('item_id', allTrayIdsForDept)
+                .in('pipeline_id', deptPipelineIdsForTray)
+              if (piDept?.length) {
+                preloadedTrayPipelineItems = piDept as Array<{ item_id: string; stage_id: string; pipeline_id: string }>
+              }
+            }
+          }
         }
+      } catch (e: any) {
+        console.warn('[ReceptiePipelineStrategy] Eroare preload trays:', e?.message || e)
+        preloadedTrays = []
       }
     }
     // 6.3: Un singur query items_events (QC tray) pentru toate tray IDs – pasat la getAllTraysInfoForServiceFiles
@@ -654,6 +711,15 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       }
 
       // ========== I. CURIER TRIMIS, OFFICE DIRECT (cea mai mică prioritate) ==========
+      // Dacă toate tăvițele sunt validate în Quality Check, fișa trebuie în De facturat, NICIODATĂ în Curier trimis/Office direct.
+      const sfTraysInfoForQc = traysInfo.get(serviceFile.id)
+      if (sfTraysInfoForQc && sfTraysInfoForQc.trays.length > 0 && deFacturatStage) {
+        const allTraysQcValidatedHere = sfTraysInfoForQc.trays.every((t: { qcValidated?: boolean | null }) => t.qcValidated === true)
+        if (allTraysQcValidatedHere && pipelineItem.stage_id !== deFacturatStage.id) {
+          moves.push({ serviceFileId: serviceFile.id, targetStage: deFacturatStage, pipelineItem })
+          return
+        }
+      }
       // Nu mutăm ÎNAPOI în Curier Trimis/Office Direct dacă fișa e deja într-un stage ulterior (DB are prioritate).
       // Ex.: în DB e De Facturat, dar curier_trimis e bifat din trecut – nu suprascriem cu Curier Trimis.
       const currentStageName = (pipelineItem as any)?.stage?.name?.toUpperCase() || ''
@@ -1622,14 +1688,31 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
       return technicianMap
     }
     
+    const sfIdsFiltered = serviceFileIds.filter((id): id is string => !!id)
+    if (sfIdsFiltered.length === 0) return technicianMap
+
     let trays: Array<{ id: string; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }>
     if (preloaded?.trays?.length) {
       trays = preloaded.trays
     } else {
-      logReceptieDb('getTechnicianMapForServiceFiles: fetchTraysForServiceFiles(serviceFileIds)', false)
-      const { data: traysData } = await fetchTraysForServiceFiles(serviceFileIds)
+      logReceptieDb('getTechnicianMapForServiceFiles: supabase.from(trays).select(...)', false)
+      const supabase = supabaseBrowser()
+      let traysData: typeof trays | null = null
+      const { data: dataFull, error: errFull } = await supabase
+        .from('trays')
+        .select('id, service_file_id, technician_id, technician2_id, technician3_id')
+        .in('service_file_id', sfIdsFiltered)
+      if (!errFull && dataFull?.length) {
+        traysData = dataFull as typeof trays
+      } else if (errFull) {
+        const { data: dataMin } = await supabase
+          .from('trays')
+          .select('id, service_file_id, technician_id')
+          .in('service_file_id', sfIdsFiltered)
+        if (dataMin?.length) traysData = dataMin as typeof trays
+      }
       if (!traysData?.length) return technicianMap
-      trays = traysData as Array<{ id: string; service_file_id: string | null; technician_id?: string | null; technician2_id?: string | null; technician3_id?: string | null }>
+      trays = traysData
     }
     
     const serviceFileToTrays = new Map<string, typeof trays>()
@@ -1727,13 +1810,26 @@ export class ReceptiePipelineStrategy implements PipelineStrategy {
     if (preloaded?.trays?.length) {
       allTrays = preloaded.trays
     } else {
+      const sfIdsFiltered = serviceFileIds.filter((id): id is string => !!id)
+      if (sfIdsFiltered.length === 0) return { result, trayQcValidatedAtMap: new Map<string, string | null>() }
       logReceptieDb("getAllTraysInfoForServiceFiles: supabase.from('trays').select(...)", false)
-      const { data: traysData } = await supabase
+      let traysData: TrayRow[] | null = null
+      const { data: dataFull, error: errFull } = await supabase
         .from('trays')
         .select('id, number, service_file_id, technician_id, technician2_id, technician3_id')
-        .in('service_file_id', serviceFileIds)
+        .in('service_file_id', sfIdsFiltered)
+      if (!errFull && dataFull?.length) {
+        traysData = dataFull as TrayRow[]
+      } else if (errFull) {
+        console.warn('[ReceptiePipelineStrategy] getAllTraysInfo trays (încercare doar coloane de bază):', errFull?.message || errFull)
+        const { data: dataMin } = await supabase
+          .from('trays')
+          .select('id, number, service_file_id, technician_id')
+          .in('service_file_id', sfIdsFiltered)
+        if (dataMin?.length) traysData = dataMin as TrayRow[]
+      }
       if (!traysData?.length) return { result, trayQcValidatedAtMap: new Map<string, string | null>() }
-      allTrays = traysData as TrayRow[]
+      allTrays = traysData
     }
     // Include toate tăvițele (cu sau fără număr) pentru afișare pe card; QC/De Facturat folosesc doar cele cu număr unde e cazul
     const allTrayIds = allTrays.map(t => t.id)
